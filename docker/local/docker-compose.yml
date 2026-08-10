@@ -1,0 +1,35 @@
+# 로컬 개발용 MySQL. 실행:
+#   docker compose -f docker/local/docker-compose.yml up -d
+#
+# 호스트에 이미 MySQL이 떠 있어 3306이 막혀 있으면 루트 .env에 MYSQL_PORT를 지정한다.
+# (compose는 루트 .env를 읽지 않으므로 --env-file로 넘긴다)
+#   docker compose --env-file .env -f docker/local/docker-compose.yml up -d
+services:
+  mysql:
+    # 8.4가 아니라 8.0인 이유: Flyway 11.7이 MySQL 8.1까지만 검증돼 있어 8.4에서는
+    # "support has not been tested" 경고가 뜬다. RDS에서도 8.0이 가장 흔하다.
+    image: mysql:8.0
+    container_name: toasty-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: toasty
+      MYSQL_USER: toasty
+      MYSQL_PASSWORD: toasty
+      TZ: Asia/Seoul
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - toasty-mysql-data:/var/lib/mysql
+    healthcheck:
+      # 소켓(-h localhost)이 아니라 TCP로 확인한다. MYSQL_USER는 'toasty'@'%'로 만들어지는데
+      # 소켓 접속은 host가 'localhost'로 잡혀 매칭되지 않아 인증 실패를 못 걸러낸다.
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-utoasty", "-ptoasty"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  toasty-mysql-data:

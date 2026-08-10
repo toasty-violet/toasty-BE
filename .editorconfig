@@ -1,0 +1,25 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# Spotless의 google-java-format AOSP 스타일과 맞춘다 (4-space, 100 컬럼).
+# 값이 어긋나면 IDE 포맷터와 pre-commit 훅이 서로 되돌리는 싸움이 난다.
+[*.java]
+indent_style = space
+indent_size = 4
+max_line_length = 100
+
+[*.{kt,kts}]
+indent_style = space
+indent_size = 4
+
+[*.{yml,yaml,json}]
+indent_style = space
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false

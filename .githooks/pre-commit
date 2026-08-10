@@ -1,0 +1,27 @@
+#!/bin/sh
+set -e
+
+# 스테이징된 Java 파일의 포맷을 검사한다. 파일 내용은 수정하지 않는다.
+# 훅 경로는 build.gradle.kts의 installGitHooks task가 걸어준다.
+
+# 삭제된 파일(d)은 제외
+STAGED_FILES="$(git --no-pager diff --name-only --no-color --cached --diff-filter=d | grep -E '\.java$' || true)"
+
+if [ -z "$STAGED_FILES" ]; then
+  exit 0
+fi
+
+# 주의: Spotless는 인덱스가 아니라 워킹트리를 읽는다. git add -p 로 일부만 올린 상태면
+# 안 올린 변경도 검사 대상에 들어가 실패할 수 있다 (파일은 건드리지 않으므로 안전하다).
+if ! ./gradlew --quiet spotlessCheck -PspotlessGitFilter="$STAGED_FILES"; then
+  echo ""
+  echo "[spotless] 포맷 위반이 있어 커밋을 중단했습니다."
+  echo "[spotless] 아래를 실행한 뒤 다시 add 하고 커밋하세요."
+  echo ""
+  echo "    ./gradlew spotlessApply"
+  echo "    git add <파일>"
+  echo ""
+  exit 1
+fi
+
+exit 0

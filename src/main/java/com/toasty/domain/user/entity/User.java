@@ -28,17 +28,17 @@ public class User extends BaseTimeEntity {
     @Column(name = "kakao_id", nullable = false, unique = true, length = 50)
     private String kakaoId;
 
-    // 유저 타입 (판매자, 구매자)
+    // 유저 타입 (판매자, 구매자) — 온보딩 전까지 null
     @Enumerated(EnumType.STRING)
-    @Column(name = "user_type", nullable = false, length = 20)
+    @Column(name = "user_type", length = 20)
     private UserType userType;
 
-    // 휴대폰 번호
-    @Column(name = "phone_number", nullable = false, length = 20)
+    // 휴대폰 번호 — 온보딩 전까지 null
+    @Column(name = "phone_number", length = 20)
     private String phoneNumber;
 
-    // 이름
-    @Column(nullable = false, length = 50)
+    // 이름 — 온보딩 전까지 null
+    @Column(length = 50)
     private String name;
 
     // 닉네임
@@ -67,5 +67,10 @@ public class User extends BaseTimeEntity {
 
     public static User create(String kakaoId, UserType userType, String phoneNumber, String name) {
         return new User(kakaoId, userType, phoneNumber, name);
+    }
+
+    /** 카카오 최초 로그인 시점에는 kakaoId 외의 정보가 없다. 나머지는 온보딩에서 채운다. */
+    public static User createFromKakao(String kakaoId) {
+        return new User(kakaoId, null, null, null);
     }
 }

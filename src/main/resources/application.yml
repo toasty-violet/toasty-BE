@@ -36,6 +36,11 @@ cors:
   allowed-methods: ${CORS_ALLOWED_METHODS:GET,POST,PATCH,PUT,DELETE,OPTIONS}
   allowed-headers: ${CORS_ALLOWED_HEADERS:*}
 
+kakao:
+  client-id: ${KAKAO_CLIENT_ID:}
+  client-secret: ${KAKAO_CLIENT_SECRET:}
+  redirect-uri: ${KAKAO_REDIRECT_URI:http://localhost:8080/api/auth/kakao/callback}
+
 management:
   endpoints:
     web:

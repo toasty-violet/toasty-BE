@@ -73,4 +73,8 @@ public class User extends BaseTimeEntity {
     public static User createFromKakao(String kakaoId) {
         return new User(kakaoId, null, null, null);
     }
+
+    public boolean isOnboardingCompleted() {
+        return userType != null;
+    }
 }

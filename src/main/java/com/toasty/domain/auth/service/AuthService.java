@@ -21,6 +21,6 @@ public class AuthService {
         KakaoUserResponse kakaoUser = kakaoAuthClient.requestUserInfo(token.accessToken());
 
         UserLoginResult result = userService.loginWithKakao(String.valueOf(kakaoUser.id()));
-        return KakaoLoginResponse.of(result.user(), result.isNewUser());
+        return KakaoLoginResponse.of(result.user());
     }
 }

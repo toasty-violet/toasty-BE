@@ -11,7 +11,9 @@ public enum AuthErrorCode implements ErrorCode {
     KAKAO_TOKEN_REQUEST_FAILED(
             HttpStatus.BAD_GATEWAY, "AUTH_KAKAO_TOKEN_REQUEST_FAILED", "카카오 토큰 발급에 실패했습니다."),
     KAKAO_USER_INFO_REQUEST_FAILED(
-            HttpStatus.BAD_GATEWAY, "AUTH_KAKAO_USER_INFO_REQUEST_FAILED", "카카오 사용자 정보 조회에 실패했습니다.");
+            HttpStatus.BAD_GATEWAY,
+            "AUTH_KAKAO_USER_INFO_REQUEST_FAILED",
+            "카카오 사용자 정보 조회에 실패했습니다.");
 
     private final HttpStatus status;
     private final String code;

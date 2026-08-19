@@ -17,7 +17,10 @@ public class UserService {
     public UserLoginResult loginWithKakao(String kakaoId) {
         return userRepository
                 .findByKakaoId(kakaoId)
-                .map(user -> new UserLoginResult(user, false))
-                .orElseGet(() -> new UserLoginResult(userRepository.save(User.createFromKakao(kakaoId)), true));
+                .map(user -> new UserLoginResult(user, user.isOnboardingCompleted()))
+                .orElseGet(
+                        () ->
+                                new UserLoginResult(
+                                        userRepository.save(User.createFromKakao(kakaoId)), false));
     }
 }

@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Claude Code(claude.ai/code)가 이 저장소에서 작업할 때의 지침이다. 사람이 읽어도 되는 컨벤션 문서를 겸한다.
+Claude Code가 작업할 때의 지침
 
 ## 작업 원칙
 
@@ -13,9 +13,11 @@ Claude Code(claude.ai/code)가 이 저장소에서 작업할 때의 지침이다
 
 ## 프로젝트 개요
 
+라이브 방송을 통해 물건을 사고 팔 수 있는 쇼핑 플랫폼
+
 Java 21 + Spring Boot 3.5 단일 모듈 서버. 패키지 루트는 `com.toasty`. DB는 MySQL 8, 스키마는 Flyway로만 변경한다.
 
-프론트엔드는 별도 저장소([toasty-FE](https://github.com/toasty-violet/toasty-FE), Next.js)이며 개발 서버는 3000번 포트를 쓴다.
+프론트엔드는 별도 저장소([toasty-FE](https://github.com/toasty-violet/toasty-FE), Next.js)이다.
 
 ## 명령어
 

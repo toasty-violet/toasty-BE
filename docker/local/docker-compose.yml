@@ -1,7 +1,7 @@
-# 로컬 개발용 MySQL. 실행:
+# 로컬 개발용 MySQL + Redis. 실행:
 #   docker compose -f docker/local/docker-compose.yml up -d
 #
-# 호스트에 이미 MySQL이 떠 있어 3306이 막혀 있으면 루트 .env에 MYSQL_PORT를 지정한다.
+# 호스트에 이미 MySQL/Redis가 떠 있어 포트가 막혀 있으면 루트 .env에 MYSQL_PORT/REDIS_PORT를 지정한다.
 # (compose는 루트 .env를 읽지 않으므로 --env-file로 넘긴다)
 #   docker compose --env-file .env -f docker/local/docker-compose.yml up -d
 services:
@@ -28,6 +28,18 @@ services:
       # 소켓(-h localhost)이 아니라 TCP로 확인한다. MYSQL_USER는 'toasty'@'%'로 만들어지는데
       # 소켓 접속은 host가 'localhost'로 잡혀 매칭되지 않아 인증 실패를 못 걸러낸다.
       test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-utoasty", "-ptoasty"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: toasty-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 20

@@ -28,10 +28,10 @@ public class User extends BaseTimeEntity {
     @Column(name = "kakao_id", nullable = false, unique = true, length = 50)
     private String kakaoId;
 
-    // 유저 타입 (판매자, 구매자) — 온보딩 전까지 null
+    // 유저 역할 (판매자, 구매자) — 온보딩 전까지 null
     @Enumerated(EnumType.STRING)
-    @Column(name = "user_type", length = 20)
-    private UserType userType;
+    @Column(name = "role", length = 20)
+    private Role role;
 
     // 휴대폰 번호 — 온보딩 전까지 null
     @Column(name = "phone_number", length = 20)
@@ -42,31 +42,22 @@ public class User extends BaseTimeEntity {
     private String name;
 
     // 닉네임
-    @Column(length = 50)
+    @Column(length = 50, unique = true)
     private String nickname;
 
-    // 우편 번호
-    @Column(name = "postal_code", length = 10)
-    private String postalCode;
+    // 결제 연동 시 PG사로부터 받는 결제자 식별자 — 연동 전까지 null
+    @Column(name = "payer_id", length = 50)
+    private String payerId;
 
-    // 주소지
-    @Column(length = 255)
-    private String address;
-
-    // 결제 연동 여부
-    @Column(name = "payment_linked", nullable = false)
-    private boolean paymentLinked;
-
-    private User(String kakaoId, UserType userType, String phoneNumber, String name) {
+    private User(String kakaoId, Role role, String phoneNumber, String name) {
         this.kakaoId = kakaoId;
-        this.userType = userType;
+        this.role = role;
         this.phoneNumber = phoneNumber;
         this.name = name;
-        this.paymentLinked = false;
     }
 
-    public static User create(String kakaoId, UserType userType, String phoneNumber, String name) {
-        return new User(kakaoId, userType, phoneNumber, name);
+    public static User create(String kakaoId, Role role, String phoneNumber, String name) {
+        return new User(kakaoId, role, phoneNumber, name);
     }
 
     /** 카카오 최초 로그인 시점에는 kakaoId 외의 정보가 없다. 나머지는 온보딩에서 채운다. */
@@ -75,6 +66,6 @@ public class User extends BaseTimeEntity {
     }
 
     public boolean isOnboardingCompleted() {
-        return userType != null;
+        return role != null;
     }
 }

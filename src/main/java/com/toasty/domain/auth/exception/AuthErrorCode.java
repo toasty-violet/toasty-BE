@@ -13,7 +13,11 @@ public enum AuthErrorCode implements ErrorCode {
     KAKAO_USER_INFO_REQUEST_FAILED(
             HttpStatus.BAD_GATEWAY,
             "AUTH_KAKAO_USER_INFO_REQUEST_FAILED",
-            "카카오 사용자 정보 조회에 실패했습니다.");
+            "카카오 사용자 정보 조회에 실패했습니다."),
+    REFRESH_TOKEN_INVALID(
+            HttpStatus.UNAUTHORIZED, "AUTH_REFRESH_TOKEN_INVALID", "유효하지 않은 리프레시 토큰입니다."),
+    REFRESH_TOKEN_NOT_FOUND(
+            HttpStatus.UNAUTHORIZED, "AUTH_REFRESH_TOKEN_NOT_FOUND", "만료되었거나 존재하지 않는 리프레시 토큰입니다.");
 
     private final HttpStatus status;
     private final String code;

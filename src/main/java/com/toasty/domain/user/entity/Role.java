@@ -1,6 +1,6 @@
 package com.toasty.domain.user.entity;
 
-public enum UserType {
+public enum Role {
     SELLER,
     CUSTOMER
 }

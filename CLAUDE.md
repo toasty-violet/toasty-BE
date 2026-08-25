@@ -34,8 +34,12 @@ Command 객체는 `entity/`에 둔다.
 
 ## Flyway
 
-`src/main/resources/db/migration/V{번호}__{설명}.sql` (밑줄 두 개, 1부터 순차).
-머지된 파일은 절대 수정하지 않고 새 버전으로 고친다. 테이블명은 복수형 `snake_case`, 모든 테이블에 `created_at`·`updated_at`.
+`src/main/resources/db/migration/V{YYYYMMDDHHmmss}__{설명}.sql` (밑줄 두 개).
+**버전은 파일을 만든 시각의 타임스탬프로 짓는다** (예: `V20260826143000__create_orders.sql`).
+
+- 타임스탬프가 더 이른 파일이 나중에 머지될 수 있어 `out-of-order: true`를 켜뒀다. 다른 마이그레이션이 만든 테이블·컬럼에 의존하는 SQL은 쓰지 않는다.
+- 머지된 파일은 절대 수정하지 않고 새 버전으로 고친다.
+- 테이블명은 복수형 `snake_case`, 모든 테이블에 `created_at`·`updated_at`.
 
 ## 명령어
 

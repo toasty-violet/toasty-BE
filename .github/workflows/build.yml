@@ -7,6 +7,35 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
+    # 빈 DB에 마이그레이션을 V1부터 전부 적용해 본다. 로컬과 달리 이전 브랜치의 잔재가 없으므로
+    # 버전 충돌·SQL 오류·엔티티와 스키마 불일치(ddl-auto=validate)가 여기서 걸린다.
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: toasty
+          MYSQL_USER: toasty
+          MYSQL_PASSWORD: toasty
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -utoasty -ptoasty"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+
     steps:
       - uses: actions/checkout@v4
 
@@ -17,3 +46,8 @@ jobs:
           cache: gradle
 
       - run: ./gradlew build
+        env:
+          # 서비스 컨테이너가 이미 떠 있으므로 Spring Boot의 compose 자동 기동은 끈다.
+          SPRING_DOCKER_COMPOSE_ENABLED: false
+          # JwtTokenProvider가 생성자에서 서명키를 만든다. HS256이라 32바이트 이상이어야 한다.
+          JWT_SECRET: ci-dummy-secret-key-for-context-loading-only

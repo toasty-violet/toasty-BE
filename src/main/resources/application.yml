@@ -31,6 +31,9 @@ spring:
     enabled: true
     locations: classpath:db/migration
     baseline-on-migrate: true
+    # 버전이 타임스탬프라, 먼저 만든 마이그레이션이 나중에 머지되는 일이 생긴다.
+    # 이 옵션이 없으면 이미 더 높은 버전이 적용된 DB에서 그 파일을 건너뛴다.
+    out-of-order: true
 
   jackson:
     property-naming-strategy: LOWER_CAMEL_CASE

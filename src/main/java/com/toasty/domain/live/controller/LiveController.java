@@ -19,7 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @Tag(name = "Live", description = "라이브 방송 API")
 @RestController
-@RequestMapping("/api/lives")
+@RequestMapping("/api/v1/lives")
 @RequiredArgsConstructor
 public class LiveController {
 

@@ -4,6 +4,7 @@ import com.toasty.domain.auth.controller.dto.response.AccessTokenResponse;
 import com.toasty.domain.auth.controller.dto.response.KakaoLoginResponse;
 import com.toasty.domain.auth.service.AuthService;
 import com.toasty.domain.auth.service.LoginResult;
+import com.toasty.domain.auth.service.ReissueResult;
 import com.toasty.global.exception.ErrorResponse;
 import com.toasty.global.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -14,6 +15,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletResponse;
+import java.time.Duration;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
@@ -83,28 +85,38 @@ public class AuthController {
                     String code,
             HttpServletResponse httpResponse) {
         LoginResult result = authService.loginWithKakao(code);
-        httpResponse.addHeader(HttpHeaders.SET_COOKIE, buildRefreshTokenCookie(result).toString());
+        httpResponse.addHeader(
+                HttpHeaders.SET_COOKIE,
+                buildRefreshTokenCookie(result.refreshToken(), result.refreshTokenMaxAge())
+                        .toString());
         return ApiResponse.ok(result.response());
     }
 
     @Operation(
             summary = "액세스 토큰 재발급",
-            description = "쿠키의 리프레시 토큰이 유효하면 새 액세스 토큰을 발급한다. 리프레시 토큰 자체는 갱신하지 않는다.")
+            description =
+                    "쿠키의 리프레시 토큰으로 새 액세스 토큰을 발급하고, 리프레시 토큰도 새것으로 교체해 쿠키에 다시 내려준다. "
+                            + "교체된 이전 토큰으로 다시 요청하면 모든 기기에서 로그아웃되므로, 재발급은 한 번에 한 요청만 보내야 한다.")
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "200",
                 description = "재발급 성공"),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "401",
-                description = "리프레시 토큰이 없거나, 위조/만료되었거나, 이미 로그아웃된 상태",
+                description = "리프레시 토큰이 없거나, 만료/로그아웃되었거나, 이미 교체된 토큰으로 요청한 경우",
                 content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
-    // 로그인이 계속 유지되도록, 만료된 액세스 토큰만 새 것으로 바꿔준다
+    // 액세스 토큰을 재발급하고, 교체된 리프레시 토큰을 쿠키에 다시 심는다
     @PostMapping("/refresh")
     public ApiResponse<AccessTokenResponse> refresh(
-            @CookieValue(value = REFRESH_TOKEN_COOKIE_NAME, required = false) String refreshToken) {
-        String accessToken = authService.reissueAccessToken(refreshToken);
-        return ApiResponse.ok(new AccessTokenResponse(accessToken));
+            @CookieValue(value = REFRESH_TOKEN_COOKIE_NAME, required = false) String refreshToken,
+            HttpServletResponse httpResponse) {
+        ReissueResult result = authService.reissueAccessToken(refreshToken);
+        httpResponse.addHeader(
+                HttpHeaders.SET_COOKIE,
+                buildRefreshTokenCookie(result.refreshToken(), result.refreshTokenMaxAge())
+                        .toString());
+        return ApiResponse.ok(new AccessTokenResponse(result.accessToken()));
     }
 
     @Operation(summary = "로그아웃", description = "서버에 저장된 로그인 상태를 지우고, 브라우저의 리프레시 토큰 쿠키도 만료시킨다.")
@@ -119,13 +131,13 @@ public class AuthController {
     }
 
     // 리프레시 토큰을 담은 HttpOnly 쿠키 생성
-    private ResponseCookie buildRefreshTokenCookie(LoginResult result) {
-        return ResponseCookie.from(REFRESH_TOKEN_COOKIE_NAME, result.refreshToken())
+    private ResponseCookie buildRefreshTokenCookie(String refreshToken, Duration maxAge) {
+        return ResponseCookie.from(REFRESH_TOKEN_COOKIE_NAME, refreshToken)
                 .httpOnly(true)
                 .secure(true)
                 .sameSite("None")
                 .path("/")
-                .maxAge(result.refreshTokenMaxAge())
+                .maxAge(maxAge)
                 .build();
     }
 

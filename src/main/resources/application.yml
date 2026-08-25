@@ -53,10 +53,13 @@ kakao:
 
 jwt:
   secret: ${JWT_SECRET:}
-  # 30분 (30 * 60 * 1000)
-  access-token-expiration-millis: ${JWT_ACCESS_TOKEN_EXPIRATION_MILLIS:1800000}
-  # 14일 (14 * 24 * 60 * 60 * 1000)
-  refresh-token-expiration-millis: ${JWT_REFRESH_TOKEN_EXPIRATION_MILLIS:1209600000}
+  # 30m, 14d 처럼 단위를 붙일 수 있고, 단위가 없으면 밀리초로 읽는다.
+  access-token-expiration: ${ACCESS_TOKEN_EXPIRATION:30m}
+
+auth:
+  # 리프레시 토큰은 JWT가 아니라 난수 문자열이라 jwt 설정과 분리한다.
+  refresh-token:
+    expiration: ${REFRESH_TOKEN_EXPIRATION:14d}
 
 management:
   endpoints:

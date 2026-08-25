@@ -31,6 +31,10 @@ dependencies {
     implementation("org.flywaydb:flyway-mysql")
     runtimeOnly("com.mysql:mysql-connector-j")
 
+    // aws
+    implementation(platform("software.amazon.awssdk:bom:2.46.7"))
+    implementation("software.amazon.awssdk:ivs")
+
     // ops
     implementation("org.springframework.boot:spring-boot-starter-actuator")
 

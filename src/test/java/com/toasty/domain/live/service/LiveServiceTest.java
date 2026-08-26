@@ -5,10 +5,16 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 import com.toasty.domain.live.client.FakeLiveStreamingClient;
+import com.toasty.domain.live.client.dto.StreamState;
+import com.toasty.domain.live.controller.dto.response.BroadcastCredentialResponse;
 import com.toasty.domain.live.controller.dto.response.LiveCreateResponse;
 import com.toasty.domain.live.controller.dto.response.LiveDetailResponse;
+import com.toasty.domain.live.controller.dto.response.LivePlaybackResponse;
+import com.toasty.domain.live.controller.dto.response.LiveStreamStatusResponse;
 import com.toasty.domain.live.entity.Live;
 import com.toasty.domain.live.entity.LiveCreateCommand;
 import com.toasty.domain.live.entity.LiveStatus;
@@ -44,6 +50,12 @@ class LiveServiceTest {
 
     private void givenSaveSucceeds() {
         given(liveRepository.save(any(Live.class))).willAnswer(call -> call.getArgument(0));
+    }
+
+    private Live givenLive(Long liveId) {
+        Live live = Live.create(command(), "arn:aws:ivs:channel/abc", "https://playback/abc.m3u8");
+        given(liveRepository.findById(liveId)).willReturn(Optional.of(live));
+        return live;
     }
 
     @Nested
@@ -168,6 +180,212 @@ class LiveServiceTest {
                     .isInstanceOf(CustomException.class)
                     .extracting(e -> ((CustomException) e).getErrorCode())
                     .isEqualTo(LiveErrorCode.LIVE_NOT_FOUND);
+        }
+    }
+
+    @Nested
+    @DisplayName("송출정보 재발급")
+    class ReissueCredential {
+
+        @Test
+        @DisplayName("소유자가 아니면 LIVE_FORBIDDEN이다")
+        void 소유자가_아니면_거부한다() {
+            givenLive(1L);
+
+            assertThatThrownBy(() -> liveService.reissueCredential(1L, 99L))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(LiveErrorCode.LIVE_FORBIDDEN);
+
+            assertThat(streamingClient.reissuedChannelArns()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("종료된 라이브는 재발급할 수 없다")
+        void 종료된_라이브는_재발급할_수_없다() {
+            Live live = givenLive(1L);
+            live.end();
+
+            assertThatThrownBy(() -> liveService.reissueCredential(1L, SELLER_ID))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(LiveErrorCode.LIVE_ALREADY_ENDED);
+
+            assertThat(streamingClient.reissuedChannelArns()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("재발급할 때마다 이전과 다른 키를 받는다")
+        void 재발급하면_새_키를_받는다() {
+            givenLive(1L);
+
+            BroadcastCredentialResponse first = liveService.reissueCredential(1L, SELLER_ID);
+            BroadcastCredentialResponse second = liveService.reissueCredential(1L, SELLER_ID);
+
+            assertThat(first.streamKey()).isNotEqualTo(second.streamKey());
+            assertThat(first.ingestEndpoint()).isEqualTo(FakeLiveStreamingClient.INGEST_ENDPOINT);
+            assertThat(streamingClient.reissuedChannelArns()).hasSize(2);
+        }
+
+        @Test
+        @DisplayName("없는 라이브면 LIVE_NOT_FOUND다")
+        void 없으면_LIVE_NOT_FOUND다() {
+            given(liveRepository.findById(99L)).willReturn(Optional.empty());
+
+            assertThatThrownBy(() -> liveService.reissueCredential(99L, SELLER_ID))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(LiveErrorCode.LIVE_NOT_FOUND);
+        }
+    }
+
+    @Nested
+    @DisplayName("송출 상태 조회")
+    class GetStreamStatus {
+
+        @Test
+        @DisplayName("소유자가 아니면 LIVE_FORBIDDEN이다")
+        void 소유자가_아니면_거부한다() {
+            givenLive(1L);
+
+            assertThatThrownBy(() -> liveService.getStreamStatus(1L, 99L))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(LiveErrorCode.LIVE_FORBIDDEN);
+        }
+
+        @Test
+        @DisplayName("송출이 확인되면 LIVE로 전이하고 저장한다")
+        void 송출이_확인되면_LIVE로_전이한다() {
+            givenLive(1L);
+            givenSaveSucceeds();
+            streamingClient.broadcasting(StreamState.BROADCASTING);
+
+            LiveStreamStatusResponse response = liveService.getStreamStatus(1L, SELLER_ID);
+
+            assertThat(response.status()).isEqualTo(LiveStatus.LIVE);
+            assertThat(response.broadcasting()).isTrue();
+            assertThat(response.startedAt()).isNotNull();
+            verify(liveRepository).save(any(Live.class));
+        }
+
+        @Test
+        @DisplayName("송출 중이 아니면 상태를 바꾸지 않는다")
+        void 송출_중이_아니면_상태를_유지한다() {
+            givenLive(1L);
+            streamingClient.broadcasting(StreamState.NOT_BROADCASTING);
+
+            LiveStreamStatusResponse response = liveService.getStreamStatus(1L, SELLER_ID);
+
+            assertThat(response.status()).isEqualTo(LiveStatus.READY);
+            assertThat(response.broadcasting()).isFalse();
+            verify(liveRepository, never()).save(any(Live.class));
+        }
+
+        @Test
+        @DisplayName("이미 LIVE면 다시 저장하지 않는다")
+        void 이미_LIVE면_저장하지_않는다() {
+            Live live = givenLive(1L);
+            live.startBroadcast();
+            streamingClient.broadcasting(StreamState.BROADCASTING);
+
+            LiveStreamStatusResponse response = liveService.getStreamStatus(1L, SELLER_ID);
+
+            assertThat(response.status()).isEqualTo(LiveStatus.LIVE);
+            verify(liveRepository, never()).save(any(Live.class));
+        }
+
+        @Test
+        @DisplayName("종료된 라이브는 동기화하지 않는다")
+        void 종료된_라이브는_동기화하지_않는다() {
+            Live live = givenLive(1L);
+            live.end();
+            streamingClient.broadcasting(StreamState.BROADCASTING);
+
+            LiveStreamStatusResponse response = liveService.getStreamStatus(1L, SELLER_ID);
+
+            assertThat(response.status()).isEqualTo(LiveStatus.ENDED);
+            verify(liveRepository, never()).save(any(Live.class));
+        }
+
+        @Test
+        @DisplayName("이미 다른 라이브를 방송 중인 셀러면 LIVE_ALREADY_BROADCASTING이다")
+        void 동시_방송은_거부한다() {
+            givenLive(1L);
+            given(liveRepository.save(any(Live.class)))
+                    .willThrow(new DataIntegrityViolationException("uk_lives_active_seller_id"));
+            streamingClient.broadcasting(StreamState.BROADCASTING);
+
+            assertThatThrownBy(() -> liveService.getStreamStatus(1L, SELLER_ID))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(LiveErrorCode.LIVE_ALREADY_BROADCASTING);
+        }
+    }
+
+    @Nested
+    @DisplayName("방송 종료")
+    class End {
+
+        @Test
+        @DisplayName("소유자가 아니면 LIVE_FORBIDDEN이다")
+        void 소유자가_아니면_거부한다() {
+            givenLive(1L);
+
+            assertThatThrownBy(() -> liveService.end(1L, 99L))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(LiveErrorCode.LIVE_FORBIDDEN);
+
+            assertThat(streamingClient.stoppedChannelArns()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("송출을 중단하고 스트림 키를 지운 뒤 ENDED가 된다")
+        void 송출을_중단하고_키를_지운다() {
+            Live live = givenLive(1L);
+            live.startBroadcast();
+            givenSaveSucceeds();
+
+            LiveDetailResponse response = liveService.end(1L, SELLER_ID);
+
+            assertThat(response.status()).isEqualTo(LiveStatus.ENDED);
+            assertThat(response.endedAt()).isNotNull();
+            assertThat(response.playbackUrl()).isEqualTo("https://playback/abc.m3u8");
+            assertThat(streamingClient.stoppedChannelArns())
+                    .containsExactly(live.getIvsChannelArn());
+            assertThat(streamingClient.streamKeyDeletedChannelArns())
+                    .containsExactly(live.getIvsChannelArn());
+        }
+
+        @Test
+        @DisplayName("이미 종료됐으면 IVS를 호출하지 않는다")
+        void 이미_종료됐으면_IVS를_부르지_않는다() {
+            Live live = givenLive(1L);
+            live.end();
+
+            LiveDetailResponse response = liveService.end(1L, SELLER_ID);
+
+            assertThat(response.status()).isEqualTo(LiveStatus.ENDED);
+            assertThat(streamingClient.stoppedChannelArns()).isEmpty();
+            assertThat(streamingClient.streamKeyDeletedChannelArns()).isEmpty();
+            verify(liveRepository, never()).save(any(Live.class));
+        }
+    }
+
+    @Nested
+    @DisplayName("재생 정보 조회")
+    class GetPlayback {
+
+        @Test
+        @DisplayName("재생 URL과 상태만 반환한다")
+        void 재생_URL과_상태를_반환한다() {
+            givenLive(1L);
+
+            LivePlaybackResponse response = liveService.getPlayback(1L);
+
+            assertThat(response.playbackUrl()).isEqualTo("https://playback/abc.m3u8");
+            assertThat(response.status()).isEqualTo(LiveStatus.READY);
         }
     }
 }

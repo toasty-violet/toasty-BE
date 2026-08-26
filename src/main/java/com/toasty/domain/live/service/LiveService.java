@@ -1,10 +1,13 @@
 package com.toasty.domain.live.service;
 
 import com.toasty.domain.live.client.LiveStreamingClient;
+import com.toasty.domain.live.client.dto.StreamState;
 import com.toasty.domain.live.client.dto.StreamingChannel;
 import com.toasty.domain.live.controller.dto.response.BroadcastCredentialResponse;
 import com.toasty.domain.live.controller.dto.response.LiveCreateResponse;
 import com.toasty.domain.live.controller.dto.response.LiveDetailResponse;
+import com.toasty.domain.live.controller.dto.response.LivePlaybackResponse;
+import com.toasty.domain.live.controller.dto.response.LiveStreamStatusResponse;
 import com.toasty.domain.live.entity.Live;
 import com.toasty.domain.live.entity.LiveCreateCommand;
 import com.toasty.domain.live.exception.LiveErrorCode;
@@ -13,6 +16,7 @@ import com.toasty.global.exception.CustomException;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -57,6 +61,36 @@ public class LiveService {
         }
         return BroadcastCredentialResponse.from(
                 liveStreamingClient.reissueCredential(live.getIvsChannelArn()));
+    }
+
+    public LiveStreamStatusResponse getStreamStatus(Long liveId, Long sellerId) {
+        Live live = findById(liveId);
+        if (!live.isOwnedBy(sellerId)) {
+            throw new CustomException(LiveErrorCode.LIVE_FORBIDDEN);
+        }
+        StreamState streamState = liveStreamingClient.getStreamState(live.getIvsChannelArn());
+        if (streamState == StreamState.BROADCASTING && !live.isEnded()) {
+            live = syncToBroadcasting(live);
+        }
+        return LiveStreamStatusResponse.of(live, streamState);
+    }
+
+    @Transactional(readOnly = true)
+    public LivePlaybackResponse getPlayback(Long liveId) {
+        return LivePlaybackResponse.from(findById(liveId));
+    }
+
+    private Live syncToBroadcasting(Live live) {
+        if (live.isBroadcasting()) {
+            return live;
+        }
+        live.startBroadcast();
+        try {
+            return liveRepository.save(live);
+        } catch (DataIntegrityViolationException e) {
+            // active_seller_id unique 위반. 이 셀러가 다른 라이브를 이미 방송 중이다.
+            throw new CustomException(LiveErrorCode.LIVE_ALREADY_BROADCASTING, e);
+        }
     }
 
     private Live findById(Long liveId) {

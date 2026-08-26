@@ -4,6 +4,8 @@ import com.toasty.domain.live.controller.dto.request.LiveCreateRequest;
 import com.toasty.domain.live.controller.dto.response.BroadcastCredentialResponse;
 import com.toasty.domain.live.controller.dto.response.LiveCreateResponse;
 import com.toasty.domain.live.controller.dto.response.LiveDetailResponse;
+import com.toasty.domain.live.controller.dto.response.LivePlaybackResponse;
+import com.toasty.domain.live.controller.dto.response.LiveStreamStatusResponse;
 import com.toasty.domain.live.service.LiveService;
 import com.toasty.global.auth.SellerProvider;
 import com.toasty.global.response.ApiResponse;
@@ -45,6 +47,23 @@ public class LiveController {
     public ApiResponse<BroadcastCredentialResponse> reissueCredential(@PathVariable Long liveId) {
         Long sellerId = sellerProvider.currentSellerId();
         return ApiResponse.ok(liveService.reissueCredential(liveId, sellerId));
+    }
+
+    @Operation(
+            summary = "송출 상태 조회",
+            description = "셀러 본인만 호출한다. IVS의 실제 송출 여부를 확인해 도메인 상태를 맞추며, 송출이 확인되면 LIVE로 전이된다.")
+    @GetMapping("/{liveId}/stream-status")
+    public ApiResponse<LiveStreamStatusResponse> getStreamStatus(@PathVariable Long liveId) {
+        Long sellerId = sellerProvider.currentSellerId();
+        return ApiResponse.ok(liveService.getStreamStatus(liveId, sellerId));
+    }
+
+    @Operation(
+            summary = "재생 정보 조회",
+            description = "구매자용. IVS를 호출하지 않고 저장된 상태만 읽는다. 송출정보는 포함하지 않는다.")
+    @GetMapping("/{liveId}/playback")
+    public ApiResponse<LivePlaybackResponse> getPlayback(@PathVariable Long liveId) {
+        return ApiResponse.ok(liveService.getPlayback(liveId));
     }
 
     @Operation(

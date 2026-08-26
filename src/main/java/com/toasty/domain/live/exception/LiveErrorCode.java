@@ -11,6 +11,8 @@ public enum LiveErrorCode implements ErrorCode {
     LIVE_NOT_FOUND(HttpStatus.NOT_FOUND, "LIVE_NOT_FOUND", "라이브를 찾을 수 없습니다."),
     LIVE_FORBIDDEN(HttpStatus.FORBIDDEN, "LIVE_FORBIDDEN", "해당 라이브에 대한 권한이 없습니다."),
     LIVE_ALREADY_ENDED(HttpStatus.CONFLICT, "LIVE_ALREADY_ENDED", "이미 종료된 라이브입니다."),
+    LIVE_ALREADY_BROADCASTING(
+            HttpStatus.CONFLICT, "LIVE_ALREADY_BROADCASTING", "이미 진행 중인 라이브가 있습니다."),
     LIVE_CREDENTIAL_REISSUE_CONFLICT(
             HttpStatus.CONFLICT,
             "LIVE_CREDENTIAL_REISSUE_CONFLICT",

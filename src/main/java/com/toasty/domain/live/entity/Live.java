@@ -91,6 +91,10 @@ public class Live extends BaseTimeEntity {
         return this.sellerId.equals(sellerId);
     }
 
+    public boolean isBroadcasting() {
+        return status == LiveStatus.LIVE;
+    }
+
     public boolean isEnded() {
         return status == LiveStatus.ENDED;
     }

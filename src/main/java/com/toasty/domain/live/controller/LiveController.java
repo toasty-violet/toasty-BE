@@ -1,6 +1,7 @@
 package com.toasty.domain.live.controller;
 
 import com.toasty.domain.live.controller.dto.request.LiveCreateRequest;
+import com.toasty.domain.live.controller.dto.response.BroadcastCredentialResponse;
 import com.toasty.domain.live.controller.dto.response.LiveCreateResponse;
 import com.toasty.domain.live.controller.dto.response.LiveDetailResponse;
 import com.toasty.domain.live.service.LiveService;
@@ -35,6 +36,15 @@ public class LiveController {
     public ApiResponse<LiveCreateResponse> create(@Valid @RequestBody LiveCreateRequest request) {
         Long sellerId = sellerProvider.currentSellerId();
         return ApiResponse.ok(liveService.create(request.toCommand(sellerId)));
+    }
+
+    @Operation(
+            summary = "송출정보 재발급",
+            description = "기존 스트림 키를 폐기하고 새로 발급한다. 이 응답에서만 전달되며 다시 조회할 수 없다.")
+    @PostMapping("/{liveId}/broadcast-credentials")
+    public ApiResponse<BroadcastCredentialResponse> reissueCredential(@PathVariable Long liveId) {
+        Long sellerId = sellerProvider.currentSellerId();
+        return ApiResponse.ok(liveService.reissueCredential(liveId, sellerId));
     }
 
     @Operation(

@@ -20,6 +20,8 @@ import software.amazon.awssdk.services.ivs.model.CreateStreamKeyResponse;
 import software.amazon.awssdk.services.ivs.model.GetChannelResponse;
 import software.amazon.awssdk.services.ivs.model.InternalServerException;
 import software.amazon.awssdk.services.ivs.model.ListStreamKeysResponse;
+import software.amazon.awssdk.services.ivs.model.ResourceNotFoundException;
+import software.amazon.awssdk.services.ivs.model.ServiceQuotaExceededException;
 import software.amazon.awssdk.services.ivs.model.ServiceUnavailableException;
 import software.amazon.awssdk.services.ivs.model.StreamKeySummary;
 import software.amazon.awssdk.services.ivs.model.ThrottlingException;
@@ -83,6 +85,9 @@ public class AwsIvsStreamingClient implements LiveStreamingClient {
             GetChannelResponse channel = ivsClient.getChannel(request -> request.arn(channelArn));
             return new BroadcastCredential(
                     channel.channel().ingestEndpoint(), created.streamKey().value());
+        } catch (ServiceQuotaExceededException e) {
+            log.warn("송출정보 재발급 경쟁 - channelArn={}", channelArn, e);
+            throw new CustomException(LiveErrorCode.LIVE_CREDENTIAL_REISSUE_CONFLICT, e);
         } catch (Exception e) {
             if (isTransient(e)) {
                 log.warn("송출정보 재발급 일시 실패 - channelArn={}", channelArn, e);
@@ -144,7 +149,10 @@ public class AwsIvsStreamingClient implements LiveStreamingClient {
         ListStreamKeysResponse keys =
                 ivsClient.listStreamKeys(request -> request.channelArn(channelArn));
         for (StreamKeySummary key : keys.streamKeys()) {
-            ivsClient.deleteStreamKey(request -> request.arn(key.arn()));
+            try {
+                ivsClient.deleteStreamKey(request -> request.arn(key.arn()));
+            } catch (ResourceNotFoundException alreadyDeleted) {
+            }
         }
     }
 

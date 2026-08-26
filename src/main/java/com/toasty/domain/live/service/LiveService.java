@@ -2,6 +2,7 @@ package com.toasty.domain.live.service;
 
 import com.toasty.domain.live.client.LiveStreamingClient;
 import com.toasty.domain.live.client.dto.StreamingChannel;
+import com.toasty.domain.live.controller.dto.response.BroadcastCredentialResponse;
 import com.toasty.domain.live.controller.dto.response.LiveCreateResponse;
 import com.toasty.domain.live.controller.dto.response.LiveDetailResponse;
 import com.toasty.domain.live.entity.Live;
@@ -44,6 +45,18 @@ public class LiveService {
     @Transactional(readOnly = true)
     public LiveDetailResponse getById(Long liveId) {
         return LiveDetailResponse.from(findById(liveId));
+    }
+
+    public BroadcastCredentialResponse reissueCredential(Long liveId, Long sellerId) {
+        Live live = findById(liveId);
+        if (!live.isOwnedBy(sellerId)) {
+            throw new CustomException(LiveErrorCode.LIVE_FORBIDDEN);
+        }
+        if (live.isEnded()) {
+            throw new CustomException(LiveErrorCode.LIVE_ALREADY_ENDED);
+        }
+        return BroadcastCredentialResponse.from(
+                liveStreamingClient.reissueCredential(live.getIvsChannelArn()));
     }
 
     private Live findById(Long liveId) {

@@ -9,6 +9,8 @@ import org.springframework.http.HttpStatus;
 @RequiredArgsConstructor
 public enum LiveErrorCode implements ErrorCode {
     LIVE_NOT_FOUND(HttpStatus.NOT_FOUND, "LIVE_NOT_FOUND", "라이브를 찾을 수 없습니다."),
+    LIVE_FORBIDDEN(HttpStatus.FORBIDDEN, "LIVE_FORBIDDEN", "해당 라이브에 대한 권한이 없습니다."),
+    LIVE_ALREADY_ENDED(HttpStatus.CONFLICT, "LIVE_ALREADY_ENDED", "이미 종료된 라이브입니다."),
     LIVE_CHANNEL_CREATE_FAILED(
             HttpStatus.BAD_GATEWAY, "LIVE_CHANNEL_CREATE_FAILED", "방송 채널 생성에 실패했습니다."),
     LIVE_CHANNEL_DELETE_FAILED(

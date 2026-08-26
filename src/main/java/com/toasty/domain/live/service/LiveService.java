@@ -80,6 +80,20 @@ public class LiveService {
         return LivePlaybackResponse.from(findById(liveId));
     }
 
+    public LiveDetailResponse end(Long liveId, Long sellerId) {
+        Live live = findById(liveId);
+        if (!live.isOwnedBy(sellerId)) {
+            throw new CustomException(LiveErrorCode.LIVE_FORBIDDEN);
+        }
+        if (live.isEnded()) {
+            return LiveDetailResponse.from(live);
+        }
+        liveStreamingClient.stopStream(live.getIvsChannelArn());
+        liveStreamingClient.deleteStreamKeys(live.getIvsChannelArn());
+        live.end();
+        return LiveDetailResponse.from(liveRepository.save(live));
+    }
+
     private Live syncToBroadcasting(Live live) {
         if (live.isBroadcasting()) {
             return live;

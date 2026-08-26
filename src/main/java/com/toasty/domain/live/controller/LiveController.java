@@ -50,6 +50,15 @@ public class LiveController {
     }
 
     @Operation(
+            summary = "방송 종료",
+            description = "셀러 본인만 호출한다. 송출을 중단하고 스트림 키를 삭제해 재송출을 막는다. 채널과 재생 URL은 유지된다.")
+    @PostMapping("/{liveId}/end")
+    public ApiResponse<LiveDetailResponse> end(@PathVariable Long liveId) {
+        Long sellerId = sellerProvider.currentSellerId();
+        return ApiResponse.ok(liveService.end(liveId, sellerId));
+    }
+
+    @Operation(
             summary = "송출 상태 조회",
             description = "셀러 본인만 호출한다. IVS의 실제 송출 여부를 확인해 도메인 상태를 맞추며, 송출이 확인되면 LIVE로 전이된다.")
     @GetMapping("/{liveId}/stream-status")

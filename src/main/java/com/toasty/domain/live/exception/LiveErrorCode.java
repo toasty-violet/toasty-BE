@@ -13,6 +13,14 @@ public enum LiveErrorCode implements ErrorCode {
             HttpStatus.BAD_GATEWAY, "LIVE_CHANNEL_CREATE_FAILED", "방송 채널 생성에 실패했습니다."),
     LIVE_CHANNEL_DELETE_FAILED(
             HttpStatus.BAD_GATEWAY, "LIVE_CHANNEL_DELETE_FAILED", "방송 채널 삭제에 실패했습니다."),
+    LIVE_CREDENTIAL_REISSUE_FAILED(
+            HttpStatus.BAD_GATEWAY, "LIVE_CREDENTIAL_REISSUE_FAILED", "송출정보 재발급에 실패했습니다."),
+    LIVE_STREAM_KEY_DELETE_FAILED(
+            HttpStatus.BAD_GATEWAY, "LIVE_STREAM_KEY_DELETE_FAILED", "송출 키 삭제에 실패했습니다."),
+    LIVE_STREAM_STATUS_FETCH_FAILED(
+            HttpStatus.BAD_GATEWAY, "LIVE_STREAM_STATUS_FETCH_FAILED", "송출 상태 조회에 실패했습니다."),
+    LIVE_BROADCAST_STOP_FAILED(
+            HttpStatus.BAD_GATEWAY, "LIVE_BROADCAST_STOP_FAILED", "방송 중단에 실패했습니다."),
     LIVE_STREAMING_TEMPORARILY_UNAVAILABLE(
             HttpStatus.SERVICE_UNAVAILABLE,
             "LIVE_STREAMING_TEMPORARILY_UNAVAILABLE",

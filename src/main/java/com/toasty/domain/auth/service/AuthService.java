@@ -4,7 +4,7 @@ import com.toasty.domain.auth.client.KakaoAuthClient;
 import com.toasty.domain.auth.client.dto.KakaoTokenResponse;
 import com.toasty.domain.auth.client.dto.KakaoUserResponse;
 import com.toasty.domain.auth.controller.dto.response.KakaoLoginResponse;
-import com.toasty.domain.auth.entity.RefreshToken;
+import com.toasty.domain.auth.entity.RefreshTokenConsumeResult;
 import com.toasty.domain.auth.exception.AuthErrorCode;
 import com.toasty.domain.auth.repository.RefreshTokenRepository;
 import com.toasty.domain.auth.token.JwtTokenProvider;
@@ -53,20 +53,18 @@ public class AuthService {
             throw new CustomException(AuthErrorCode.REFRESH_TOKEN_NOT_FOUND);
         }
 
-        RefreshToken stored =
-                refreshTokenRepository
-                        .findByToken(refreshToken)
-                        .orElseThrow(
-                                () -> new CustomException(AuthErrorCode.REFRESH_TOKEN_NOT_FOUND));
+        RefreshTokenConsumeResult consumed = refreshTokenRepository.consume(refreshToken);
+        if (consumed.status() == RefreshTokenConsumeResult.Status.NOT_FOUND) {
+            throw new CustomException(AuthErrorCode.REFRESH_TOKEN_NOT_FOUND);
+        }
 
         // 소비된 토큰의 재사용은 유출로 간주하고 이 사용자의 모든 기기를 로그아웃시킨다
-        if (stored.used()) {
-            refreshTokenRepository.deleteAllByUserId(stored.userId());
+        if (consumed.status() == RefreshTokenConsumeResult.Status.REUSED) {
+            refreshTokenRepository.deleteAllByUserId(consumed.userId());
             throw new CustomException(AuthErrorCode.REFRESH_TOKEN_REUSE_DETECTED);
         }
 
-        Long userId = stored.userId();
-        refreshTokenRepository.markUsed(stored);
+        Long userId = consumed.userId();
 
         return new ReissueResult(
                 jwtTokenProvider.generateAccessToken(userId),

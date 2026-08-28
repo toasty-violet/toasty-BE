@@ -50,10 +50,6 @@ public class Live extends BaseTimeEntity {
     @Column(name = "playback_url", nullable = false, length = 500)
     private String playbackUrl;
 
-    // LIVE일 때만 sellerId가 들어간다. unique 제약이 셀러당 동시 LIVE 1개를 강제한다.
-    @Column(name = "active_seller_id")
-    private Long activeSellerId;
-
     @Column(name = "started_at")
     private LocalDateTime startedAt;
 
@@ -84,9 +80,5 @@ public class Live extends BaseTimeEntity {
                 UUID.randomUUID().toString(),
                 ivsChannelArn,
                 playbackUrl);
-    }
-
-    public boolean isOwnedBy(Long sellerId) {
-        return this.sellerId.equals(sellerId);
     }
 }

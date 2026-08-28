@@ -29,14 +29,19 @@ public class LiveController {
     @Operation(
             summary = "라이브 생성",
             description =
-                    "IVS 채널을 만들고 라이브를 READY로 저장한다. 최초 송출정보는 이 응답에서만 전달되며, 이후에는 재발급 API로만 받을 수 있다.")
+                    "셀러가 새 라이브를 개설하고, 방송 송출에 필요한 정보를 발급받습니다. 최초 송출정보는 이 응답에서만 전달되며, 이후에는 재발급 API로만"
+                            + " 받을 수 있습니다.")
     @PostMapping
     public ApiResponse<LiveCreateResponse> create(@Valid @RequestBody LiveCreateRequest request) {
         Long sellerId = sellerProvider.currentSellerId();
         return ApiResponse.ok(liveService.create(request.toCommand(sellerId)));
     }
 
-    @Operation(summary = "라이브 상세 조회", description = "송출정보(streamKey, ingestEndpoint)는 포함하지 않는다.")
+    @Operation(
+            summary = "라이브 시청",
+            description =
+                    "유저가 해당 id에 해당하는 라이브를 시청합니다. 재생에 필요한 playbackUrl과 라이브 정보를 반환하며, 송출정보(streamKey,"
+                            + " ingestEndpoint)는 포함하지 않습니다.")
     @GetMapping("/{liveId}")
     public ApiResponse<LiveDetailResponse> getById(@PathVariable Long liveId) {
         return ApiResponse.ok(liveService.getById(liveId));

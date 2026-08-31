@@ -27,7 +27,12 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(CustomException.class)
     public ResponseEntity<ApiResponse<Void>> handleCustomException(CustomException e) {
         ErrorCode errorCode = e.getErrorCode();
-        log.warn("[{}] {}", errorCode.code(), e.getMessage());
+        Throwable cause = e.getCause();
+        if (cause != null) {
+            log.warn("[{}] {} | cause: {}", errorCode.code(), e.getMessage(), cause.getMessage());
+        } else {
+            log.warn("[{}] {}", errorCode.code(), e.getMessage());
+        }
         return ResponseEntity.status(errorCode.status())
                 .body(ApiResponse.fail(ErrorResponse.of(errorCode)));
     }

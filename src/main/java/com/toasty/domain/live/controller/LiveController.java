@@ -42,7 +42,9 @@ public class LiveController {
 
     @Operation(
             summary = "송출정보 재발급",
-            description = "기존 스트림 키를 폐기하고 새로 발급한다. 이 응답에서만 전달되며 다시 조회할 수 없다.")
+            description =
+                    "셀러가 방송 송출에 필요한 정보를 새로 발급받습니다. 송출 직전에 호출하세요. 기존 스트림 키는 즉시 폐기되며, 새 송출정보는 이 응답에서만"
+                            + " 전달되어 다시 조회할 수 없습니다.")
     @PostMapping("/{liveId}/broadcast-credentials")
     public ApiResponse<BroadcastCredentialResponse> reissueCredential(@PathVariable Long liveId) {
         Long sellerId = sellerProvider.currentSellerId();
@@ -51,7 +53,9 @@ public class LiveController {
 
     @Operation(
             summary = "방송 종료",
-            description = "셀러 본인만 호출한다. 송출을 중단하고 스트림 키를 삭제해 재송출을 막는다. 채널과 재생 URL은 유지된다.")
+            description =
+                    "셀러가 진행 중인 라이브를 종료합니다. 송출이 중단되고 스트림 키가 삭제되어 다시 송출할 수 없으며, 채널과 재생 URL은 지난 방송"
+                            + " 페이지를 위해 유지됩니다. 본인의 라이브만 종료할 수 있습니다.")
     @PostMapping("/{liveId}/end")
     public ApiResponse<LiveDetailResponse> end(@PathVariable Long liveId) {
         Long sellerId = sellerProvider.currentSellerId();
@@ -60,7 +64,10 @@ public class LiveController {
 
     @Operation(
             summary = "송출 상태 조회",
-            description = "셀러 본인만 호출한다. IVS의 실제 송출 여부를 확인해 도메인 상태를 맞추며, 송출이 확인되면 LIVE로 전이된다.")
+            description =
+                    "셀러가 자신의 송출이 실제로 시작됐는지 확인합니다. 셀러의 송출 대기 화면에서만 폴링하세요. 요청마다 IVS를 호출하므로 시청자 화면에서"
+                        + " 쓰면 시청자 수만큼 호출이 늘어납니다(시청자에게는 재생 정보 조회 API를 쓰세요). IVS의 실제 송출 여부를 조회해 라이브"
+                        + " 상태를 맞추며, 송출이 확인되면 LIVE로 전이됩니다. 본인의 라이브만 조회할 수 있습니다.")
     @GetMapping("/{liveId}/stream-status")
     public ApiResponse<LiveStreamStatusResponse> getStreamStatus(@PathVariable Long liveId) {
         Long sellerId = sellerProvider.currentSellerId();
@@ -69,7 +76,9 @@ public class LiveController {
 
     @Operation(
             summary = "재생 정보 조회",
-            description = "구매자용. IVS를 호출하지 않고 저장된 상태만 읽는다. 송출정보는 포함하지 않는다.")
+            description =
+                    "시청자가 라이브 재생에 필요한 정보를 가져옵니다. 시청자 대기 화면에서 이 API를 폴링하세요. 저장된 상태만 읽어 IVS를 호출하지"
+                            + " 않으므로 시청자가 많아도 부담이 없으며, 송출정보(streamKey, ingestEndpoint)는 포함하지 않습니다.")
     @GetMapping("/{liveId}/playback")
     public ApiResponse<LivePlaybackResponse> getPlayback(@PathVariable Long liveId) {
         return ApiResponse.ok(liveService.getPlayback(liveId));

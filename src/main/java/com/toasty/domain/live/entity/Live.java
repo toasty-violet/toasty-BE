@@ -26,7 +26,6 @@ public class Live extends BaseTimeEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // users.id를 가리키지만 아직 users 테이블이 없어 FK를 걸지 않는다. 인증 도입 시 연결한다.
     @Column(name = "seller_id", nullable = false)
     private Long sellerId;
 

@@ -1,4 +1,3 @@
--- 번호를 10부터 시작한다. 로그인 브랜치가 V2~V5를 선점해 충돌을 피하기 위함이다.
 create table lives
 (
     id               bigint       not null auto_increment,
@@ -15,7 +14,8 @@ create table lives
     updated_at       datetime(6)  not null,
     primary key (id),
     unique key uk_lives_public_id (public_id),
-    key idx_lives_seller_id (seller_id)
+    key idx_lives_seller_id (seller_id),
+    constraint fk_lives_seller_id foreign key (seller_id) references users (id)
 ) engine = innodb
   default charset = utf8mb4
   collate = utf8mb4_unicode_ci;

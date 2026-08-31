@@ -44,6 +44,12 @@ spring:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
 
+aws:
+  ivs:
+    region: ${AWS_REGION:ap-northeast-2}
+    channel-type: ${IVS_CHANNEL_TYPE:BASIC}
+    latency-mode: ${IVS_LATENCY_MODE:LOW}
+
 cors:
   allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
   allowed-methods: ${CORS_ALLOWED_METHODS:GET,POST,PATCH,PUT,DELETE,OPTIONS}
@@ -80,3 +86,5 @@ springdoc:
 logging:
   level:
     com.toasty: DEBUG
+    # DEBUG로 낮추면 요청·응답 본문이 찍혀 Stream Key가 로그에 남는다.
+    software.amazon.awssdk: WARN

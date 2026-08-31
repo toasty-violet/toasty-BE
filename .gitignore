@@ -38,3 +38,6 @@ bin/
 ### Env (시크릿) ###
 .env
 .env.local
+
+### 개인 기획 메모 (공유 안 함) ###
+docs/specs/live-streaming-mvp.md

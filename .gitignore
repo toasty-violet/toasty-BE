@@ -39,8 +39,7 @@ bin/
 .env
 .env.local
 
-### 개인 기획 메모 (공유 안 함) ###
-docs/specs/
-docs/*.xlsx
-docs/~$*
-docs/api/live-product-api.md
+### 문서 (저장소에서 공유하지 않음) ###
+# 프론트도 배포도 혼자 하는 상태라 저장소에 둘 이유가 없다.
+# API 계약은 노션 명세서에, 호출 시점·에러 대응은 Swagger description에 있다.
+docs/

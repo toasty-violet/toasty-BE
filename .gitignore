@@ -40,4 +40,7 @@ bin/
 .env.local
 
 ### 개인 기획 메모 (공유 안 함) ###
-docs/specs/live-streaming-mvp.md
+docs/specs/
+docs/*.xlsx
+docs/~$*
+docs/api/live-product-api.md

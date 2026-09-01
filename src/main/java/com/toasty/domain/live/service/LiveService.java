@@ -47,8 +47,8 @@ public class LiveService {
     }
 
     @Transactional(readOnly = true)
-    public LiveDetailResponse getById(Long liveId) {
-        return LiveDetailResponse.from(findById(liveId));
+    public LiveDetailResponse getByPublicId(String publicId) {
+        return LiveDetailResponse.from(findByPublicId(publicId));
     }
 
     public BroadcastCredentialResponse reissueCredential(Long liveId, Long sellerId) {
@@ -76,8 +76,8 @@ public class LiveService {
     }
 
     @Transactional(readOnly = true)
-    public LivePlaybackResponse getPlayback(Long liveId) {
-        return LivePlaybackResponse.from(findById(liveId));
+    public LivePlaybackResponse getPlayback(String publicId) {
+        return LivePlaybackResponse.from(findByPublicId(publicId));
     }
 
     public LiveDetailResponse end(Long liveId, Long sellerId) {
@@ -110,6 +110,12 @@ public class LiveService {
     private Live findById(Long liveId) {
         return liveRepository
                 .findById(liveId)
+                .orElseThrow(() -> new CustomException(LiveErrorCode.LIVE_NOT_FOUND));
+    }
+
+    private Live findByPublicId(String publicId) {
+        return liveRepository
+                .findByPublicId(publicId)
                 .orElseThrow(() -> new CustomException(LiveErrorCode.LIVE_NOT_FOUND));
     }
 

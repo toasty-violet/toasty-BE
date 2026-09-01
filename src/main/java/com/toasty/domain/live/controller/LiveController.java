@@ -77,20 +77,24 @@ public class LiveController {
     @Operation(
             summary = "재생 정보 조회",
             description =
-                    "시청자가 라이브 재생에 필요한 정보를 가져옵니다. 시청자 대기 화면에서 이 API를 폴링하세요. 저장된 상태만 읽어 IVS를 호출하지"
-                            + " 않으므로 시청자가 많아도 부담이 없으며, 송출정보(streamKey, ingestEndpoint)는 포함하지 않습니다.")
-    @GetMapping("/{liveId}/playback")
-    public ApiResponse<LivePlaybackResponse> getPlayback(@PathVariable Long liveId) {
-        return ApiResponse.ok(liveService.getPlayback(liveId));
+                    "시청자가 방송이 시작됐는지 확인하고 재생을 시작합니다. 시청자 대기 화면에서 이 API를 폴링하고, status가 LIVE가 되면"
+                            + " playbackUrl로 재생을 시작하세요. 경로의 publicId는 시청 화면 진입에 쓴 값을 그대로 사용합니다."
+                            + " 저장된 상태만 읽어 IVS를 호출하지 않으므로 시청자가 많아도 부담이 없으며, 송출정보(streamKey,"
+                            + " ingestEndpoint)는 포함하지 않습니다.")
+    @GetMapping("/public/{publicId}/playback")
+    public ApiResponse<LivePlaybackResponse> getPlayback(@PathVariable String publicId) {
+        return ApiResponse.ok(liveService.getPlayback(publicId));
     }
 
     @Operation(
             summary = "라이브 시청",
             description =
-                    "유저가 해당 id에 해당하는 라이브를 시청합니다. 재생에 필요한 playbackUrl과 라이브 정보를 반환하며, 송출정보(streamKey,"
-                            + " ingestEndpoint)는 포함하지 않습니다.")
-    @GetMapping("/{liveId}")
-    public ApiResponse<LiveDetailResponse> getById(@PathVariable Long liveId) {
-        return ApiResponse.ok(liveService.getById(liveId));
+                    "유저가 라이브 시청 화면에 들어올 때 필요한 정보를 가져옵니다. 시청 화면 진입 시 한 번 호출하세요. 인증이 필요 없어"
+                            + " 비로그인 유저도 호출할 수 있습니다. 경로의 publicId는 라이브 생성 응답으로 받은 값이며, 순차 liveId를"
+                            + " 시청 화면 URL에 노출하지 않기 위해 공개 조회는 이 값만 받습니다. 재생에 필요한 playbackUrl과 라이브"
+                            + " 정보를 반환하며, 송출정보(streamKey, ingestEndpoint)는 포함하지 않습니다.")
+    @GetMapping("/public/{publicId}")
+    public ApiResponse<LiveDetailResponse> getByPublicId(@PathVariable String publicId) {
+        return ApiResponse.ok(liveService.getByPublicId(publicId));
     }
 }

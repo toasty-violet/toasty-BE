@@ -21,6 +21,20 @@ X-Seller-Id: 7
 
 `X-Seller-Id`가 없거나 숫자가 아니면 `401 COMMON_UNAUTHORIZED`가 나간다.
 
+## 식별자 규칙
+
+라이브를 가리키는 값이 두 개다.
+
+| 값 | 쓰는 곳 |
+| --- | --- |
+| `liveId` (순차 PK) | **셀러 본인만 부르는 관리 API** — 송출정보 재발급(3), 상태 동기화(4), 방송 종료(6) |
+| `publicId` (UUID) | **누구나 부를 수 있는 공개 조회** — 라이브 시청(2), 재생 정보(5) |
+
+공개 경로에 순차 id를 노출하면 숫자를 바꿔가며 남의 방송을 열거할 수 있다.
+반대로 관리 API를 공개 식별자로 여는 것도 이득이 없어, 둘을 갈라 쓴다.
+
+**프론트는 생성 응답(1번)에서 받은 `publicId`를 시청 화면 URL에 쓴다.** `liveId`는 URL에 넣지 않는다.
+
 ## 공통 응답 형태
 
 모든 응답이 아래 껍데기로 감싸여 있다. `null` 필드는 직렬화에서 빠진다.
@@ -139,10 +153,13 @@ IVS 채널을 만들고 라이브를 `READY` 상태로 저장한다.
 ## 2. 라이브 시청
 
 ```
-GET /api/v1/lives/{liveId}
+GET /api/v1/lives/public/{publicId}
 ```
 
 인증 헤더가 필요 없다. 시청자도 호출할 수 있다.
+
+**순차 `liveId`가 아니라 `publicId`(UUID)로 받는다.** 공개 조회 경로에 순차 id를 노출하면
+남의 방송을 열거할 수 있다. 소유자 검증이 걸린 관리 API(3·4·6번)는 그대로 `liveId`를 쓴다.
 
 **응답 `200`**
 
@@ -170,7 +187,7 @@ GET /api/v1/lives/{liveId}
 
 | 상태 | `code` | 상황 |
 | --- | --- | --- |
-| `404` | `LIVE_NOT_FOUND` | 해당 `liveId` 없음 |
+| `404` | `LIVE_NOT_FOUND` | 해당 `publicId` 없음 |
 
 ## 3. 송출정보 재발급
 
@@ -258,10 +275,11 @@ GET /api/v1/lives/{liveId}/stream-status
 ## 5. 재생 정보 조회
 
 ```
-GET /api/v1/lives/{liveId}/playback
+GET /api/v1/lives/public/{publicId}/playback
 ```
 
 **인증이 필요 없다.** 시청자용이며, IVS를 호출하지 않고 저장된 상태만 읽는다.
+2번과 같은 이유로 `publicId`를 받는다. 시청 화면은 라이브를 열 때 받은 `publicId` 하나로 계속 폴링한다.
 
 **응답 `200`**
 
@@ -279,7 +297,7 @@ GET /api/v1/lives/{liveId}/playback
 
 | 상태 | `code` | 상황 |
 | --- | --- | --- |
-| `404` | `LIVE_NOT_FOUND` | 해당 `liveId` 없음 |
+| `404` | `LIVE_NOT_FOUND` | 해당 `publicId` 없음 |
 
 ## 6. 방송 종료
 

@@ -58,6 +58,12 @@ class LiveServiceTest {
         return live;
     }
 
+    private Live givenLiveByPublicId(String publicId) {
+        Live live = Live.create(command(), "arn:aws:ivs:channel/abc", "https://playback/abc.m3u8");
+        given(liveRepository.findByPublicId(publicId)).willReturn(Optional.of(live));
+        return live;
+    }
+
     @Nested
     @DisplayName("라이브 생성")
     class Create {
@@ -152,17 +158,15 @@ class LiveServiceTest {
     }
 
     @Nested
-    @DisplayName("라이브 상세 조회")
-    class GetById {
+    @DisplayName("라이브 시청")
+    class GetByPublicId {
 
         @Test
-        @DisplayName("저장된 값을 그대로 반환한다")
+        @DisplayName("publicId로 조회해 저장된 값을 그대로 반환한다")
         void 저장된_값을_반환한다() {
-            Live live =
-                    Live.create(command(), "arn:aws:ivs:channel/abc", "https://playback/abc.m3u8");
-            given(liveRepository.findById(1L)).willReturn(Optional.of(live));
+            givenLiveByPublicId("public-id");
 
-            LiveDetailResponse response = liveService.getById(1L);
+            LiveDetailResponse response = liveService.getByPublicId("public-id");
 
             assertThat(response.sellerId()).isEqualTo(SELLER_ID);
             assertThat(response.playbackUrl()).isEqualTo("https://playback/abc.m3u8");
@@ -172,11 +176,11 @@ class LiveServiceTest {
         }
 
         @Test
-        @DisplayName("없는 라이브면 LIVE_NOT_FOUND다")
+        @DisplayName("없는 publicId면 LIVE_NOT_FOUND다")
         void 없으면_LIVE_NOT_FOUND다() {
-            given(liveRepository.findById(99L)).willReturn(Optional.empty());
+            given(liveRepository.findByPublicId("unknown")).willReturn(Optional.empty());
 
-            assertThatThrownBy(() -> liveService.getById(99L))
+            assertThatThrownBy(() -> liveService.getByPublicId("unknown"))
                     .isInstanceOf(CustomException.class)
                     .extracting(e -> ((CustomException) e).getErrorCode())
                     .isEqualTo(LiveErrorCode.LIVE_NOT_FOUND);
@@ -380,9 +384,9 @@ class LiveServiceTest {
         @Test
         @DisplayName("재생 URL과 상태만 반환한다")
         void 재생_URL과_상태를_반환한다() {
-            givenLive(1L);
+            givenLiveByPublicId("public-id");
 
-            LivePlaybackResponse response = liveService.getPlayback(1L);
+            LivePlaybackResponse response = liveService.getPlayback("public-id");
 
             assertThat(response.playbackUrl()).isEqualTo("https://playback/abc.m3u8");
             assertThat(response.status()).isEqualTo(LiveStatus.READY);

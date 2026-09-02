@@ -1,6 +1,7 @@
 package com.toasty.domain.user.service;
 
 import com.toasty.domain.auth.entity.AuthUser;
+import com.toasty.domain.user.controller.dto.response.NicknameSearchResponse;
 import com.toasty.domain.user.controller.dto.response.UserMeResponse;
 import com.toasty.domain.user.entity.User;
 import com.toasty.domain.user.exception.UserErrorCode;
@@ -32,6 +33,16 @@ public class UserService {
                 .findById(userId)
                 .map(UserMeResponse::from)
                 .orElseThrow(() -> new CustomException(UserErrorCode.USER_NOT_FOUND));
+    }
+
+    /** 입력한 닉네임을 이미 다른 유저가 쓰고 있는지 확인한다. 자기 닉네임을 그대로 둔 경우는 중복으로 보지 않는다. */
+    @Transactional(readOnly = true)
+    public NicknameSearchResponse searchNickname(String nickname, Long userId) {
+        boolean duplicated =
+                userId == null
+                        ? userRepository.existsByNickname(nickname)
+                        : userRepository.existsByNicknameAndIdNot(nickname, userId);
+        return new NicknameSearchResponse(duplicated);
     }
 
     /* 카카오 식별자로 유저를 조회하고, 없다면 신규 가입한다. */

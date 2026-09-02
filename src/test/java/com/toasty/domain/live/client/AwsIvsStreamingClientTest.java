@@ -65,9 +65,7 @@ class AwsIvsStreamingClientTest {
     @BeforeEach
     void setUp() {
         ivsClient = mock(IvsClient.class);
-        client =
-                new AwsIvsStreamingClient(
-                        ivsClient, new IvsProperties("ap-northeast-2", "BASIC", "LOW"));
+        client = new AwsIvsStreamingClient(ivsClient, new IvsProperties("BASIC", "LOW"));
     }
 
     /** 잠시 후 재시도하면 풀릴 수 있는 실패. 503으로 내보내 클라이언트가 재시도하게 한다. */

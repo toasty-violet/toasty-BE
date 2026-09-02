@@ -3,14 +3,12 @@ package com.toasty.domain.auth.service;
 import com.toasty.domain.auth.client.KakaoAuthClient;
 import com.toasty.domain.auth.client.dto.KakaoTokenResponse;
 import com.toasty.domain.auth.client.dto.KakaoUserResponse;
-import com.toasty.domain.auth.controller.dto.response.KakaoLoginResponse;
 import com.toasty.domain.auth.entity.RefreshTokenConsumeResult;
 import com.toasty.domain.auth.exception.AuthErrorCode;
 import com.toasty.domain.auth.repository.RefreshTokenRepository;
 import com.toasty.domain.auth.token.JwtTokenProvider;
 import com.toasty.domain.auth.token.RefreshTokenGenerator;
 import com.toasty.domain.user.entity.User;
-import com.toasty.domain.user.service.UserLoginResult;
 import com.toasty.domain.user.service.UserService;
 import com.toasty.global.config.RefreshTokenProperties;
 import com.toasty.global.exception.CustomException;
@@ -34,16 +32,12 @@ public class AuthService {
         KakaoTokenResponse token = kakaoAuthClient.requestToken(code);
         KakaoUserResponse kakaoUser = kakaoAuthClient.requestUserInfo(token.accessToken());
 
-        UserLoginResult result = userService.loginWithKakao(String.valueOf(kakaoUser.id()));
-        User user = result.user();
+        User user = userService.loginWithKakao(String.valueOf(kakaoUser.id()));
 
         String accessToken = jwtTokenProvider.generateAccessToken(user.getId());
         String refreshToken = issueRefreshToken(user.getId());
 
-        return new LoginResult(
-                KakaoLoginResponse.of(user, accessToken),
-                refreshToken,
-                refreshTokenProperties.expiration());
+        return new LoginResult(accessToken, refreshToken, refreshTokenProperties.expiration());
     }
 
     // 액세스 토큰을 재발급하고 리프레시 토큰도 새것으로 교체한다.

@@ -41,6 +41,7 @@ class LiveResponseTest {
                         7L,
                         "제목",
                         "설명",
+                        java.time.LocalDateTime.now().plusDays(1),
                         com.toasty.domain.live.entity.LiveStatus.READY,
                         "https://playback.example.com/abc.m3u8",
                         null,

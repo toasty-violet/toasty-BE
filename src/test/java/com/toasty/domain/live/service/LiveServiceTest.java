@@ -35,17 +35,52 @@ class LiveServiceTest {
 
     private LiveRepository liveRepository;
     private FakeLiveStreamingClient streamingClient;
+    private com.toasty.domain.product.service.ProductService productService;
+    private org.springframework.transaction.support.TransactionTemplate transactionTemplate;
     private LiveService liveService;
 
     @BeforeEach
     void setUp() {
         liveRepository = mock(LiveRepository.class);
         streamingClient = new FakeLiveStreamingClient();
-        liveService = new LiveService(liveRepository, streamingClient);
+        productService = mock(com.toasty.domain.product.service.ProductService.class);
+        transactionTemplate = passthroughTransaction();
+        liveService =
+                new LiveService(
+                        liveRepository, streamingClient, productService, transactionTemplate);
+    }
+
+    // 콜백을 그대로 실행하는 가짜 트랜잭션. 단위 테스트에는 커밋·롤백이 필요 없다.
+    @SuppressWarnings("unchecked")
+    private static org.springframework.transaction.support.TransactionTemplate
+            passthroughTransaction() {
+        var template = mock(org.springframework.transaction.support.TransactionTemplate.class);
+        given(template.execute(any()))
+                .willAnswer(
+                        call ->
+                                ((org.springframework.transaction.support.TransactionCallback<
+                                                        Object>)
+                                                call.getArgument(0))
+                                        .doInTransaction(
+                                                mock(
+                                                        org.springframework.transaction
+                                                                .TransactionStatus.class)));
+        return template;
     }
 
     private static LiveCreateCommand command() {
-        return new LiveCreateCommand(SELLER_ID, "빈티지 여름옷 라이브", "여름 상품을 소개합니다");
+        return new LiveCreateCommand(
+                SELLER_ID,
+                "빈티지 여름옷 라이브",
+                "여름 상품을 소개합니다",
+                java.time.LocalDateTime.now().plusDays(1),
+                java.util.List.of(
+                        new com.toasty.domain.product.entity.ProductCreateCommand(
+                                "핸드메이드 가죽 벨트",
+                                45000,
+                                1,
+                                null,
+                                "products/pending/7/2026/09/02/a.jpg")));
     }
 
     private void givenSaveSucceeds() {
@@ -79,11 +114,54 @@ class LiveServiceTest {
             assertThat(response.live().title()).isEqualTo("빈티지 여름옷 라이브");
             assertThat(response.live().status()).isEqualTo(LiveStatus.READY);
             assertThat(response.live().publicId()).isNotBlank();
-            assertThat(response.broadcastCredential().streamKey())
-                    .isEqualTo(FakeLiveStreamingClient.STREAM_KEY);
-            assertThat(response.broadcastCredential().ingestEndpoint())
-                    .isEqualTo(FakeLiveStreamingClient.INGEST_ENDPOINT);
+            assertThat(response.live().scheduledAt()).isNotNull();
             assertThat(streamingClient.deletedChannelArns()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("함께 보낸 상품을 그 라이브에 등록하고 응답에 담는다")
+        void 상품을_함께_등록한다() {
+            givenSaveSucceeds();
+            given(productService.registerForLive(any(), any(), any()))
+                    .willReturn(
+                            java.util.List.of(
+                                    new com.toasty.domain.product.controller.dto.response
+                                            .LiveProductResponse(
+                                            31L,
+                                            44L,
+                                            "핸드메이드 가죽 벨트",
+                                            45000,
+                                            1,
+                                            "https://cdn.example.com/a.jpg",
+                                            0,
+                                            com.toasty.domain.product.entity.LiveProductStatus
+                                                    .SCHEDULED)));
+
+            LiveCreateResponse response = liveService.create(command());
+
+            assertThat(response.products()).hasSize(1);
+            assertThat(response.products().get(0).name()).isEqualTo("핸드메이드 가죽 벨트");
+            assertThat(streamingClient.deletedChannelArns()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("상품 등록이 실패하면 이미 만든 IVS 채널을 지운다")
+        void 상품_등록_실패시_채널을_지운다() {
+            givenSaveSucceeds();
+            given(productService.registerForLive(any(), any(), any()))
+                    .willThrow(
+                            new CustomException(
+                                    com.toasty.domain.product.exception.ProductErrorCode
+                                            .PRODUCT_IMAGE_NOT_UPLOADED));
+
+            assertThatThrownBy(() -> liveService.create(command()))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(
+                            com.toasty.domain.product.exception.ProductErrorCode
+                                    .PRODUCT_IMAGE_NOT_UPLOADED);
+
+            assertThat(streamingClient.deletedChannelArns()).hasSize(1);
         }
 
         @Test
@@ -146,7 +224,9 @@ class LiveServiceTest {
                             throw new CustomException(LiveErrorCode.LIVE_CHANNEL_CREATE_FAILED);
                         }
                     };
-            LiveService service = new LiveService(liveRepository, failing);
+            LiveService service =
+                    new LiveService(
+                            liveRepository, failing, productService, passthroughTransaction());
 
             assertThatThrownBy(() -> service.create(command()))
                     .isInstanceOf(CustomException.class)

@@ -12,13 +12,17 @@ import com.toasty.domain.live.entity.Live;
 import com.toasty.domain.live.entity.LiveCreateCommand;
 import com.toasty.domain.live.exception.LiveErrorCode;
 import com.toasty.domain.live.repository.LiveRepository;
+import com.toasty.domain.product.controller.dto.response.LiveProductResponse;
+import com.toasty.domain.product.service.ProductService;
 import com.toasty.global.exception.CustomException;
+import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Slf4j
 @Service
@@ -27,19 +31,30 @@ public class LiveService {
 
     private final LiveRepository liveRepository;
     private final LiveStreamingClient liveStreamingClient;
+    private final ProductService productService;
+    private final TransactionTemplate transactionTemplate;
 
-    /**
-     * 외부 AWS 호출이 포함되므로 메서드 전체를 트랜잭션으로 묶지 않는다. 저장은 {@code liveRepository.save()} 자체 트랜잭션으로 충분하고, 저장이
-     * 실패하면 이미 만들어진 IVS 채널을 지워 고아 리소스를 남기지 않는다.
-     */
+    /** 셀러가 라이브를 개설하면서 이번 방송에서 팔 상품을 함께 등록한다. */
+    // AWS 채널 생성은 수 초가 걸려 DB 커넥션을 잡고 있으면 안 되므로 트랜잭션 밖에 둔다.
+    // 대신 저장은 테이블 4개에 걸치므로 TransactionTemplate으로 묶어, 중간에 실패하면
+    // 상품 없는 빈 라이브가 남지 않게 한다. 저장이 실패하면 이미 만든 IVS 채널도 지운다.
     public LiveCreateResponse create(LiveCreateCommand command) {
         StreamingChannel channel =
                 liveStreamingClient.createChannel(generateChannelName(command.sellerId()));
         try {
-            Live live =
-                    liveRepository.save(
-                            Live.create(command, channel.channelArn(), channel.playbackUrl()));
-            return LiveCreateResponse.of(live, channel.credential());
+            return transactionTemplate.execute(
+                    status -> {
+                        Live live =
+                                liveRepository.save(
+                                        Live.create(
+                                                command,
+                                                channel.channelArn(),
+                                                channel.playbackUrl()));
+                        List<LiveProductResponse> products =
+                                productService.registerForLive(
+                                        live.getId(), command.sellerId(), command.products());
+                        return LiveCreateResponse.of(live, products);
+                    });
         } catch (RuntimeException e) {
             deleteChannelQuietly(channel.channelArn());
             throw e;

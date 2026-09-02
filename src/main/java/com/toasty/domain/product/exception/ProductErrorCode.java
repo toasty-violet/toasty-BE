@@ -8,6 +8,9 @@ import org.springframework.http.HttpStatus;
 @Getter
 @RequiredArgsConstructor
 public enum ProductErrorCode implements ErrorCode {
+    PRODUCT_IMAGE_REQUIRED(HttpStatus.BAD_REQUEST, "PRODUCT_IMAGE_REQUIRED", "상품 사진은 필수입니다."),
+    PRODUCT_IMAGE_NOT_UPLOADED(
+            HttpStatus.BAD_REQUEST, "PRODUCT_IMAGE_NOT_UPLOADED", "업로드가 끝나지 않은 사진이 있습니다."),
     PRODUCT_UPLOAD_URL_ISSUE_FAILED(
             HttpStatus.BAD_GATEWAY, "PRODUCT_UPLOAD_URL_ISSUE_FAILED", "사진 업로드 주소 발급에 실패했습니다.");
 

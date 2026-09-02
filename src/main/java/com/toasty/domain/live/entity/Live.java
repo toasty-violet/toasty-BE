@@ -37,6 +37,9 @@ public class Live extends BaseTimeEntity {
     @Column(length = 1000)
     private String description;
 
+    @Column(name = "scheduled_at", nullable = false)
+    private LocalDateTime scheduledAt;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private LiveStatus status;
@@ -65,12 +68,14 @@ public class Live extends BaseTimeEntity {
             Long sellerId,
             String title,
             String description,
+            LocalDateTime scheduledAt,
             String publicId,
             String ivsChannelArn,
             String playbackUrl) {
         this.sellerId = sellerId;
         this.title = title;
         this.description = description;
+        this.scheduledAt = scheduledAt;
         this.status = LiveStatus.READY;
         this.publicId = publicId;
         this.ivsChannelArn = ivsChannelArn;
@@ -82,6 +87,7 @@ public class Live extends BaseTimeEntity {
                 command.sellerId(),
                 command.title(),
                 command.description(),
+                command.scheduledAt(),
                 UUID.randomUUID().toString(),
                 ivsChannelArn,
                 playbackUrl);

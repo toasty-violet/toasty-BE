@@ -52,9 +52,9 @@ public class Product extends BaseTimeEntity {
         this.description = description;
     }
 
-    public static Product createForLive(ProductCreateCommand command) {
+    public static Product createForLive(Long sellerId, ProductCreateCommand command) {
         return new Product(
-                command.sellerId(),
+                sellerId,
                 command.name(),
                 command.price(),
                 command.stockQuantity(),

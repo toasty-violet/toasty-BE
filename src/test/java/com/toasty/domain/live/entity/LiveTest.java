@@ -16,7 +16,12 @@ class LiveTest {
 
     private static Live live() {
         return Live.create(
-                new LiveCreateCommand(SELLER_ID, "빈티지 여름옷 라이브", "여름 상품을 소개합니다"),
+                new LiveCreateCommand(
+                        SELLER_ID,
+                        "빈티지 여름옷 라이브",
+                        "여름 상품을 소개합니다",
+                        java.time.LocalDateTime.now().plusDays(1),
+                        java.util.List.of()),
                 "arn:aws:ivs:channel/abc",
                 "https://playback/abc.m3u8");
     }

@@ -32,6 +32,13 @@ Command 객체는 `entity/`에 둔다.
 - **`open-in-view: false`다.** 트랜잭션 밖 지연로딩은 터진다. 필요한 데이터는 Service 안에서 다 꺼내 DTO로 반환한다.
 - **Validation·에러 메시지는 한글로 쓴다.**
 
+
+## 주석 작성 방식
+
+- 주석은 해당 파일/함수 위에 간단히 작성한다.
+- 해당 함수/파일이 어떤 역할을 하는지 위주로 작성한다. (ex. //판매자만 호출할 수 있는 API에 붙이는 annotation)
+- 함수의 실행 의도나 코드적인 로직은 작성하지 않는다. (ex. //컨트롤러에서 {@code @LoginUser AuthUser user}로 받는다. role은 온보딩 전까지 null이다. 같은 설명은 작성하지 않는다.)
+
 ## Flyway
 
 `src/main/resources/db/migration/V{YYYYMMDDHHmmss}__{설명}.sql` (밑줄 두 개).

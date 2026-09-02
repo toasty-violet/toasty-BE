@@ -32,6 +32,14 @@ class LiveResponseTest {
     }
 
     @Test
+    @DisplayName("생성 응답에도 송출정보 필드가 없다")
+    void 생성_응답에는_송출정보가_없다() {
+        assertThat(LiveCreateResponse.class.getRecordComponents())
+                .extracting(RecordComponent::getName)
+                .doesNotContain("streamKey", "ingestEndpoint", "broadcastCredential");
+    }
+
+    @Test
     @DisplayName("상세 응답을 로그에 찍어도 셀러 식별자 외에 민감정보가 없다")
     void 상세_응답에는_비밀값이_없다() {
         LiveDetailResponse response =

@@ -45,10 +45,14 @@ spring:
       port: ${REDIS_PORT:6379}
 
 aws:
+  region: ${AWS_REGION:ap-northeast-2}
   ivs:
-    region: ${AWS_REGION:ap-northeast-2}
     channel-type: ${IVS_CHANNEL_TYPE:BASIC}
     latency-mode: ${IVS_LATENCY_MODE:LOW}
+  s3:
+    bucket: ${AWS_S3_BUCKET:toasty-media}
+    pending-prefix: ${AWS_S3_PENDING_PREFIX:products/pending/}
+    presigned-url-expiry-seconds: ${AWS_S3_PRESIGNED_URL_EXPIRY_SECONDS:300}
 
 cors:
   allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}

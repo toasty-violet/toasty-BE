@@ -34,6 +34,7 @@ dependencies {
     // aws
     implementation(platform("software.amazon.awssdk:bom:2.46.7"))
     implementation("software.amazon.awssdk:ivs")
+    implementation("software.amazon.awssdk:s3")
 
     // auth
     implementation("org.springframework.boot:spring-boot-starter-data-redis")

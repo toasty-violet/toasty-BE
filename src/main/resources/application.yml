@@ -48,12 +48,9 @@ aws:
   ivs:
     region: ${AWS_REGION:ap-northeast-2}
     channel-type: ${IVS_CHANNEL_TYPE:BASIC}
-    latency-mode: ${IVS_LATENCY_MODE:LOW}
 
 cors:
   allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
-  allowed-methods: ${CORS_ALLOWED_METHODS:GET,POST,PATCH,PUT,DELETE,OPTIONS}
-  allowed-headers: ${CORS_ALLOWED_HEADERS:*}
 
 kakao:
   client-id: ${KAKAO_CLIENT_ID:}
@@ -62,13 +59,13 @@ kakao:
 
 jwt:
   secret: ${JWT_SECRET:}
-  # 30m, 14d 처럼 단위를 붙일 수 있고, 단위가 없으면 밀리초로 읽는다.
-  access-token-expiration: ${ACCESS_TOKEN_EXPIRATION:30m}
+  # 30m, 14d 처럼 단위를 붙여 쓴다. 단위를 빼면 밀리초로 읽힌다.
+  access-token-expiration: 30m
 
 auth:
   # 리프레시 토큰은 JWT가 아니라 난수 문자열이라 jwt 설정과 분리한다.
   refresh-token:
-    expiration: ${REFRESH_TOKEN_EXPIRATION:14d}
+    expiration: 14d
 
 management:
   endpoints:

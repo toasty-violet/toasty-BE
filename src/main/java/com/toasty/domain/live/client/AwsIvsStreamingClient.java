@@ -33,6 +33,9 @@ public class AwsIvsStreamingClient implements LiveStreamingClient {
 
     private static final int MAX_CAUSE_DEPTH = 10;
 
+    // AWS 기본값과 같지만, 기본값이 바뀌어도 흔들리지 않도록 명시한다.
+    private static final String LATENCY_MODE = "LOW";
+
     private final IvsClient ivsClient;
     private final IvsProperties ivsProperties;
 
@@ -45,7 +48,7 @@ public class AwsIvsStreamingClient implements LiveStreamingClient {
                             request ->
                                     request.name(channelName)
                                             .type(ivsProperties.channelType())
-                                            .latencyMode(ivsProperties.latencyMode()));
+                                            .latencyMode(LATENCY_MODE));
             return new StreamingChannel(
                     response.channel().arn(),
                     response.channel().playbackUrl(),

@@ -14,7 +14,11 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-/* 유저 Entity. */
+/**
+ * 유저 Entity. 계정 식별과 역할, 표시명만 가진다.
+ *
+ * <p>온보딩에서 채우는 상세 정보는 역할에 따라 Customer·Seller가 나눠 가진다.
+ */
 @Entity
 @Getter
 @Table(name = "users")
@@ -36,37 +40,19 @@ public class User extends BaseTimeEntity {
     @Column(name = "role", length = 20)
     private Role role;
 
-    // 휴대폰 번호 — 온보딩 전까지 null
-    @Column(name = "phone_number", length = 20)
-    private String phoneNumber;
-
-    // 이름 — 온보딩 전까지 null
-    @Column(length = 50)
-    private String name;
-
-    // 닉네임 — 가입 시점에는 임시 닉네임이 들어가고 온보딩에서 교체된다
+    // 구매자에게는 닉네임, 판매자에게는 상점명 — 가입 시점에는 임시 닉네임이 들어가고 온보딩에서 교체된다
     @Column(length = 20, nullable = false, unique = true)
     private String nickname;
 
-    // 결제 연동 시 PG사로부터 받는 결제자 식별자 — 연동 전까지 null
-    @Column(name = "payer_id", length = 50)
-    private String payerId;
-
-    private User(String kakaoId, Role role, String phoneNumber, String name, String nickname) {
+    private User(String kakaoId, Role role, String nickname) {
         this.kakaoId = kakaoId;
         this.role = role;
-        this.phoneNumber = phoneNumber;
-        this.name = name;
         this.nickname = nickname;
-    }
-
-    public static User create(String kakaoId, Role role, String phoneNumber, String name) {
-        return new User(kakaoId, role, phoneNumber, name, generateTemporaryNickname());
     }
 
     /** 카카오 최초 로그인 시점에는 kakaoId 외의 정보가 없다. 나머지는 온보딩에서 채운다. */
     public static User createFromKakao(String kakaoId) {
-        return new User(kakaoId, null, null, null, generateTemporaryNickname());
+        return new User(kakaoId, null, generateTemporaryNickname());
     }
 
     // 닉네임은 not null이라 온보딩 전까지 쓸 값을 가입 시점에 만들어 넣는다

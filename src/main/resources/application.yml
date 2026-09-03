@@ -58,13 +58,11 @@ kakao:
   # 프론트가 인가 요청에 쓴 값과 정확히 같아야 토큰 교환이 통과한다.
   redirect-uri: ${KAKAO_REDIRECT_URI:http://localhost:3000/auth/login/callback}
 
-jwt:
-  secret: ${JWT_SECRET}
-  # 30m, 14d 처럼 단위를 붙여 쓴다. 단위를 빼면 밀리초로 읽힌다.
-  access-token-expiration: 30m
-
 auth:
-  # 리프레시 토큰은 JWT가 아니라 난수 문자열이라 jwt 설정과 분리한다.
+  # 만료시간은 30m, 14d 처럼 단위를 붙여 쓴다.
+  access-token:
+    secret: ${JWT_SECRET}
+    expiration: 30m
   refresh-token:
     expiration: 14d
 

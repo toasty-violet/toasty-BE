@@ -8,8 +8,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    # 빈 DB에 마이그레이션을 V1부터 전부 적용해 본다. 로컬과 달리 이전 브랜치의 잔재가 없으므로
-    # 버전 충돌·SQL 오류·엔티티와 스키마 불일치(ddl-auto=validate)가 여기서 걸린다.
     services:
       mysql:
         image: mysql:8.0
@@ -51,3 +49,5 @@ jobs:
           SPRING_DOCKER_COMPOSE_ENABLED: false
           # JwtTokenProvider가 생성자에서 서명키를 만든다. HS256이라 32바이트 이상이어야 한다.
           JWT_SECRET: ci-dummy-secret-key-for-context-loading-only
+          # 기본값 없는 필수값이라 비워두면 컨텍스트 로딩이 실패한다. 카카오 API를 호출하진 않는다.
+          KAKAO_CLIENT_ID: ci-dummy-client-id

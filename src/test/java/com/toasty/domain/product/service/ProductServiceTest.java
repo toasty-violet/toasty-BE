@@ -7,6 +7,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.toasty.domain.product.controller.dto.response.LiveProductResponse;
@@ -81,8 +82,6 @@ class ProductServiceTest {
     @Test
     @DisplayName("상품·사진·편성을 함께 만들고 보낸 순서를 노출 순서로 쓴다")
     void 순서대로_등록한다() {
-        givenImageUploaded();
-
         List<LiveProductResponse> responses =
                 productService.registerForLive(
                         LIVE_ID,
@@ -104,8 +103,6 @@ class ProductServiceTest {
     @Test
     @DisplayName("대표 이미지 주소는 공개 주소와 객체 키를 이어 붙인다")
     void 이미지_주소를_만든다() {
-        givenImageUploaded();
-
         List<LiveProductResponse> responses =
                 productService.registerForLive(
                         LIVE_ID, SELLER_ID, List.of(command("가죽 벨트", "products/pending/7/a.jpg")));
@@ -115,17 +112,15 @@ class ProductServiceTest {
     }
 
     @Test
-    @DisplayName("사진 키가 없으면 PRODUCT_IMAGE_REQUIRED이고 아무것도 저장하지 않는다")
+    @DisplayName("사진 키가 없으면 PRODUCT_IMAGE_REQUIRED다")
     void 사진이_없으면_거부한다() {
         assertThatThrownBy(
                         () ->
-                                productService.registerForLive(
-                                        LIVE_ID, SELLER_ID, List.of(command("가죽 벨트", "  "))))
+                                productService.validateImages(
+                                        SELLER_ID, List.of(command("가죽 벨트", "  "))))
                 .isInstanceOf(CustomException.class)
                 .extracting(e -> ((CustomException) e).getErrorCode())
                 .isEqualTo(ProductErrorCode.PRODUCT_IMAGE_REQUIRED);
-
-        verify(productRepository, never()).save(any(Product.class));
     }
 
     @Test
@@ -137,15 +132,12 @@ class ProductServiceTest {
 
         assertThatThrownBy(
                         () ->
-                                productService.registerForLive(
-                                        LIVE_ID,
+                                productService.validateImages(
                                         SELLER_ID,
                                         List.of(command("가죽 벨트", "products/pending/7/a.jpg"))))
                 .isInstanceOf(CustomException.class)
                 .extracting(e -> ((CustomException) e).getErrorCode())
                 .isEqualTo(ProductErrorCode.PRODUCT_IMAGE_NOT_UPLOADED);
-
-        verify(productRepository, never()).save(any(Product.class));
     }
 
     @Test
@@ -157,15 +149,12 @@ class ProductServiceTest {
 
         assertThatThrownBy(
                         () ->
-                                productService.registerForLive(
-                                        LIVE_ID,
+                                productService.validateImages(
                                         SELLER_ID,
                                         List.of(command("가죽 벨트", "products/pending/7/a.jpg"))))
                 .isInstanceOf(CustomException.class)
                 .extracting(e -> ((CustomException) e).getErrorCode())
                 .isEqualTo(ProductErrorCode.PRODUCT_IMAGE_CHECK_FAILED);
-
-        verify(productRepository, never()).save(any(Product.class));
     }
 
     @Test
@@ -177,14 +166,34 @@ class ProductServiceTest {
 
         assertThatThrownBy(
                         () ->
-                                productService.registerForLive(
-                                        LIVE_ID,
+                                productService.validateImages(
                                         SELLER_ID,
                                         List.of(command("가죽 벨트", "products/pending/7/a.jpg"))))
                 .isInstanceOf(CustomException.class)
                 .extracting(e -> ((CustomException) e).getErrorCode())
                 .isEqualTo(ProductErrorCode.PRODUCT_IMAGE_CHECK_FAILED);
+    }
 
-        verify(productRepository, never()).save(any(Product.class));
+    @Test
+    @DisplayName("사진 검증은 상품마다 한 번씩만 S3에 묻는다")
+    void 상품마다_한_번씩_확인한다() {
+        givenImageUploaded();
+
+        productService.validateImages(
+                SELLER_ID,
+                List.of(
+                        command("가죽 벨트", "products/pending/7/a.jpg"),
+                        command("도자기 컵", "products/pending/7/b.jpg")));
+
+        verify(s3Client, times(2)).headObject(any(HeadObjectRequest.class));
+    }
+
+    @Test
+    @DisplayName("트랜잭션이 걸리는 저장 구간에서는 S3를 호출하지 않는다")
+    void 저장_구간에서는_S3를_부르지_않는다() {
+        productService.registerForLive(
+                LIVE_ID, SELLER_ID, List.of(command("가죽 벨트", "products/pending/7/a.jpg")));
+
+        verify(s3Client, never()).headObject(any(HeadObjectRequest.class));
     }
 }

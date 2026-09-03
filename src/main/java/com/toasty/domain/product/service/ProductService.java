@@ -34,7 +34,16 @@ public class ProductService {
     private final S3Client s3Client;
     private final S3Properties s3Properties;
 
-    /** 라이브를 저장할 때 함께 넘어온 상품들을 만들고 그 라이브에 편성한다. */
+    /** 라이브를 저장하기 전에 사진이 실제로 올라왔는지 미리 확인한다. */
+    // 트랜잭션 밖에서 돌아야 한다. S3 왕복이 상품 수만큼 반복돼 DB 커넥션을 잡고 있으면 안 된다.
+    public void validateImages(Long sellerId, List<ProductCreateCommand> commands) {
+        commands.forEach(command -> requireUploadedImage(sellerId, command.imageObjectKey()));
+    }
+
+    /**
+     * 라이브를 저장할 때 함께 넘어온 상품들을 만들고 그 라이브에 편성한다. 사진 검증은 하지 않으므로 호출 전에 {@link #validateImages}로 끝나 있어야
+     * 한다.
+     */
     @Transactional
     public List<LiveProductResponse> registerForLive(
             Long liveId, Long sellerId, List<ProductCreateCommand> commands) {
@@ -47,8 +56,6 @@ public class ProductService {
 
     private LiveProductResponse register(
             Long liveId, Long sellerId, ProductCreateCommand command, int displayOrder) {
-        requireUploadedImage(sellerId, command.imageObjectKey());
-
         Product product = productRepository.save(Product.createForLive(sellerId, command));
         ProductImage image =
                 productImageRepository.save(

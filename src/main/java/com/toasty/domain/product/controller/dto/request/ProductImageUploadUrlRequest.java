@@ -4,6 +4,7 @@ import com.toasty.domain.product.entity.ProductImageUploadCommand;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -28,7 +29,7 @@ public record ProductImageUploadUrlRequest(
 
     public record File(
             @Schema(description = "사진 형식", example = "image/jpeg")
-                    @Pattern(
+                    @NotBlank(message = "사진 형식은 필수입니다.") @Pattern(
                             regexp = "image/(jpeg|png|webp)",
                             message = "사진은 jpeg, png, webp만 올릴 수 있습니다.")
                     String contentType,

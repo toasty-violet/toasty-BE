@@ -12,7 +12,7 @@ public class IvsConfig {
     // 루트 .env는 Spring 프로퍼티로만 들어가고 OS 환경변수가 되지 않으므로,
     // 로컬 자격증명은 셸 환경변수나 aws profile로 준다.
     @Bean
-    public IvsClient ivsClient(AwsProperties awsProperties) {
-        return IvsClient.builder().region(Region.of(awsProperties.region())).build();
+    public IvsClient ivsClient(IvsProperties ivsProperties) {
+        return IvsClient.builder().region(Region.of(ivsProperties.region())).build();
     }
 }

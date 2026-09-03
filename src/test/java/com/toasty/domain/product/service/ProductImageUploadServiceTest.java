@@ -37,7 +37,12 @@ class ProductImageUploadServiceTest {
     @Mock private S3Presigner s3Presigner;
 
     private final S3Properties s3Properties =
-            new S3Properties("toasty-media", "products/pending/", 300, "https://cdn.example.com");
+            new S3Properties(
+                    "ap-northeast-2",
+                    "toasty-media",
+                    "products/pending/",
+                    300,
+                    "https://cdn.example.com");
 
     private ProductImageUploadService service;
 

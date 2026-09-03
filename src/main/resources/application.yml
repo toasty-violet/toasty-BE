@@ -44,11 +44,11 @@ spring:
       port: ${REDIS_PORT:6379}
 
 aws:
-  # IVS와 S3가 함께 쓴다. IVS 지원 리전만 가능하다.
-  region: ap-northeast-2
   ivs:
+    region: ap-northeast-2
     channel-type: BASIC
   s3:
+    region: ap-northeast-2
     # 개발·운영 버킷이 갈리므로 기본값을 두지 않는다. .env에 반드시 채운다.
     bucket: ${AWS_S3_BUCKET}
     public-base-url: ${AWS_S3_PUBLIC_BASE_URL}

@@ -55,6 +55,7 @@ class ProductServiceTest {
                         liveProductRepository,
                         s3Client,
                         new S3Properties(
+                                "ap-northeast-2",
                                 "toasty-media",
                                 "products/pending/",
                                 300,

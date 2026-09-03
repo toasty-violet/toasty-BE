@@ -45,7 +45,7 @@ public class ProductService {
 
     private LiveProductResponse register(
             Long liveId, Long sellerId, ProductCreateCommand command, int displayOrder) {
-        requireUploadedImage(command.imageObjectKey());
+        requireUploadedImage(sellerId, command.imageObjectKey());
 
         Product product = productRepository.save(Product.createForLive(sellerId, command));
         ProductImage image =
@@ -60,10 +60,11 @@ public class ProductService {
     }
 
     // 업로드 주소만 받고 실제로 올리지 않은 채 저장을 누른 경우를 걸러낸다.
-    private void requireUploadedImage(String objectKey) {
+    private void requireUploadedImage(Long sellerId, String objectKey) {
         if (objectKey == null || objectKey.isBlank()) {
             throw new CustomException(ProductErrorCode.PRODUCT_IMAGE_REQUIRED);
         }
+        requireOwnedBySeller(sellerId, objectKey);
         try {
             s3Client.headObject(
                     HeadObjectRequest.builder()
@@ -74,6 +75,13 @@ public class ProductService {
             throw new CustomException(ProductErrorCode.PRODUCT_IMAGE_NOT_UPLOADED, e);
         } catch (SdkException e) {
             throw new CustomException(ProductErrorCode.PRODUCT_IMAGE_NOT_UPLOADED, e);
+        }
+    }
+
+    // 업로드 주소를 발급할 때 키에 넣은 셀러 번호로, 남의 사진을 자기 상품에 붙이는 것을 막는다.
+    private void requireOwnedBySeller(Long sellerId, String objectKey) {
+        if (!objectKey.startsWith(s3Properties.pendingPrefix() + sellerId + "/")) {
+            throw new CustomException(ProductErrorCode.PRODUCT_IMAGE_FORBIDDEN);
         }
     }
 

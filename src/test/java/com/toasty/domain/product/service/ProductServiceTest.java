@@ -28,7 +28,9 @@ import org.junit.jupiter.api.Test;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
 import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
+import software.amazon.awssdk.services.s3.model.NoSuchBucketException;
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
+import software.amazon.awssdk.services.s3.model.S3Exception;
 
 @DisplayName("라이브 상품 등록")
 class ProductServiceTest {
@@ -142,6 +144,46 @@ class ProductServiceTest {
                 .isInstanceOf(CustomException.class)
                 .extracting(e -> ((CustomException) e).getErrorCode())
                 .isEqualTo(ProductErrorCode.PRODUCT_IMAGE_NOT_UPLOADED);
+
+        verify(productRepository, never()).save(any(Product.class));
+    }
+
+    @Test
+    @DisplayName("S3가 응답하지 않으면 클라이언트 잘못이 아니므로 PRODUCT_IMAGE_CHECK_FAILED다")
+    void S3_장애면_502다() {
+        willThrow(S3Exception.builder().statusCode(503).message("서비스 이용 불가").build())
+                .given(s3Client)
+                .headObject(any(HeadObjectRequest.class));
+
+        assertThatThrownBy(
+                        () ->
+                                productService.registerForLive(
+                                        LIVE_ID,
+                                        SELLER_ID,
+                                        List.of(command("가죽 벨트", "products/pending/7/a.jpg"))))
+                .isInstanceOf(CustomException.class)
+                .extracting(e -> ((CustomException) e).getErrorCode())
+                .isEqualTo(ProductErrorCode.PRODUCT_IMAGE_CHECK_FAILED);
+
+        verify(productRepository, never()).save(any(Product.class));
+    }
+
+    @Test
+    @DisplayName("버킷 설정이 틀린 것도 서버 문제라 PRODUCT_IMAGE_CHECK_FAILED다")
+    void 버킷이_없으면_502다() {
+        willThrow(NoSuchBucketException.builder().message("버킷 없음").build())
+                .given(s3Client)
+                .headObject(any(HeadObjectRequest.class));
+
+        assertThatThrownBy(
+                        () ->
+                                productService.registerForLive(
+                                        LIVE_ID,
+                                        SELLER_ID,
+                                        List.of(command("가죽 벨트", "products/pending/7/a.jpg"))))
+                .isInstanceOf(CustomException.class)
+                .extracting(e -> ((CustomException) e).getErrorCode())
+                .isEqualTo(ProductErrorCode.PRODUCT_IMAGE_CHECK_FAILED);
 
         verify(productRepository, never()).save(any(Product.class));
     }

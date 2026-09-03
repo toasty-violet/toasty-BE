@@ -14,6 +14,7 @@ import com.toasty.global.exception.CustomException;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import software.amazon.awssdk.core.exception.SdkException;
@@ -22,6 +23,7 @@ import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 
 /** 셀러가 라이브에서 판매할 상품을 등록하고 그 라이브에 편성한다. */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ProductService {
@@ -74,7 +76,8 @@ public class ProductService {
         } catch (NoSuchKeyException e) {
             throw new CustomException(ProductErrorCode.PRODUCT_IMAGE_NOT_UPLOADED, e);
         } catch (SdkException e) {
-            throw new CustomException(ProductErrorCode.PRODUCT_IMAGE_NOT_UPLOADED, e);
+            log.error("상품 사진 확인 실패. objectKey={}", objectKey, e);
+            throw new CustomException(ProductErrorCode.PRODUCT_IMAGE_CHECK_FAILED, e);
         }
     }
 

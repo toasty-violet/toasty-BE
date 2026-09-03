@@ -7,6 +7,10 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.authorization.AuthorizationDeniedException;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -33,6 +37,17 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         } else {
             log.warn("[{}] {}", errorCode.code(), e.getMessage());
         }
+        return ResponseEntity.status(errorCode.status())
+                .body(ApiResponse.fail(ErrorResponse.of(errorCode)));
+    }
+
+    /** 인가 애노테이션이 막은 요청 — 로그인하지 않았으면 401, 권한이 부족하면 403으로 내려준다. */
+    @ExceptionHandler(AuthorizationDeniedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAuthorizationDenied(
+            AuthorizationDeniedException e) {
+        ErrorCode errorCode =
+                isAuthenticated() ? CommonErrorCode.FORBIDDEN : CommonErrorCode.UNAUTHORIZED;
+        log.warn("[{}] {}", errorCode.code(), e.getMessage());
         return ResponseEntity.status(errorCode.status())
                 .body(ApiResponse.fail(ErrorResponse.of(errorCode)));
     }
@@ -76,6 +91,14 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return ResponseEntity.status(statusCode)
                 .headers(headers)
                 .body(ApiResponse.fail(ErrorResponse.of(errorCode)));
+    }
+
+    // 로그인한 요청인지 확인한다
+    private boolean isAuthenticated() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        return authentication != null
+                && authentication.isAuthenticated()
+                && !(authentication instanceof AnonymousAuthenticationToken);
     }
 
     private ErrorCode toErrorCode(HttpStatusCode statusCode) {

@@ -1,7 +1,6 @@
 package com.toasty.domain.auth.controller;
 
 import com.toasty.domain.auth.controller.dto.response.AccessTokenResponse;
-import com.toasty.domain.auth.controller.dto.response.KakaoLoginResponse;
 import com.toasty.domain.auth.service.AuthService;
 import com.toasty.domain.auth.service.LoginResult;
 import com.toasty.domain.auth.service.ReissueResult;
@@ -39,8 +38,8 @@ public class AuthController {
     @Operation(
             summary = "카카오 로그인",
             description =
-                    "인가 코드로 로그인/가입 처리 후 액세스 토큰과 리프레시 토큰을 발급한다. 신규 회원이면 자동 가입 후 응답 반환. "
-                            + "액세스 토큰은 응답 본문으로, 리프레시 토큰은 HttpOnly 쿠키로 내려간다.")
+                    "카카오 인증으로 로그인합니다. 액세스 토큰은 응답 본문으로, 리프레시 토큰은 HttpOnly 쿠키로 받습니다. "
+                            + "유저 정보는 GET /api/v1/users/me로 조회하세요.")
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "200",
@@ -80,7 +79,7 @@ public class AuthController {
     })
     // 카카오 로그인 — 액세스 토큰은 응답 본문, 리프레시 토큰은 HttpOnly 쿠키로 반환
     @GetMapping("/login/kakao")
-    public ApiResponse<KakaoLoginResponse> loginWithKakao(
+    public ApiResponse<AccessTokenResponse> loginWithKakao(
             @Parameter(description = "카카오 인가 코드", required = true, example = "abc123") @RequestParam
                     String code,
             HttpServletResponse httpResponse) {
@@ -89,7 +88,7 @@ public class AuthController {
                 HttpHeaders.SET_COOKIE,
                 buildRefreshTokenCookie(result.refreshToken(), result.refreshTokenMaxAge())
                         .toString());
-        return ApiResponse.ok(result.response());
+        return ApiResponse.ok(new AccessTokenResponse(result.accessToken()));
     }
 
     @Operation(

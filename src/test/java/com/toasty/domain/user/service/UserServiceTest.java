@@ -23,30 +23,28 @@ class UserServiceTest {
     @InjectMocks private UserService userService;
 
     @Test
-    @DisplayName("이미 가입된 카카오 유저는 기존 유저를 반환하고 isOnboardingCompleted는 온보딩 완료 여부를 따른다")
+    @DisplayName("이미 가입된 카카오 유저는 기존 유저를 반환한다")
     void loginWithKakao_existingUser() {
         String kakaoId = "12345";
         User existingUser = User.createFromKakao(kakaoId);
         given(userRepository.findByKakaoId(kakaoId)).willReturn(Optional.of(existingUser));
 
-        UserLoginResult result = userService.loginWithKakao(kakaoId);
+        User result = userService.loginWithKakao(kakaoId);
 
-        assertThat(result.user()).isEqualTo(existingUser);
-        assertThat(result.isOnboardingCompleted()).isEqualTo(existingUser.isOnboardingCompleted());
+        assertThat(result).isEqualTo(existingUser);
     }
 
     @Test
-    @DisplayName("처음 로그인하는 카카오 유저는 신규 저장하고 isOnboardingCompleted는 false다")
+    @DisplayName("처음 로그인하는 카카오 유저는 신규 저장한다")
     void loginWithKakao_newUser() {
         String kakaoId = "99999";
         User savedUser = User.createFromKakao(kakaoId);
         given(userRepository.findByKakaoId(kakaoId)).willReturn(Optional.empty());
         given(userRepository.save(any(User.class))).willReturn(savedUser);
 
-        UserLoginResult result = userService.loginWithKakao(kakaoId);
+        User result = userService.loginWithKakao(kakaoId);
 
-        assertThat(result.isOnboardingCompleted()).isFalse();
-        assertThat(result.user().getKakaoId()).isEqualTo(kakaoId);
+        assertThat(result.getKakaoId()).isEqualTo(kakaoId);
         verify(userRepository).save(any(User.class));
     }
 }

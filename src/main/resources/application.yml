@@ -2,6 +2,11 @@ spring:
   application:
     name: toasty
 
+  # 토큰으로만 인증해 시큐리티 기본 로그인 계정이 필요 없다.
+  # 두면 기동할 때마다 쓰지도 않는 임시 비밀번호가 로그에 찍힌다.
+  autoconfigure:
+    exclude: org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
+
   # 루트 .env가 있으면 읽고 없으면 무시한다. 서버에서는 .env 없이 실제 환경변수가 주입된다.
   config:
     import: optional:file:.env[.properties]

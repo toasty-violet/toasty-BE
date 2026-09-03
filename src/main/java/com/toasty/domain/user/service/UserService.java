@@ -1,6 +1,8 @@
 package com.toasty.domain.user.service;
 
 import com.toasty.domain.auth.entity.AuthUser;
+import com.toasty.domain.customer.entity.CustomerOnboardingCommand;
+import com.toasty.domain.customer.service.CustomerService;
 import com.toasty.domain.user.controller.dto.response.NicknameSearchResponse;
 import com.toasty.domain.user.controller.dto.response.UserMeResponse;
 import com.toasty.domain.user.entity.Role;
@@ -19,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class UserService {
 
     private final UserRepository userRepository;
+    private final CustomerService customerService;
 
     /** 인증 필터가 액세스 토큰의 userId로 호출한다. 토큰은 유효해도 그 사이 탈퇴했을 수 있어, 판단은 호출한 쪽에 맡기고 Optional로 돌려준다. */
     @Transactional(readOnly = true)
@@ -52,6 +55,24 @@ public class UserService {
                         ? userRepository.existsByNickname(nickname)
                         : userRepository.existsByNicknameAndIdNot(nickname, userId);
         return new NicknameSearchResponse(duplicated);
+    }
+
+    /** 구매자 온보딩 제출을 받아 역할을 구매자로 설정하고 닉네임을 확정한다. */
+    @Transactional
+    public UserMeResponse completeCustomerOnboarding(CustomerOnboardingCommand command) {
+        User user =
+                userRepository
+                        .findById(command.userId())
+                        .orElseThrow(() -> new CustomException(UserErrorCode.USER_NOT_FOUND));
+        if (user.isOnboardingCompleted()) {
+            throw new CustomException(UserErrorCode.USER_ONBOARDING_ALREADY_COMPLETED);
+        }
+        if (userRepository.existsByNicknameAndIdNot(command.nickname(), user.getId())) {
+            throw new CustomException(UserErrorCode.USER_NICKNAME_DUPLICATED);
+        }
+        user.completeOnboarding(Role.CUSTOMER, command.nickname());
+        customerService.createForOnboarding(command);
+        return UserMeResponse.from(user);
     }
 
     /* 카카오 식별자로 유저를 조회하고, 없다면 신규 가입한다. */

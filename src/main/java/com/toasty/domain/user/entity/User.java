@@ -61,7 +61,14 @@ public class User extends BaseTimeEntity {
                 + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
     }
 
+    /** 온보딩은 역할 선택과 상세 정보 입력을 한 번에 제출받으므로, 역할이 정해졌다면 상세 정보도 채워져 있다. */
     public boolean isOnboardingCompleted() {
         return role != null;
+    }
+
+    /** 온보딩 제출로 역할을 확정하고 임시 닉네임을 유저가 입력한 값으로 바꾼다. */
+    public void completeOnboarding(Role role, String nickname) {
+        this.role = role;
+        this.nickname = nickname;
     }
 }

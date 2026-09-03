@@ -41,11 +41,14 @@ public class Customer extends BaseTimeEntity {
     @Column(name = "payer_id", length = 50)
     private String payerId;
 
-    private Customer(Long userId) {
+    private Customer(Long userId, String name, String phoneNumber) {
         this.userId = userId;
+        this.name = name;
+        this.phoneNumber = phoneNumber;
     }
 
-    public static Customer createForOnboarding(Long userId) {
-        return new Customer(userId);
+    /** 온보딩 제출 시점에 만들어진다. payerId는 이후 결제 연동에서 채운다. */
+    public static Customer createForOnboarding(CustomerOnboardingCommand command) {
+        return new Customer(command.userId(), command.name(), command.phoneNumber());
     }
 }

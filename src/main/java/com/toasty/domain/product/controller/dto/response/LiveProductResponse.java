@@ -13,7 +13,7 @@ public record LiveProductResponse(
         @Schema(description = "가격(원)") int price,
         @Schema(description = "재고") int stockQuantity,
         @Schema(description = "대표 이미지 주소") String imageUrl,
-        @Schema(description = "라이브 내 노출 순서. 0번 상품의 사진이 라이브 카드 썸네일이 된다") int displayOrder,
+        @Schema(description = "라이브 내 노출 순서") int displayOrder,
         @Schema(description = "편성 상태") LiveProductStatus status) {
 
     public static LiveProductResponse of(

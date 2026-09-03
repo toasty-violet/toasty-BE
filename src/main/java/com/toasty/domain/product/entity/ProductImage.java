@@ -11,7 +11,7 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-/** 상품 사진이다. 순서가 0인 사진을 대표 이미지로 쓰며, 라이브 목록 카드의 썸네일도 이 사진이다. */
+/** 상품 사진이다. 순서가 0인 사진을 대표 이미지로 쓴다. */
 @Entity
 @Getter
 @Table(name = "product_images")

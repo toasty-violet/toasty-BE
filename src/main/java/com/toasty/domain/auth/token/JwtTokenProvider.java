@@ -1,7 +1,7 @@
 package com.toasty.domain.auth.token;
 
 import com.toasty.domain.auth.exception.AuthErrorCode;
-import com.toasty.global.config.JwtProperties;
+import com.toasty.global.config.AccessTokenProperties;
 import com.toasty.global.exception.CustomException;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
@@ -21,10 +21,10 @@ public class JwtTokenProvider {
     private final SecretKey secretKey;
     private final Duration accessTokenExpiration;
 
-    public JwtTokenProvider(JwtProperties jwtProperties) {
+    public JwtTokenProvider(AccessTokenProperties accessTokenProperties) {
         this.secretKey =
-                Keys.hmacShaKeyFor(jwtProperties.secret().getBytes(StandardCharsets.UTF_8));
-        this.accessTokenExpiration = jwtProperties.accessTokenExpiration();
+                Keys.hmacShaKeyFor(accessTokenProperties.secret().getBytes(StandardCharsets.UTF_8));
+        this.accessTokenExpiration = accessTokenProperties.expiration();
     }
 
     // 액세스 토큰 발급 — userId를 subject로 담아 서명한다

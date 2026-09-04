@@ -105,6 +105,24 @@ public class Live extends BaseTimeEntity {
         return status == LiveStatus.ENDED;
     }
 
+    // 방송이 시작되면 시청자가 보고 있는 정보라 바꿀 수 없다.
+    public boolean isEditable() {
+        return status == LiveStatus.READY;
+    }
+
+    /** 셀러가 방송 전에 라이브 내용을 고친다. 보내지 않은 값은 그대로 둔다. */
+    public void update(String title, String description, LocalDateTime scheduledAt) {
+        if (title != null) {
+            this.title = title;
+        }
+        if (description != null) {
+            this.description = description;
+        }
+        if (scheduledAt != null) {
+            this.scheduledAt = scheduledAt;
+        }
+    }
+
     // activeSellerId의 unique 제약이 셀러당 동시 LIVE 1개를 막는다.
     public void startBroadcast() {
         if (isEnded()) {

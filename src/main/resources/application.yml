@@ -62,7 +62,7 @@ aws:
     # 확정된 사진이 머무는 경로다. 수명주기 규칙이 건드리지 않는다.
     image-prefix: products/images/
     presigned-url-expiry-seconds: 300
-  # 셀러 샵 이미지 설정. 버킷은 상품과 같은 것을 쓰고 경로만 가른다.
+  # 셀러 샵 이미지 설정.
   seller-s3:
     bucket: ${AWS_S3_BUCKET}
     public-base-url: ${AWS_S3_PUBLIC_BASE_URL}

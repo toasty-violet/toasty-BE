@@ -10,7 +10,7 @@ create table products
     created_at     datetime(6)  not null,
     updated_at     datetime(6)  not null,
     primary key (id),
-    constraint fk_products_seller_id foreign key (seller_id) references users (id),
+    constraint fk_products_seller_id foreign key (seller_id) references sellers (id),
     constraint ck_products_stock_quantity check (stock_quantity >= 0)
 ) engine = innodb
   default charset = utf8mb4

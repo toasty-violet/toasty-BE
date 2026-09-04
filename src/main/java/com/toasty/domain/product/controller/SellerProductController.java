@@ -36,6 +36,6 @@ public class SellerProductController {
     public ApiResponse<ProductImageUploadUrlResponse> issueImageUploadUrls(
             @Valid @RequestBody ProductImageUploadUrlRequest request, @LoginUser AuthUser seller) {
         return ApiResponse.ok(
-                productImageUploadService.issueUploadUrls(request.toCommand(seller.userId())));
+                productImageUploadService.issueUploadUrls(request.toCommand(seller.sellerId())));
     }
 }

@@ -61,6 +61,8 @@ aws:
     pending-prefix: products/pending/
     # 확정된 사진이 머무는 경로다. 수명주기 규칙이 건드리지 않는다.
     image-prefix: products/images/
+    # 셀러 샵 이미지가 머무는 경로다. 수명주기 규칙이 건드리지 않는다.
+    seller-image-prefix: sellers/images/
     presigned-url-expiry-seconds: 300
 
 cors:

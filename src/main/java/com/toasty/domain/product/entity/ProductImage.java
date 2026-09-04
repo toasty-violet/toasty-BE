@@ -39,6 +39,11 @@ public class ProductImage extends BaseTimeEntity {
         this.displayOrder = displayOrder;
     }
 
+    /** 셀러가 상품 사진을 새로 올리면 주소를 갈아끼운다. */
+    public void changeImageUrl(String imageUrl) {
+        this.imageUrl = imageUrl;
+    }
+
     public static ProductImage createMain(Long productId, String imageUrl) {
         return new ProductImage(productId, imageUrl, MAIN_IMAGE_ORDER);
     }

@@ -15,6 +15,7 @@ public enum ProductErrorCode implements ErrorCode {
             HttpStatus.BAD_GATEWAY, "PRODUCT_IMAGE_SAVE_FAILED", "사진 저장에 실패했습니다. 잠시 후 다시 시도해주세요."),
     PRODUCT_IMAGE_FORBIDDEN(
             HttpStatus.FORBIDDEN, "PRODUCT_IMAGE_FORBIDDEN", "본인이 올린 사진만 등록할 수 있습니다."),
+    PRODUCT_NOT_IN_LIVE(HttpStatus.FORBIDDEN, "PRODUCT_NOT_IN_LIVE", "본인 라이브에 편성된 상품만 수정할 수 있습니다."),
     PRODUCT_UPLOAD_URL_ISSUE_FAILED(
             HttpStatus.BAD_GATEWAY, "PRODUCT_UPLOAD_URL_ISSUE_FAILED", "사진 업로드 주소 발급에 실패했습니다.");
 

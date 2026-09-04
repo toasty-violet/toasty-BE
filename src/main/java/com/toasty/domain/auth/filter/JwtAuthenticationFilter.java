@@ -78,13 +78,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 userService
                         .findAuthUser(userId)
                         .orElseThrow(() -> new CustomException(AuthErrorCode.ACCESS_TOKEN_INVALID));
-        return new UsernamePasswordAuthenticationToken(
-                authUser, null, toAuthorities(authUser.role()));
+        return new UsernamePasswordAuthenticationToken(authUser, null, toAuthorities(authUser));
     }
 
-    // role이 없으면 권한 없이 인증만 시킨다. 역할을 요구하는 API에서는 접근이 거부된다
-    private Collection<? extends GrantedAuthority> toAuthorities(Role role) {
-        if (role == null) {
+    // role이 없으면 권한 없이 인증만 시킨다. 역할을 요구하는 API에서는 접근이 거부된다.
+    // 역할 권한은 프로필 행이 있을 때만 준다. 온보딩 상세 입력까지 요구하려면 이 조건에 덧붙인다.
+    private Collection<? extends GrantedAuthority> toAuthorities(AuthUser authUser) {
+        Role role = authUser.role();
+        if (role == null || !authUser.hasProfile()) {
             return List.of();
         }
         return List.of(new SimpleGrantedAuthority(ROLE_PREFIX + role.name()));

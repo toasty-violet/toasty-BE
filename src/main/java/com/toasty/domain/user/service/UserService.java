@@ -3,8 +3,10 @@ package com.toasty.domain.user.service;
 import com.toasty.domain.auth.entity.AuthUser;
 import com.toasty.domain.user.controller.dto.response.NicknameSearchResponse;
 import com.toasty.domain.user.controller.dto.response.UserMeResponse;
+import com.toasty.domain.user.entity.Role;
 import com.toasty.domain.user.entity.User;
 import com.toasty.domain.user.exception.UserErrorCode;
+import com.toasty.domain.user.repository.AuthUserProjection;
 import com.toasty.domain.user.repository.UserRepository;
 import com.toasty.global.exception.CustomException;
 import java.util.Optional;
@@ -21,9 +23,16 @@ public class UserService {
     /** 인증 필터가 액세스 토큰의 userId로 호출한다. 토큰은 유효해도 그 사이 탈퇴했을 수 있어, 판단은 호출한 쪽에 맡기고 Optional로 돌려준다. */
     @Transactional(readOnly = true)
     public Optional<AuthUser> findAuthUser(Long userId) {
-        return userRepository
-                .findById(userId)
-                .map(user -> new AuthUser(user.getId(), user.getRole()));
+        return userRepository.findAuthUserById(userId).map(UserService::toAuthUser);
+    }
+
+    private static AuthUser toAuthUser(AuthUserProjection projection) {
+        String role = projection.getRole();
+        return new AuthUser(
+                projection.getUserId(),
+                role == null ? null : Role.valueOf(role),
+                projection.getCustomerId(),
+                projection.getSellerId());
     }
 
     /** 로그인한 유저 본인의 정보를 조회한다. */

@@ -41,7 +41,7 @@ public class LiveController {
     @PostMapping
     public ApiResponse<LiveCreateResponse> create(
             @Valid @RequestBody LiveCreateRequest request, @LoginUser AuthUser seller) {
-        return ApiResponse.ok(liveService.create(request.toCommand(seller.userId())));
+        return ApiResponse.ok(liveService.create(request.toCommand(seller.sellerId())));
     }
 
     @Operation(
@@ -53,7 +53,7 @@ public class LiveController {
     @PostMapping("/{liveId}/broadcast-credentials")
     public ApiResponse<BroadcastCredentialResponse> reissueCredential(
             @PathVariable Long liveId, @LoginUser AuthUser seller) {
-        return ApiResponse.ok(liveService.reissueCredential(liveId, seller.userId()));
+        return ApiResponse.ok(liveService.reissueCredential(liveId, seller.sellerId()));
     }
 
     @Operation(
@@ -65,7 +65,7 @@ public class LiveController {
     @PostMapping("/{liveId}/end")
     public ApiResponse<LiveDetailResponse> end(
             @PathVariable Long liveId, @LoginUser AuthUser seller) {
-        return ApiResponse.ok(liveService.end(liveId, seller.userId()));
+        return ApiResponse.ok(liveService.end(liveId, seller.sellerId()));
     }
 
     @Operation(
@@ -78,7 +78,7 @@ public class LiveController {
     @GetMapping("/{liveId}/stream-status")
     public ApiResponse<LiveStreamStatusResponse> getStreamStatus(
             @PathVariable Long liveId, @LoginUser AuthUser seller) {
-        return ApiResponse.ok(liveService.getStreamStatus(liveId, seller.userId()));
+        return ApiResponse.ok(liveService.getStreamStatus(liveId, seller.sellerId()));
     }
 
     @Operation(

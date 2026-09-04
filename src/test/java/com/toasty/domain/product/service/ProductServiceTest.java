@@ -16,6 +16,7 @@ import com.toasty.domain.product.entity.LiveProductStatus;
 import com.toasty.domain.product.entity.Product;
 import com.toasty.domain.product.entity.ProductCreateCommand;
 import com.toasty.domain.product.entity.ProductImage;
+import com.toasty.domain.product.entity.ProductUpsertCommand;
 import com.toasty.domain.product.exception.ProductErrorCode;
 import com.toasty.domain.product.repository.LiveProductRepository;
 import com.toasty.domain.product.repository.ProductImageRepository;
@@ -25,6 +26,7 @@ import com.toasty.global.exception.CustomException;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -249,5 +251,185 @@ class ProductServiceTest {
                 ArgumentCaptor.forClass(DeleteObjectRequest.class);
         verify(s3Client).deleteObject(captor.capture());
         assertThat(captor.getValue().key()).isEqualTo("products/images/7/a.jpg");
+    }
+
+    private static ProductUpsertCommand upsert(Long productId, String name, String imageObjectKey) {
+        return new ProductUpsertCommand(productId, name, 45000, 1, "소가죽 100%", imageObjectKey);
+    }
+
+    private LiveProduct givenScheduled(Long productId, Long sellerId, String imageKey) {
+        LiveProduct liveProduct = LiveProduct.schedule(LIVE_ID, productId, 0);
+        Product product =
+                Product.createForLive(sellerId, command("가죽 벨트", "products/pending/7/a.jpg"));
+        given(productRepository.findById(productId)).willReturn(java.util.Optional.of(product));
+        // 단위 테스트에는 DB가 없어 Product.getId()가 null이다. 사진 조회는 두 경로 모두 같은 상품을 가리킨다.
+        List<ProductImage> images =
+                List.of(ProductImage.createMain(productId, "https://cdn.example.com/" + imageKey));
+        given(productImageRepository.findByProductIdOrderByDisplayOrder(product.getId()))
+                .willReturn(images);
+        given(productImageRepository.findByProductIdOrderByDisplayOrder(productId))
+                .willReturn(images);
+        return liveProduct;
+    }
+
+    @Nested
+    @DisplayName("라이브 수정 - 상품 전체 교체")
+    class ReplaceForLive {
+
+        @Test
+        @DisplayName("배열에 없는 상품은 편성을 풀고 상품과 사진을 지운 뒤 그 사진 키를 돌려준다")
+        void 빠진_상품을_정리한다() {
+            LiveProduct dropped = givenScheduled(31L, SELLER_ID, "products/images/7/old.jpg");
+            given(liveProductRepository.findByLiveId(LIVE_ID)).willReturn(List.of(dropped));
+
+            List<String> obsolete =
+                    productService.replaceForLive(
+                            LIVE_ID,
+                            SELLER_ID,
+                            List.of(upsert(null, "도자기 컵", "products/images/7/b.jpg")),
+                            java.util.Collections.singletonList("products/images/7/b.jpg"));
+
+            assertThat(obsolete).containsExactly("products/images/7/old.jpg");
+            verify(liveProductRepository).delete(dropped);
+            verify(productRepository).deleteById(31L);
+        }
+
+        @Test
+        @DisplayName("다른 라이브에도 편성된 상품은 편성만 풀고 상품을 지우지 않는다")
+        void 다른_라이브의_상품은_남긴다() {
+            LiveProduct dropped = givenScheduled(31L, SELLER_ID, "products/images/7/old.jpg");
+            given(liveProductRepository.findByLiveId(LIVE_ID)).willReturn(List.of(dropped));
+            given(liveProductRepository.existsByProductIdAndLiveIdNot(31L, LIVE_ID))
+                    .willReturn(true);
+
+            List<String> obsolete =
+                    productService.replaceForLive(LIVE_ID, SELLER_ID, List.of(), List.of());
+
+            assertThat(obsolete).isEmpty();
+            verify(liveProductRepository).delete(dropped);
+            verify(productRepository, never()).deleteById(any());
+        }
+
+        @Test
+        @DisplayName("배열 순서를 노출 순서로 다시 반영한다")
+        void 순서를_다시_매긴다() {
+            LiveProduct first = givenScheduled(31L, SELLER_ID, "products/images/7/a.jpg");
+            LiveProduct second = LiveProduct.schedule(LIVE_ID, 32L, 1);
+            Product other =
+                    Product.createForLive(SELLER_ID, command("도자기 컵", "products/pending/7/b.jpg"));
+            given(productRepository.findById(32L)).willReturn(java.util.Optional.of(other));
+            given(liveProductRepository.findByLiveId(LIVE_ID)).willReturn(List.of(first, second));
+
+            productService.replaceForLive(
+                    LIVE_ID,
+                    SELLER_ID,
+                    List.of(upsert(32L, "도자기 컵", null), upsert(31L, "가죽 벨트", null)),
+                    java.util.Arrays.asList(null, null));
+
+            assertThat(second.getDisplayOrder()).isZero();
+            assertThat(first.getDisplayOrder()).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("이 라이브에 편성되지 않은 상품 번호는 PRODUCT_NOT_IN_LIVE다")
+        void 편성되지_않은_상품은_거부한다() {
+            given(liveProductRepository.findByLiveId(LIVE_ID)).willReturn(List.of());
+
+            assertThatThrownBy(
+                            () ->
+                                    productService.replaceForLive(
+                                            LIVE_ID,
+                                            SELLER_ID,
+                                            List.of(upsert(99L, "남의 상품", null)),
+                                            java.util.Collections.singletonList(null)))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(ProductErrorCode.PRODUCT_NOT_IN_LIVE);
+        }
+
+        @Test
+        @DisplayName("편성돼 있어도 다른 셀러의 상품이면 PRODUCT_NOT_IN_LIVE다")
+        void 남의_상품은_거부한다() {
+            LiveProduct scheduled = givenScheduled(31L, 99L, "products/images/99/a.jpg");
+            given(liveProductRepository.findByLiveId(LIVE_ID)).willReturn(List.of(scheduled));
+
+            assertThatThrownBy(
+                            () ->
+                                    productService.replaceForLive(
+                                            LIVE_ID,
+                                            SELLER_ID,
+                                            List.of(upsert(31L, "가죽 벨트", null)),
+                                            java.util.Collections.singletonList(null)))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(ProductErrorCode.PRODUCT_NOT_IN_LIVE);
+        }
+
+        @Test
+        @DisplayName("사진을 바꾸면 대표 이미지를 갈아끼우고 이전 사진 키를 돌려준다")
+        void 사진을_교체한다() {
+            LiveProduct scheduled = givenScheduled(31L, SELLER_ID, "products/images/7/old.jpg");
+            given(liveProductRepository.findByLiveId(LIVE_ID)).willReturn(List.of(scheduled));
+
+            List<String> obsolete =
+                    productService.replaceForLive(
+                            LIVE_ID,
+                            SELLER_ID,
+                            List.of(upsert(31L, "가죽 벨트", "products/pending/7/new.jpg")),
+                            List.of("products/images/7/new.jpg"));
+
+            assertThat(obsolete).containsExactly("products/images/7/old.jpg");
+        }
+    }
+
+    @Nested
+    @DisplayName("라이브 수정 - 사진 복사")
+    class CopyNewImages {
+
+        @Test
+        @DisplayName("사진을 바꾸지 않은 자리는 복사하지 않고 null로 둔다")
+        void 바뀐_사진만_복사한다() {
+            givenCopySucceeds();
+
+            List<String> copied =
+                    productService.copyNewImagesToPermanent(
+                            SELLER_ID,
+                            List.of(
+                                    upsert(31L, "가죽 벨트", null),
+                                    upsert(null, "도자기 컵", "products/pending/7/b.jpg")));
+
+            assertThat(copied).containsExactly(null, "products/images/7/b.jpg");
+            verify(s3Client, times(1)).copyObject(any(CopyObjectRequest.class));
+        }
+
+        @Test
+        @DisplayName("새 상품인데 사진이 없으면 PRODUCT_IMAGE_REQUIRED다")
+        void 새_상품은_사진이_필수다() {
+            assertThatThrownBy(
+                            () ->
+                                    productService.copyNewImagesToPermanent(
+                                            SELLER_ID, List.of(upsert(null, "도자기 컵", null))))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(ProductErrorCode.PRODUCT_IMAGE_REQUIRED);
+            verify(s3Client, never()).copyObject(any(CopyObjectRequest.class));
+        }
+
+        @Test
+        @DisplayName("남의 사진 키는 PRODUCT_IMAGE_FORBIDDEN이다")
+        void 남의_사진은_거부한다() {
+            assertThatThrownBy(
+                            () ->
+                                    productService.copyNewImagesToPermanent(
+                                            SELLER_ID,
+                                            List.of(
+                                                    upsert(
+                                                            null,
+                                                            "도자기 컵",
+                                                            "products/pending/99/b.jpg"))))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(ProductErrorCode.PRODUCT_IMAGE_FORBIDDEN);
+        }
     }
 }

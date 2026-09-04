@@ -18,6 +18,7 @@ import com.toasty.domain.live.controller.dto.response.LiveStreamStatusResponse;
 import com.toasty.domain.live.entity.Live;
 import com.toasty.domain.live.entity.LiveCreateCommand;
 import com.toasty.domain.live.entity.LiveStatus;
+import com.toasty.domain.live.entity.LiveUpdateCommand;
 import com.toasty.domain.live.exception.LiveErrorCode;
 import com.toasty.domain.live.repository.LiveRepository;
 import com.toasty.global.exception.CustomException;
@@ -473,6 +474,138 @@ class LiveServiceTest {
 
             assertThat(response.playbackUrl()).isEqualTo("https://playback/abc.m3u8");
             assertThat(response.status()).isEqualTo(LiveStatus.READY);
+        }
+    }
+
+    private static LiveUpdateCommand updateCommand(
+            String title,
+            java.util.List<com.toasty.domain.product.entity.ProductUpsertCommand> products) {
+        return new LiveUpdateCommand(1L, SELLER_ID, title, null, null, products);
+    }
+
+    @Nested
+    @DisplayName("라이브 수정")
+    class Update {
+
+        @Test
+        @DisplayName("보낸 필드만 바꾸고 나머지는 그대로 둔다")
+        void 보낸_필드만_바꾼다() {
+            givenLive(1L);
+
+            LiveDetailResponse response = liveService.update(updateCommand("바뀐 제목", null));
+
+            assertThat(response.title()).isEqualTo("바뀐 제목");
+            assertThat(response.description()).isEqualTo("여름 상품을 소개합니다");
+        }
+
+        @Test
+        @DisplayName("products를 보내지 않으면 상품을 건드리지 않는다")
+        void 상품을_보내지_않으면_그대로_둔다() {
+            givenLive(1L);
+
+            liveService.update(updateCommand("바뀐 제목", null));
+
+            verify(productService, never()).copyNewImagesToPermanent(any(), any());
+            verify(productService, never()).replaceForLive(any(), any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("소유자가 아니면 거부한다")
+        void 소유자가_아니면_거부한다() {
+            givenLive(1L);
+
+            assertThatThrownBy(
+                            () ->
+                                    liveService.update(
+                                            new LiveUpdateCommand(
+                                                    1L, 99L, "바뀐 제목", null, null, null)))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(LiveErrorCode.LIVE_FORBIDDEN);
+        }
+
+        @Test
+        @DisplayName("방송이 시작된 라이브는 수정할 수 없고 사진도 복사하지 않는다")
+        void 방송_중에는_수정할_수_없다() {
+            Live live = givenLive(1L);
+            live.startBroadcast();
+
+            assertThatThrownBy(() -> liveService.update(updateCommand("바뀐 제목", null)))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(LiveErrorCode.LIVE_NOT_EDITABLE);
+            verify(productService, never()).copyNewImagesToPermanent(any(), any());
+        }
+
+        @Test
+        @DisplayName("종료된 라이브는 수정할 수 없다")
+        void 종료된_라이브는_수정할_수_없다() {
+            Live live = givenLive(1L);
+            live.end();
+
+            assertThatThrownBy(() -> liveService.update(updateCommand("바뀐 제목", null)))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(LiveErrorCode.LIVE_NOT_EDITABLE);
+        }
+
+        @Test
+        @DisplayName("편성에서 빠진 사진은 트랜잭션이 끝난 뒤에 지운다")
+        void 빠진_사진을_커밋_뒤에_지운다() {
+            givenLive(1L);
+            given(productService.replaceForLive(any(), any(), any(), any()))
+                    .willReturn(java.util.List.of("products/images/7/old.jpg"));
+
+            liveService.update(updateCommand("바뀐 제목", java.util.List.of(upsert())));
+
+            verify(productService)
+                    .deleteImagesQuietly(java.util.List.of("products/images/7/old.jpg"));
+        }
+
+        @Test
+        @DisplayName("저장이 실패하면 이번에 복사한 사진을 되돌린다")
+        void 실패하면_복사한_사진을_지운다() {
+            givenLive(1L);
+            given(productService.copyNewImagesToPermanent(any(), any()))
+                    .willReturn(java.util.List.of("products/images/7/new.jpg"));
+            given(productService.replaceForLive(any(), any(), any(), any()))
+                    .willThrow(new IllegalStateException("저장 실패"));
+
+            assertThatThrownBy(
+                            () ->
+                                    liveService.update(
+                                            updateCommand("바뀐 제목", java.util.List.of(upsert()))))
+                    .isInstanceOf(IllegalStateException.class);
+
+            verify(productService)
+                    .deleteImagesQuietly(java.util.List.of("products/images/7/new.jpg"));
+        }
+
+        @Test
+        @DisplayName("커밋 뒤 사진 정리가 실패해도 이번에 저장한 사진은 지우지 않는다")
+        void 커밋_뒤_실패는_되돌리지_않는다() {
+            givenLive(1L);
+            given(productService.copyNewImagesToPermanent(any(), any()))
+                    .willReturn(java.util.List.of("products/images/7/new.jpg"));
+            given(productService.replaceForLive(any(), any(), any(), any()))
+                    .willReturn(java.util.List.of("products/images/7/old.jpg"));
+            org.mockito.BDDMockito.willThrow(new IllegalStateException("정리 실패"))
+                    .given(productService)
+                    .deleteImagesQuietly(java.util.List.of("products/images/7/old.jpg"));
+
+            assertThatThrownBy(
+                            () ->
+                                    liveService.update(
+                                            updateCommand("바뀐 제목", java.util.List.of(upsert()))))
+                    .isInstanceOf(IllegalStateException.class);
+
+            verify(productService, never())
+                    .deleteImagesQuietly(java.util.List.of("products/images/7/new.jpg"));
+        }
+
+        private com.toasty.domain.product.entity.ProductUpsertCommand upsert() {
+            return new com.toasty.domain.product.entity.ProductUpsertCommand(
+                    null, "도자기 컵", 12000, 3, null, "products/pending/7/b.jpg");
         }
     }
 }

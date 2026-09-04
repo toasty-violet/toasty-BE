@@ -33,8 +33,10 @@ public class LiveController {
     @Operation(
             summary = "라이브 생성",
             description =
-                    "셀러가 새 라이브를 개설하고, 방송 송출에 필요한 정보를 발급받습니다. 최초 송출정보는 이 응답에서만 전달되며, 이후에는 재발급 API로만"
-                            + " 받을 수 있습니다.")
+                    "셀러가 새 라이브를 개설하면서 이번 방송에서 팔 상품을 함께 등록합니다. 라이브 설정 화면에서 방송 저장을 누를 때 한 번"
+                            + " 호출하세요. 상품 사진은 먼저 업로드 주소를 발급받아 S3에 올린 뒤 그 objectKey를 넣습니다. 보낸 상품"
+                            + " 순서가 그대로 라이브 내 노출 순서가 됩니다. 송출정보는 이 응답에 없습니다 — 송출 직전에 재발급"
+                            + " API로 받으세요.")
     @SellerOnly
     @PostMapping
     public ApiResponse<LiveCreateResponse> create(

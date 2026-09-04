@@ -1,17 +1,16 @@
 package com.toasty.domain.live.controller.dto.response;
 
-import com.toasty.domain.live.client.dto.BroadcastCredential;
 import com.toasty.domain.live.entity.Live;
+import com.toasty.domain.product.controller.dto.response.LiveProductResponse;
 import io.swagger.v3.oas.annotations.media.Schema;
+import java.util.List;
 
-/** 생성 직후에만 송출정보를 함께 준다. 이후에는 재발급 API로만 받을 수 있다. */
+/** 송출정보는 담지 않는다. 송출 직전에 재발급 API로 받는다. */
 public record LiveCreateResponse(
         @Schema(description = "생성된 라이브 정보") LiveDetailResponse live,
-        @Schema(description = "최초 송출정보. 이 응답에서만 전달된다.")
-                BroadcastCredentialResponse broadcastCredential) {
+        @Schema(description = "함께 등록된 상품. 순서가 라이브 내 노출 순서다") List<LiveProductResponse> products) {
 
-    public static LiveCreateResponse of(Live live, BroadcastCredential credential) {
-        return new LiveCreateResponse(
-                LiveDetailResponse.from(live), BroadcastCredentialResponse.from(credential));
+    public static LiveCreateResponse of(Live live, List<LiveProductResponse> products) {
+        return new LiveCreateResponse(LiveDetailResponse.from(live), products);
     }
 }

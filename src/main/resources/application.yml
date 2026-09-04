@@ -52,6 +52,16 @@ aws:
   ivs:
     region: ap-northeast-2
     channel-type: BASIC
+  s3:
+    region: ap-northeast-2
+    # 개발·운영 버킷이 갈리므로 기본값을 두지 않는다. .env에 반드시 채운다.
+    bucket: ${AWS_S3_BUCKET}
+    public-base-url: ${AWS_S3_PUBLIC_BASE_URL}
+    # 버킷 수명주기 규칙이 정리하는 경로다. 바꾸면 규칙도 함께 바꿔야 해서 환경변수로 열지 않는다.
+    pending-prefix: products/pending/
+    # 확정된 사진이 머무는 경로다. 수명주기 규칙이 건드리지 않는다.
+    image-prefix: products/images/
+    presigned-url-expiry-seconds: 300
 
 cors:
   allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}

@@ -42,7 +42,6 @@ class ProductImageUploadServiceTest {
                     "toasty-media",
                     "products/pending/",
                     "products/images/",
-                    "sellers/images/",
                     300,
                     "https://cdn.example.com");
 

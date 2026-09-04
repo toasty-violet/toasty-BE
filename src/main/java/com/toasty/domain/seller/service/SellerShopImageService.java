@@ -3,7 +3,7 @@ package com.toasty.domain.seller.service;
 import com.toasty.domain.seller.controller.dto.response.ShopImageUploadUrlResponse;
 import com.toasty.domain.seller.entity.ShopImageUploadCommand;
 import com.toasty.domain.seller.exception.SellerErrorCode;
-import com.toasty.global.config.S3Properties;
+import com.toasty.global.config.SellerS3Properties;
 import com.toasty.global.exception.CustomException;
 import java.time.Duration;
 import java.time.LocalDate;
@@ -29,7 +29,7 @@ public class SellerShopImageService {
             Map.of("image/jpeg", "jpg", "image/png", "png", "image/webp", "webp");
 
     private final S3Presigner s3Presigner;
-    private final S3Properties s3Properties;
+    private final SellerS3Properties s3Properties;
 
     /** 샵 이미지를 올릴 주소와, 업로드에 성공했을 때 그 사진을 읽을 주소를 함께 만들어 준다. */
     public ShopImageUploadUrlResponse issueUploadUrl(ShopImageUploadCommand command) {
@@ -64,7 +64,7 @@ public class SellerShopImageService {
 
     // 온보딩 제출 전에도 발급하므로 셀러 번호가 아직 없다. 유저 번호를 넣어 남은 사진이 누구 것인지 추적할 수 있게 한다.
     private String generateObjectKey(Long userId, String contentType) {
-        return s3Properties.sellerImagePrefix()
+        return s3Properties.imagePrefix()
                 + userId
                 + "/"
                 + LocalDate.now().format(DATE_PATH)

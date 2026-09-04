@@ -63,4 +63,23 @@ public class Address extends BaseTimeEntity {
     // 기본 주소 여부. 구매자당 하나만 true인 것은 Service에서 보장한다 (MySQL은 조건부 unique를 못 건다)
     @Column(name = "is_default", nullable = false)
     private boolean isDefault;
+
+    private Address(
+            Long customerId, CustomerOnboardingCommand.AddressCommand command, boolean isDefault) {
+        this.customerId = customerId;
+        this.postalCode = command.postalCode();
+        this.roadAddress = command.roadAddress();
+        this.jibunAddress = command.jibunAddress();
+        this.addressType = command.addressType();
+        this.buildingName = command.buildingName();
+        this.legalDong = command.legalDong();
+        this.detailAddress = command.detailAddress();
+        this.isDefault = isDefault;
+    }
+
+    /** 온보딩에서 받은 첫 배송지. 다른 주소가 없으므로 기본 주소가 된다. */
+    public static Address createDefault(
+            Long customerId, CustomerOnboardingCommand.AddressCommand command) {
+        return new Address(customerId, command, true);
+    }
 }

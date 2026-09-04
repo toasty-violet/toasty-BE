@@ -122,7 +122,7 @@ class LiveServiceTest {
         @DisplayName("함께 보낸 상품을 그 라이브에 등록하고 응답에 담는다")
         void 상품을_함께_등록한다() {
             givenSaveSucceeds();
-            given(productService.registerForLive(any(), any(), any()))
+            given(productService.registerForLive(any(), any(), any(), any()))
                     .willReturn(
                             java.util.List.of(
                                     new com.toasty.domain.product.controller.dto.response
@@ -145,10 +145,12 @@ class LiveServiceTest {
         }
 
         @Test
-        @DisplayName("상품 등록이 실패하면 이미 만든 IVS 채널을 지운다")
-        void 상품_등록_실패시_채널을_지운다() {
+        @DisplayName("상품 등록이 실패하면 이미 만든 IVS 채널과 복사한 사진을 지운다")
+        void 상품_등록_실패시_채널과_사진을_지운다() {
             givenSaveSucceeds();
-            given(productService.registerForLive(any(), any(), any()))
+            List<String> imageKeys = List.of("products/images/44/a.jpg");
+            given(productService.copyImagesToPermanent(any(), any())).willReturn(imageKeys);
+            given(productService.registerForLive(any(), any(), any(), any()))
                     .willThrow(
                             new CustomException(
                                     com.toasty.domain.product.exception.ProductErrorCode
@@ -162,6 +164,7 @@ class LiveServiceTest {
                                     .PRODUCT_IMAGE_NOT_UPLOADED);
 
             assertThat(streamingClient.deletedChannelArns()).hasSize(1);
+            verify(productService).deleteImagesQuietly(imageKeys);
         }
 
         @Test

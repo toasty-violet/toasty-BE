@@ -41,6 +41,7 @@ class ProductImageUploadServiceTest {
                     "ap-northeast-2",
                     "toasty-media",
                     "products/pending/",
+                    "products/images/",
                     300,
                     "https://cdn.example.com");
 

@@ -35,31 +35,39 @@ public class LiveService {
     private final TransactionTemplate transactionTemplate;
 
     /** 셀러가 라이브를 개설하면서 이번 방송에서 팔 상품을 함께 등록한다. */
-    // AWS 호출은 수 초가 걸려 DB 커넥션을 잡고 있으면 안 되므로 채널 생성도 사진 검증도 트랜잭션 밖에 둔다.
-    // 사진 검증을 채널 생성보다 앞에 두어, 사진이 없는 요청은 채널을 만들기 전에 걸러낸다.
+    // AWS 호출은 수 초가 걸려 DB 커넥션을 잡고 있으면 안 되므로 채널 생성도 사진 복사도 트랜잭션 밖에 둔다.
+    // 사진 복사를 채널 생성보다 앞에 두어, 사진이 없는 요청은 채널을 만들기 전에 걸러낸다.
     // 대신 저장은 테이블 4개에 걸치므로 TransactionTemplate으로 묶어, 중간에 실패하면
-    // 상품 없는 빈 라이브가 남지 않게 한다. 저장이 실패하면 이미 만든 IVS 채널도 지운다.
+    // 상품 없는 빈 라이브가 남지 않게 한다. 실패하면 이미 만든 IVS 채널과 복사한 사진을 지운다.
     public LiveCreateResponse create(LiveCreateCommand command) {
-        productService.validateImages(command.sellerId(), command.products());
+        List<String> imageObjectKeys =
+                productService.copyImagesToPermanent(command.sellerId(), command.products());
 
-        StreamingChannel channel =
-                liveStreamingClient.createChannel(generateChannelName(command.sellerId()));
+        StreamingChannel channel = null;
         try {
+            channel = liveStreamingClient.createChannel(generateChannelName(command.sellerId()));
+            StreamingChannel created = channel;
             return transactionTemplate.execute(
                     status -> {
                         Live live =
                                 liveRepository.save(
                                         Live.create(
                                                 command,
-                                                channel.channelArn(),
-                                                channel.playbackUrl()));
+                                                created.channelArn(),
+                                                created.playbackUrl()));
                         List<LiveProductResponse> products =
                                 productService.registerForLive(
-                                        live.getId(), command.sellerId(), command.products());
+                                        live.getId(),
+                                        command.sellerId(),
+                                        command.products(),
+                                        imageObjectKeys);
                         return LiveCreateResponse.of(live, products);
                     });
         } catch (RuntimeException e) {
-            deleteChannelQuietly(channel.channelArn());
+            if (channel != null) {
+                deleteChannelQuietly(channel.channelArn());
+            }
+            productService.deleteImagesQuietly(imageObjectKeys);
             throw e;
         }
     }

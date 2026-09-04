@@ -7,13 +7,11 @@ import com.toasty.domain.user.controller.dto.request.CustomerOnboardingRequest;
 import com.toasty.domain.user.controller.dto.response.NicknameSearchResponse;
 import com.toasty.domain.user.controller.dto.response.UserMeResponse;
 import com.toasty.domain.user.service.UserService;
-import com.toasty.global.exception.ErrorResponse;
 import com.toasty.global.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
-import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -50,7 +48,16 @@ public class UserController {
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "401",
                 description = "액세스 토큰이 없거나 유효하지 않은 경우",
-                content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+                content =
+                        @Content(
+                                mediaType = "application/json",
+                                examples =
+                                        @ExampleObject(
+                                                name = "COMMON_UNAUTHORIZED",
+                                                value =
+                                                        """
+                                                        {"success": false, "error": {"code": "COMMON_UNAUTHORIZED", "message": "인증이 필요합니다."}}
+                                                        """)))
     })
     @LoginRequired
     @GetMapping("/users/me")
@@ -70,72 +77,73 @@ public class UserController {
                 description = "온보딩 완료"),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "400",
-                description = "입력값이 올바르지 않은 경우 — 어느 필드가 틀렸는지는 fields에 담기므로 해당 입력창 아래에 띄우세요",
+                description = "입력값이 올바르지 않은 경우 — 어느 필드가 틀렸는지는 error.fields에 담기므로 해당 입력창 아래에 띄우세요",
                 content =
                         @Content(
-                                schema = @Schema(implementation = ErrorResponse.class),
+                                mediaType = "application/json",
                                 examples =
                                         @ExampleObject(
                                                 name = "COMMON_INVALID_INPUT",
                                                 value =
                                                         """
-                                                        {"code": "COMMON_INVALID_INPUT", "message": "입력값이 올바르지 않습니다.", "fields": [{"field": "phoneNumber", "message": "휴대폰 번호 형식이 올바르지 않습니다."}]}
+                                                        {"success": false, "error": {"code": "COMMON_INVALID_INPUT", "message": "입력값이 올바르지 않습니다.", "fields": [{"field": "phoneNumber", "message": "휴대폰 번호 형식이 올바르지 않습니다."}]}}
                                                         """))),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "401",
                 description = "액세스 토큰이 없거나 유효하지 않은 경우 — 로그인 화면으로 보내세요",
                 content =
                         @Content(
-                                schema = @Schema(implementation = ErrorResponse.class),
+                                mediaType = "application/json",
                                 examples =
                                         @ExampleObject(
                                                 name = "COMMON_UNAUTHORIZED",
                                                 value =
                                                         """
-                                                        {"code": "COMMON_UNAUTHORIZED", "message": "인증이 필요합니다."}
+                                                        {"success": false, "error": {"code": "COMMON_UNAUTHORIZED", "message": "인증이 필요합니다."}}
                                                         """))),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "404",
                 description = "토큰은 유효하지만 그 사이 탈퇴한 유저인 경우 — 로그인 화면으로 보내세요",
                 content =
                         @Content(
-                                schema = @Schema(implementation = ErrorResponse.class),
+                                mediaType = "application/json",
                                 examples =
                                         @ExampleObject(
                                                 name = "USER_NOT_FOUND",
                                                 value =
                                                         """
-                                                        {"code": "USER_NOT_FOUND", "message": "존재하지 않는 유저입니다."}
+                                                        {"success": false, "error": {"code": "USER_NOT_FOUND", "message": "존재하지 않는 유저입니다."}}
                                                         """))),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "409",
-                description = "code로 갈라 처리하세요. 닉네임 중복은 입력창에, 온보딩 중복은 내 정보 조회로 되돌려 화면을 다시 분기하세요",
+                description =
+                        "error.code로 갈라 처리하세요. 닉네임 중복은 입력창에, 온보딩 중복은 내 정보 조회로 되돌려 화면을 다시 분기하세요",
                 content =
                         @Content(
-                                schema = @Schema(implementation = ErrorResponse.class),
+                                mediaType = "application/json",
                                 examples = {
                                     @ExampleObject(
                                             name = "USER_NICKNAME_DUPLICATED",
                                             description = "다른 유저가 이미 쓰고 있는 닉네임",
                                             value =
                                                     """
-                                                    {"code": "USER_NICKNAME_DUPLICATED", "message": "이미 사용 중인 닉네임입니다."}
+                                                    {"success": false, "error": {"code": "USER_NICKNAME_DUPLICATED", "message": "이미 사용 중인 닉네임입니다."}}
                                                     """),
                                     @ExampleObject(
                                             name = "USER_ONBOARDING_ALREADY_COMPLETED",
                                             description = "이미 역할이 정해진 유저가 다시 제출",
                                             value =
                                                     """
-                                                    {"code": "USER_ONBOARDING_ALREADY_COMPLETED", "message": "이미 온보딩을 마친 유저입니다."}
+                                                    {"success": false, "error": {"code": "USER_ONBOARDING_ALREADY_COMPLETED", "message": "이미 온보딩을 마친 유저입니다."}}
                                                     """)
                                 }))
     })
     @LoginRequired
     @PutMapping("/users/onboarding/customer")
-    public ApiResponse<UserMeResponse> completeCustomerOnboarding(
+    public ApiResponse<Void> completeCustomerOnboarding(
             @Valid @RequestBody CustomerOnboardingRequest request, @LoginUser AuthUser user) {
-        return ApiResponse.ok(
-                userService.completeCustomerOnboarding(request.toCommand(user.userId())));
+        userService.completeCustomerOnboarding(request.toCommand(user.userId()));
+        return ApiResponse.ok();
     }
 
     @Operation(

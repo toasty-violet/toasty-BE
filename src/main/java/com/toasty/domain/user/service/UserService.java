@@ -60,7 +60,7 @@ public class UserService {
 
     /** 구매자 온보딩 제출을 받아 역할을 구매자로 설정하고 닉네임을 확정한다. */
     @Transactional
-    public UserMeResponse completeCustomerOnboarding(CustomerOnboardingCommand command) {
+    public void completeCustomerOnboarding(CustomerOnboardingCommand command) {
         User user =
                 userRepository
                         .findById(command.userId())
@@ -74,7 +74,6 @@ public class UserService {
         user.completeOnboarding(Role.CUSTOMER, command.nickname());
         flushNicknameOrThrow();
         customerService.createForOnboarding(command);
-        return UserMeResponse.from(user);
     }
 
     /**

@@ -13,6 +13,7 @@ import com.toasty.domain.user.repository.UserRepository;
 import com.toasty.global.exception.CustomException;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -71,8 +72,22 @@ public class UserService {
             throw new CustomException(UserErrorCode.USER_NICKNAME_DUPLICATED);
         }
         user.completeOnboarding(Role.CUSTOMER, command.nickname());
+        flushNicknameOrThrow();
         customerService.createForOnboarding(command);
         return UserMeResponse.from(user);
+    }
+
+    /**
+     * 닉네임 변경만 DB에 먼저 반영해, 다른 유저가 같은 닉네임을 선점했으면 닉네임 중복(409)으로 돌려준다.
+     *
+     * <p>다른 테이블에 쓰기 전에 호출해야 한다. 그래야 여기서 나는 제약 위반이 uk_users_nickname 하나로 좁혀진다.
+     */
+    private void flushNicknameOrThrow() {
+        try {
+            userRepository.flush();
+        } catch (DataIntegrityViolationException e) {
+            throw new CustomException(UserErrorCode.USER_NICKNAME_DUPLICATED, e);
+        }
     }
 
     /* 카카오 식별자로 유저를 조회하고, 없다면 신규 가입한다. */

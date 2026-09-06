@@ -4,13 +4,11 @@ import com.toasty.domain.auth.controller.dto.response.AccessTokenResponse;
 import com.toasty.domain.auth.service.AuthService;
 import com.toasty.domain.auth.service.LoginResult;
 import com.toasty.domain.auth.service.ReissueResult;
-import com.toasty.global.exception.ErrorResponse;
 import com.toasty.global.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
-import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletResponse;
@@ -49,7 +47,7 @@ public class AuthController {
                 description = "카카오 토큰 발급 실패 또는 사용자 정보 조회 실패",
                 content =
                         @Content(
-                                schema = @Schema(implementation = ErrorResponse.class),
+                                mediaType = "application/json",
                                 examples = {
                                     @ExampleObject(
                                             name = "카카오 토큰 발급 실패",
@@ -103,7 +101,25 @@ public class AuthController {
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "401",
                 description = "리프레시 토큰이 없거나, 만료/로그아웃되었거나, 이미 교체된 토큰으로 요청한 경우",
-                content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+                content =
+                        @Content(
+                                mediaType = "application/json",
+                                examples = {
+                                    @ExampleObject(
+                                            name = "AUTH_REFRESH_TOKEN_NOT_FOUND",
+                                            description = "쿠키에 리프레시 토큰이 없거나 만료/로그아웃된 경우",
+                                            value =
+                                                    """
+                                                    {"success": false, "error": {"code": "AUTH_REFRESH_TOKEN_NOT_FOUND", "message": "만료되었거나 존재하지 않는 리프레시 토큰입니다."}}
+                                                    """),
+                                    @ExampleObject(
+                                            name = "AUTH_REFRESH_TOKEN_REUSE_DETECTED",
+                                            description = "이미 교체된 리프레시 토큰으로 다시 요청한 경우",
+                                            value =
+                                                    """
+                                                    {"success": false, "error": {"code": "AUTH_REFRESH_TOKEN_REUSE_DETECTED", "message": "이미 사용된 리프레시 토큰입니다. 안전을 위해 모든 기기에서 로그아웃되었으니 다시 로그인해 주세요."}}
+                                                    """)
+                                }))
     })
     // 액세스 토큰을 재발급하고, 교체된 리프레시 토큰을 쿠키에 다시 심는다
     @PostMapping("/refresh")

@@ -31,7 +31,7 @@ public class SellerShopImageService {
     private final S3Presigner s3Presigner;
     private final SellerS3Properties s3Properties;
 
-    /** 샵 이미지를 올릴 주소와, 업로드에 성공했을 때 그 사진을 읽을 주소를 함께 만들어 준다. */
+    /** 샵 이미지를 올릴 주소와, 그 사진이 저장될 위치를 만들어 준다. */
     public ShopImageUploadUrlResponse issueUploadUrl(ShopImageUploadCommand command) {
         String objectKey = generateObjectKey(command.userId(), command.contentType());
         // contentType과 contentLength를 서명에 포함시켜, 선언한 것과 다른 파일을 올리면 S3가 거부하게 한다.
@@ -52,17 +52,14 @@ public class SellerShopImageService {
         try {
             String uploadUrl = s3Presigner.presignPutObject(presignRequest).url().toString();
             return new ShopImageUploadUrlResponse(
-                    objectKey,
-                    uploadUrl,
-                    toImageUrl(objectKey),
-                    s3Properties.presignedUrlExpirySeconds());
+                    objectKey, uploadUrl, s3Properties.presignedUrlExpirySeconds());
         } catch (SdkException e) {
             log.error("샵 이미지 업로드 주소 발급 실패. objectKey={}", objectKey, e);
             throw new CustomException(SellerErrorCode.SELLER_UPLOAD_URL_ISSUE_FAILED, e);
         }
     }
 
-    // 온보딩 제출 전에도 발급하므로 셀러 번호가 아직 없다. 유저 번호를 넣어 남은 사진이 누구 것인지 추적할 수 있게 한다.
+    // 온보딩 제출 전에도 발급하므로 셀러 번호가 아직 없다. 유저 번호를 넣어, 온보딩이 제출받은 키가 누구 것인지 가려낼 수 있게 한다.
     private String generateObjectKey(Long userId, String contentType) {
         return s3Properties.imagePrefix()
                 + userId
@@ -72,9 +69,5 @@ public class SellerShopImageService {
                 + UUID.randomUUID()
                 + "."
                 + EXTENSIONS.get(contentType);
-    }
-
-    private String toImageUrl(String objectKey) {
-        return s3Properties.publicBaseUrl() + "/" + objectKey;
     }
 }

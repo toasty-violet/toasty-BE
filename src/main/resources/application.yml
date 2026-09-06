@@ -73,6 +73,11 @@ kakao:
   # 프론트가 인가 요청에 쓴 값과 정확히 같아야 토큰 교환이 통과한다.
   redirect-uri: ${KAKAO_REDIRECT_URI:http://localhost:3000/auth/login/callback}
 
+point3:
+  base-url: https://api.point3.io
+  # 프론트가 쓰는 client_id와 다른 값이다. 대시보드 개발정보 관리에서 발급받아 .env에 채운다.
+  api-token: ${POINT3_API_TOKEN}
+
 auth:
   # 만료시간은 30m, 14d 처럼 단위를 붙여 쓴다.
   access-token:

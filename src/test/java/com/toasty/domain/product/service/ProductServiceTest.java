@@ -1,6 +1,7 @@
 package com.toasty.domain.product.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
@@ -380,6 +381,20 @@ class ProductServiceTest {
 
             assertThat(obsolete).containsExactly("products/images/7/old.jpg");
         }
+    }
+
+    @Test
+    @DisplayName("사진 정리가 S3에서 실패해도 예외를 밖으로 내보내지 않는다")
+    void 사진_정리_실패를_삼킨다() {
+        willThrow(S3Exception.builder().message("서버 오류").build())
+                .given(s3Client)
+                .deleteObject(any(DeleteObjectRequest.class));
+
+        assertThatCode(
+                        () ->
+                                productService.deleteImagesQuietly(
+                                        List.of("products/images/7/old.jpg")))
+                .doesNotThrowAnyException();
     }
 
     @Nested

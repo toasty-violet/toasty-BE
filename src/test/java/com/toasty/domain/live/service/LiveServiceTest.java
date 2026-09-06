@@ -550,9 +550,11 @@ class LiveServiceTest {
         }
 
         @Test
-        @DisplayName("편성에서 빠진 사진은 트랜잭션이 끝난 뒤에 지운다")
+        @DisplayName("편성에서 빠진 사진만 트랜잭션이 끝난 뒤에 지우고, 이번에 저장한 사진은 건드리지 않는다")
         void 빠진_사진을_커밋_뒤에_지운다() {
             givenLive(1L);
+            given(productService.copyNewImagesToPermanent(any(), any()))
+                    .willReturn(java.util.List.of("products/images/7/new.jpg"));
             given(productService.replaceForLive(any(), any(), any(), any()))
                     .willReturn(java.util.List.of("products/images/7/old.jpg"));
 
@@ -560,6 +562,8 @@ class LiveServiceTest {
 
             verify(productService)
                     .deleteImagesQuietly(java.util.List.of("products/images/7/old.jpg"));
+            verify(productService, never())
+                    .deleteImagesQuietly(java.util.List.of("products/images/7/new.jpg"));
         }
 
         @Test
@@ -602,28 +606,6 @@ class LiveServiceTest {
 
             verify(productService, never()).replaceForLive(any(), any(), any(), any());
             verify(productService)
-                    .deleteImagesQuietly(java.util.List.of("products/images/7/new.jpg"));
-        }
-
-        @Test
-        @DisplayName("커밋 뒤 사진 정리가 실패해도 이번에 저장한 사진은 지우지 않는다")
-        void 커밋_뒤_실패는_되돌리지_않는다() {
-            givenLive(1L);
-            given(productService.copyNewImagesToPermanent(any(), any()))
-                    .willReturn(java.util.List.of("products/images/7/new.jpg"));
-            given(productService.replaceForLive(any(), any(), any(), any()))
-                    .willReturn(java.util.List.of("products/images/7/old.jpg"));
-            org.mockito.BDDMockito.willThrow(new IllegalStateException("정리 실패"))
-                    .given(productService)
-                    .deleteImagesQuietly(java.util.List.of("products/images/7/old.jpg"));
-
-            assertThatThrownBy(
-                            () ->
-                                    liveService.update(
-                                            updateCommand("바뀐 제목", java.util.List.of(upsert()))))
-                    .isInstanceOf(IllegalStateException.class);
-
-            verify(productService, never())
                     .deleteImagesQuietly(java.util.List.of("products/images/7/new.jpg"));
         }
 

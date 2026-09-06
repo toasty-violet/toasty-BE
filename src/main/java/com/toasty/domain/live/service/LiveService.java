@@ -93,6 +93,8 @@ public class LiveService {
                     transactionTemplate.execute(
                             status -> {
                                 Live live = findById(command.liveId());
+                                // 사진 복사가 도는 동안 송출이 시작됐을 수 있어 트랜잭션 안에서 다시 본다.
+                                requireEditableOwnLive(live, command.sellerId());
                                 live.update(
                                         command.title(),
                                         command.description(),

@@ -582,6 +582,30 @@ class LiveServiceTest {
         }
 
         @Test
+        @DisplayName("사진을 복사하는 동안 송출이 시작되면 거부한다")
+        void 복사_도중_송출이_시작되면_거부한다() {
+            Live live = givenLive(1L);
+            given(productService.copyNewImagesToPermanent(any(), any()))
+                    .willAnswer(
+                            call -> {
+                                live.startBroadcast();
+                                return java.util.List.of("products/images/7/new.jpg");
+                            });
+
+            assertThatThrownBy(
+                            () ->
+                                    liveService.update(
+                                            updateCommand("바뀐 제목", java.util.List.of(upsert()))))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(LiveErrorCode.LIVE_NOT_EDITABLE);
+
+            verify(productService, never()).replaceForLive(any(), any(), any(), any());
+            verify(productService)
+                    .deleteImagesQuietly(java.util.List.of("products/images/7/new.jpg"));
+        }
+
+        @Test
         @DisplayName("커밋 뒤 사진 정리가 실패해도 이번에 저장한 사진은 지우지 않는다")
         void 커밋_뒤_실패는_되돌리지_않는다() {
             givenLive(1L);

@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
@@ -132,6 +133,8 @@ public class ProductService {
             Long sellerId,
             List<ProductUpsertCommand> commands,
             List<String> newImageObjectKeys) {
+        requireNoDuplicatedProduct(commands);
+
         Map<Long, LiveProduct> scheduled =
                 liveProductRepository.findByLiveId(liveId).stream()
                         .collect(Collectors.toMap(LiveProduct::getProductId, Function.identity()));
@@ -161,6 +164,18 @@ public class ProductService {
             }
         }
         return obsoleteImageObjectKeys;
+    }
+
+    // 같은 상품이 두 번 오면 뒤엣것이 앞엣것을 덮어써 편성이 조용히 줄고 순서도 밀린다.
+    private void requireNoDuplicatedProduct(List<ProductUpsertCommand> commands) {
+        List<Long> productIds =
+                commands.stream()
+                        .map(ProductUpsertCommand::productId)
+                        .filter(Objects::nonNull)
+                        .toList();
+        if (productIds.size() != Set.copyOf(productIds).size()) {
+            throw new CustomException(ProductErrorCode.PRODUCT_DUPLICATED);
+        }
     }
 
     // 편성 여부와 셀러를 함께 본다. 남의 라이브 상품이나 편성되지 않은 상품 번호로는 통과할 수 없다.

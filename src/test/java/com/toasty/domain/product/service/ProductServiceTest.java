@@ -367,6 +367,24 @@ class ProductServiceTest {
         }
 
         @Test
+        @DisplayName("같은 상품을 두 번 보내면 PRODUCT_DUPLICATED다")
+        void 중복된_상품은_거부한다() {
+            assertThatThrownBy(
+                            () ->
+                                    productService.replaceForLive(
+                                            LIVE_ID,
+                                            SELLER_ID,
+                                            List.of(
+                                                    upsert(31L, "가죽 벨트", null),
+                                                    upsert(31L, "가죽 벨트 수정", null)),
+                                            java.util.Arrays.asList(null, null)))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(ProductErrorCode.PRODUCT_DUPLICATED);
+            verify(liveProductRepository, never()).findByLiveId(any());
+        }
+
+        @Test
         @DisplayName("사진을 바꾸면 대표 이미지를 갈아끼우고 이전 사진 키를 돌려준다")
         void 사진을_교체한다() {
             LiveProduct scheduled = givenScheduled(31L, SELLER_ID, "products/images/7/old.jpg");

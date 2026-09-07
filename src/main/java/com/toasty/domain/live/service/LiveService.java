@@ -119,6 +119,32 @@ public class LiveService {
         return response;
     }
 
+    /** 셀러가 방송 전에 저장해둔 라이브를 지운다. 편성 상품과 사진, IVS 채널도 함께 정리한다. */
+    // 검사와 삭제를 한 트랜잭션에 두지만, status는 셀러의 송출 상태 폴링으로만 갱신돼서
+    // 폴링 전이면 실제로 송출 중이어도 READY로 보여 지워진다.
+    // IVS 채널과 S3 객체는 커밋된 뒤에 지운다. 먼저 지우면 트랜잭션이 깨졌을 때 되살릴 수 없다.
+    public void delete(Long liveId, Long sellerId) {
+        List<String> obsoleteImageKeys = new ArrayList<>();
+        String channelArn =
+                transactionTemplate.execute(
+                        status -> {
+                            Live live = findById(liveId);
+                            if (!live.isOwnedBy(sellerId)) {
+                                throw new CustomException(LiveErrorCode.LIVE_FORBIDDEN);
+                            }
+                            if (!live.isDeletable()) {
+                                throw new CustomException(LiveErrorCode.LIVE_NOT_DELETABLE);
+                            }
+                            obsoleteImageKeys.addAll(productService.removeAllForLive(liveId));
+                            liveRepository.delete(live);
+                            return live.getIvsChannelArn();
+                        });
+
+        // 여기서 실패해도 되돌리지 않는다. 라이브는 이미 지워졌고 남은 자원은 로그로 추적한다.
+        deleteChannelQuietly(channelArn);
+        productService.deleteImagesQuietly(obsoleteImageKeys);
+    }
+
     @Transactional(readOnly = true)
     public LiveDetailResponse getByPublicId(String publicId) {
         return LiveDetailResponse.from(findByPublicId(publicId));

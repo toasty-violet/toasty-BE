@@ -166,6 +166,29 @@ public class ProductService {
         return obsoleteImageObjectKeys;
     }
 
+    /** 라이브가 지워질 때 그 라이브의 편성과 상품을 정리하고, 더 이상 쓰지 않는 사진의 objectKey를 돌려준다. 돌려받은 키는 커밋된 뒤에 지운다. */
+    @Transactional
+    public List<String> removeAllForLive(Long liveId) {
+        List<String> obsoleteImageObjectKeys = new ArrayList<>();
+        for (LiveProduct liveProduct : liveProductRepository.findByLiveId(liveId)) {
+            obsoleteImageObjectKeys.addAll(unschedule(liveProduct));
+        }
+        return obsoleteImageObjectKeys;
+    }
+
+    // 편성에 남의 상품이 섞여 있으면 지우지도 고치지도 않는다.
+    private Product requireOwnedProduct(Long productId, Long sellerId) {
+        Product product =
+                productRepository
+                        .findById(productId)
+                        .orElseThrow(
+                                () -> new CustomException(ProductErrorCode.PRODUCT_NOT_IN_LIVE));
+        if (!product.getSellerId().equals(sellerId)) {
+            throw new CustomException(ProductErrorCode.PRODUCT_NOT_IN_LIVE);
+        }
+        return product;
+    }
+
     // 같은 상품이 두 번 오면 뒤엣것이 앞엣것을 덮어써 편성이 조용히 줄고 순서도 밀린다.
     private void requireNoDuplicatedProduct(List<ProductUpsertCommand> commands) {
         List<Long> productIds =
@@ -188,15 +211,7 @@ public class ProductService {
         if (liveProduct == null) {
             throw new CustomException(ProductErrorCode.PRODUCT_NOT_IN_LIVE);
         }
-        Product product =
-                productRepository
-                        .findById(command.productId())
-                        .orElseThrow(
-                                () -> new CustomException(ProductErrorCode.PRODUCT_NOT_IN_LIVE));
-        if (!product.getSellerId().equals(sellerId)) {
-            throw new CustomException(ProductErrorCode.PRODUCT_NOT_IN_LIVE);
-        }
-
+        Product product = requireOwnedProduct(command.productId(), sellerId);
         product.update(
                 command.name(), command.price(), command.stockQuantity(), command.description());
         liveProduct.changeDisplayOrder(displayOrder);

@@ -19,6 +19,9 @@ repositories {
     mavenCentral()
 }
 
+// bootJar 하나만 만든다. plain jar가 같이 나오면 Dockerfile의 COPY가 대상이 둘이라 실패한다.
+tasks.named<Jar>("jar") { enabled = false }
+
 dependencies {
     // web / api
     implementation("org.springframework.boot:spring-boot-starter-web")

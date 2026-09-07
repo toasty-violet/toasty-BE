@@ -110,6 +110,11 @@ public class Live extends BaseTimeEntity {
         return status == LiveStatus.READY;
     }
 
+    // 방송이 시작되면 지난 방송 페이지가 채널과 재생 URL을 쓰므로 지울 수 없다.
+    public boolean isDeletable() {
+        return status == LiveStatus.READY;
+    }
+
     /** 셀러가 방송 전에 라이브 내용을 고친다. 보내지 않은 값은 그대로 둔다. */
     public void update(String title, String description, LocalDateTime scheduledAt) {
         if (title != null) {

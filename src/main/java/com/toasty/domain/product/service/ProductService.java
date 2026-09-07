@@ -168,10 +168,9 @@ public class ProductService {
 
     /** 라이브가 지워질 때 그 라이브의 편성과 상품을 정리하고, 더 이상 쓰지 않는 사진의 objectKey를 돌려준다. 돌려받은 키는 커밋된 뒤에 지운다. */
     @Transactional
-    public List<String> removeAllForLive(Long liveId, Long sellerId) {
+    public List<String> removeAllForLive(Long liveId) {
         List<String> obsoleteImageObjectKeys = new ArrayList<>();
         for (LiveProduct liveProduct : liveProductRepository.findByLiveId(liveId)) {
-            requireOwnedProduct(liveProduct.getProductId(), sellerId);
             obsoleteImageObjectKeys.addAll(unschedule(liveProduct));
         }
         return obsoleteImageObjectKeys;

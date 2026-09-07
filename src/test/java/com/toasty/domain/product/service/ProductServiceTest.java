@@ -425,7 +425,7 @@ class ProductServiceTest {
             LiveProduct first = givenScheduled(31L, SELLER_ID, "products/images/7/a.jpg");
             given(liveProductRepository.findByLiveId(LIVE_ID)).willReturn(List.of(first));
 
-            List<String> obsolete = productService.removeAllForLive(LIVE_ID, SELLER_ID);
+            List<String> obsolete = productService.removeAllForLive(LIVE_ID);
 
             assertThat(obsolete).containsExactly("products/images/7/a.jpg");
             verify(liveProductRepository).delete(first);
@@ -440,23 +440,10 @@ class ProductServiceTest {
             given(liveProductRepository.existsByProductIdAndLiveIdNot(31L, LIVE_ID))
                     .willReturn(true);
 
-            List<String> obsolete = productService.removeAllForLive(LIVE_ID, SELLER_ID);
+            List<String> obsolete = productService.removeAllForLive(LIVE_ID);
 
             assertThat(obsolete).isEmpty();
             verify(liveProductRepository).delete(first);
-            verify(productRepository, never()).deleteById(any());
-        }
-
-        @Test
-        @DisplayName("편성에 남의 상품이 섞여 있으면 아무것도 지우지 않는다")
-        void 남의_상품이_섞이면_거부한다() {
-            LiveProduct scheduled = givenScheduled(31L, 99L, "products/images/99/a.jpg");
-            given(liveProductRepository.findByLiveId(LIVE_ID)).willReturn(List.of(scheduled));
-
-            assertThatThrownBy(() -> productService.removeAllForLive(LIVE_ID, SELLER_ID))
-                    .isInstanceOf(CustomException.class)
-                    .extracting(e -> ((CustomException) e).getErrorCode())
-                    .isEqualTo(ProductErrorCode.PRODUCT_NOT_IN_LIVE);
             verify(productRepository, never()).deleteById(any());
         }
 
@@ -465,7 +452,7 @@ class ProductServiceTest {
         void 편성이_없으면_아무것도_안_한다() {
             given(liveProductRepository.findByLiveId(LIVE_ID)).willReturn(List.of());
 
-            assertThat(productService.removeAllForLive(LIVE_ID, SELLER_ID)).isEmpty();
+            assertThat(productService.removeAllForLive(LIVE_ID)).isEmpty();
 
             verify(productRepository, never()).deleteById(any());
         }

@@ -134,8 +134,7 @@ public class LiveService {
                             if (!live.isDeletable()) {
                                 throw new CustomException(LiveErrorCode.LIVE_NOT_DELETABLE);
                             }
-                            obsoleteImageKeys.addAll(
-                                    productService.removeAllForLive(liveId, sellerId));
+                            obsoleteImageKeys.addAll(productService.removeAllForLive(liveId));
                             liveRepository.delete(live);
                             return live.getIvsChannelArn();
                         });

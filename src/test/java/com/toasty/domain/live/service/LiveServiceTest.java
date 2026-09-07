@@ -286,7 +286,7 @@ class LiveServiceTest {
                     .extracting(e -> ((CustomException) e).getErrorCode())
                     .isEqualTo(LiveErrorCode.LIVE_FORBIDDEN);
 
-            verify(productService, never()).removeAllForLive(any(), any());
+            verify(productService, never()).removeAllForLive(any());
             verify(liveRepository, never()).delete(any(Live.class));
             assertThat(streamingClient.deletedChannelArns()).isEmpty();
         }
@@ -302,7 +302,7 @@ class LiveServiceTest {
                     .extracting(e -> ((CustomException) e).getErrorCode())
                     .isEqualTo(LiveErrorCode.LIVE_NOT_DELETABLE);
 
-            verify(productService, never()).removeAllForLive(any(), any());
+            verify(productService, never()).removeAllForLive(any());
         }
 
         @Test
@@ -321,7 +321,7 @@ class LiveServiceTest {
         @DisplayName("편성 상품과 라이브를 지우고 커밋 뒤에 채널과 사진을 정리한다")
         void 지우고_커밋_뒤에_정리한다() {
             Live live = givenLive(1L);
-            given(productService.removeAllForLive(1L, SELLER_ID))
+            given(productService.removeAllForLive(1L))
                     .willReturn(java.util.List.of("products/images/7/a.jpg"));
 
             liveService.delete(1L, SELLER_ID);

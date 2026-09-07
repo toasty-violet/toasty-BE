@@ -1,6 +1,7 @@
 package com.toasty.domain.live.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
@@ -265,6 +266,91 @@ class LiveServiceTest {
             given(liveRepository.findByPublicId("unknown")).willReturn(Optional.empty());
 
             assertThatThrownBy(() -> liveService.getByPublicId("unknown"))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(LiveErrorCode.LIVE_NOT_FOUND);
+        }
+    }
+
+    @Nested
+    @DisplayName("라이브 삭제")
+    class Delete {
+
+        @Test
+        @DisplayName("소유자가 아니면 거부하고 상품을 건드리지 않는다")
+        void 소유자가_아니면_거부한다() {
+            givenLive(1L);
+
+            assertThatThrownBy(() -> liveService.delete(1L, 99L))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(LiveErrorCode.LIVE_FORBIDDEN);
+
+            verify(productService, never()).removeAllForLive(any(), any());
+            verify(liveRepository, never()).delete(any(Live.class));
+            assertThat(streamingClient.deletedChannelArns()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("방송 중인 라이브는 지울 수 없다")
+        void 방송_중에는_지울_수_없다() {
+            Live live = givenLive(1L);
+            live.startBroadcast();
+
+            assertThatThrownBy(() -> liveService.delete(1L, SELLER_ID))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(LiveErrorCode.LIVE_NOT_DELETABLE);
+
+            verify(productService, never()).removeAllForLive(any(), any());
+        }
+
+        @Test
+        @DisplayName("종료된 라이브는 지울 수 없다")
+        void 종료된_라이브는_지울_수_없다() {
+            Live live = givenLive(1L);
+            live.end();
+
+            assertThatThrownBy(() -> liveService.delete(1L, SELLER_ID))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(LiveErrorCode.LIVE_NOT_DELETABLE);
+        }
+
+        @Test
+        @DisplayName("편성 상품과 라이브를 지우고 커밋 뒤에 채널과 사진을 정리한다")
+        void 지우고_커밋_뒤에_정리한다() {
+            Live live = givenLive(1L);
+            given(productService.removeAllForLive(1L, SELLER_ID))
+                    .willReturn(java.util.List.of("products/images/7/a.jpg"));
+
+            liveService.delete(1L, SELLER_ID);
+
+            verify(liveRepository).delete(live);
+            verify(productService)
+                    .deleteImagesQuietly(java.util.List.of("products/images/7/a.jpg"));
+            assertThat(streamingClient.deletedChannelArns())
+                    .containsExactly("arn:aws:ivs:channel/abc");
+        }
+
+        @Test
+        @DisplayName("커밋 뒤 채널 삭제가 실패해도 요청은 성공한다")
+        void 채널_삭제_실패는_요청을_실패시키지_않는다() {
+            givenLive(1L);
+            streamingClient.failOnDelete(
+                    new CustomException(LiveErrorCode.LIVE_CHANNEL_DELETE_FAILED));
+
+            assertThatCode(() -> liveService.delete(1L, SELLER_ID)).doesNotThrowAnyException();
+
+            verify(productService).deleteImagesQuietly(java.util.List.of());
+        }
+
+        @Test
+        @DisplayName("없으면 LIVE_NOT_FOUND다")
+        void 없으면_LIVE_NOT_FOUND다() {
+            given(liveRepository.findById(1L)).willReturn(Optional.empty());
+
+            assertThatThrownBy(() -> liveService.delete(1L, SELLER_ID))
                     .isInstanceOf(CustomException.class)
                     .extracting(e -> ((CustomException) e).getErrorCode())
                     .isEqualTo(LiveErrorCode.LIVE_NOT_FOUND);

@@ -78,7 +78,7 @@ public class UserSeeder {
     // 온보딩을 마친 구매자를 만든다. 배송지는 만들지 않는다
     private boolean seedCustomer(MockCustomer mock, int index) {
         String kakaoId = MOCK_KAKAO_ID_PREFIX + "customer_" + index;
-        if (exists(kakaoId)) {
+        if (exists(kakaoId, mock.nickname())) {
             return false;
         }
         User user = save(kakaoId, Role.CUSTOMER, mock.nickname());
@@ -96,7 +96,7 @@ public class UserSeeder {
     // 온보딩을 마친 판매자를 만든다. 상점명은 users의 nickname에 들어간다
     private boolean seedSeller(String shopName, int index) {
         String kakaoId = MOCK_KAKAO_ID_PREFIX + "seller_" + index;
-        if (exists(kakaoId)) {
+        if (exists(kakaoId, shopName)) {
             return false;
         }
         User user = save(kakaoId, Role.SELLER, shopName);
@@ -116,6 +116,18 @@ public class UserSeeder {
 
     private boolean exists(String kakaoId) {
         return userRepository.findByKakaoId(kakaoId).isPresent();
+    }
+
+    // users.nickname이 UNIQUE라 실제 유저가 쓰는 닉네임과 겹치면 그 목 유저만 건너뛴다
+    private boolean exists(String kakaoId, String nickname) {
+        if (exists(kakaoId)) {
+            return true;
+        }
+        if (userRepository.existsByNickname(nickname)) {
+            log.warn("닉네임 '{}'을(를) 쓰는 유저가 이미 있어 {} 시딩을 건너뛴다", nickname, kakaoId);
+            return true;
+        }
+        return false;
     }
 
     private User save(String kakaoId, Role role, String nickname) {

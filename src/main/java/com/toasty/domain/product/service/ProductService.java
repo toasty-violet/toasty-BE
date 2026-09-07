@@ -7,12 +7,14 @@ import com.toasty.domain.product.entity.ProductCreateCommand;
 import com.toasty.domain.product.entity.ProductImage;
 import com.toasty.domain.product.entity.ProductUpsertCommand;
 import com.toasty.domain.product.exception.ProductErrorCode;
+import com.toasty.domain.product.repository.LiveProductCount;
 import com.toasty.domain.product.repository.LiveProductRepository;
 import com.toasty.domain.product.repository.ProductImageRepository;
 import com.toasty.domain.product.repository.ProductRepository;
 import com.toasty.global.config.S3Properties;
 import com.toasty.global.exception.CustomException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -164,6 +166,18 @@ public class ProductService {
             }
         }
         return obsoleteImageObjectKeys;
+    }
+
+    /** 라이브별 편성 상품 수를 한 번에 센다. 편성이 없는 라이브는 결과에 담기지 않는다. */
+    @Transactional(readOnly = true)
+    public Map<Long, Integer> countScheduledProducts(Collection<Long> liveIds) {
+        if (liveIds.isEmpty()) {
+            return Map.of();
+        }
+        return liveProductRepository.countByLiveIdIn(liveIds).stream()
+                .collect(
+                        Collectors.toMap(
+                                LiveProductCount::getLiveId, LiveProductCount::getProductCount));
     }
 
     /** 라이브가 지워질 때 그 라이브의 편성과 상품을 정리하고, 더 이상 쓰지 않는 사진의 objectKey를 돌려준다. 돌려받은 키는 커밋된 뒤에 지운다. */

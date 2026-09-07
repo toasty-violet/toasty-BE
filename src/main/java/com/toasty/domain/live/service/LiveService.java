@@ -8,8 +8,10 @@ import com.toasty.domain.live.controller.dto.response.LiveCreateResponse;
 import com.toasty.domain.live.controller.dto.response.LiveDetailResponse;
 import com.toasty.domain.live.controller.dto.response.LivePlaybackResponse;
 import com.toasty.domain.live.controller.dto.response.LiveStreamStatusResponse;
+import com.toasty.domain.live.controller.dto.response.SellerLiveTabResponse;
 import com.toasty.domain.live.entity.Live;
 import com.toasty.domain.live.entity.LiveCreateCommand;
+import com.toasty.domain.live.entity.LiveStatus;
 import com.toasty.domain.live.entity.LiveUpdateCommand;
 import com.toasty.domain.live.exception.LiveErrorCode;
 import com.toasty.domain.live.repository.LiveRepository;
@@ -18,6 +20,7 @@ import com.toasty.domain.product.service.ProductService;
 import com.toasty.global.exception.CustomException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -143,6 +146,30 @@ public class LiveService {
         // 여기서 실패해도 되돌리지 않는다. 라이브는 이미 지워졌고 남은 자원은 로그로 추적한다.
         deleteChannelQuietly(channelArn);
         productService.deleteImagesQuietly(obsoleteImageKeys);
+    }
+
+    /** 셀러가 라이브탭에서 자기 라이브 상황을 한 번에 본다. */
+    // 라이브 한 번, 편성 상품 수 한 번으로 끝낸다. 라이브마다 상품을 세면 개수만큼 쿼리가 늘어난다.
+    @Transactional(readOnly = true)
+    public SellerLiveTabResponse getMyLiveTab(Long sellerId) {
+        List<Live> lives =
+                liveRepository.findBySellerIdAndStatusInOrderByScheduledAtAsc(
+                        sellerId, List.of(LiveStatus.LIVE, LiveStatus.READY));
+
+        Live broadcasting = lives.stream().filter(Live::isBroadcasting).findFirst().orElse(null);
+        List<Live> scheduled = lives.stream().filter(live -> !live.isBroadcasting()).toList();
+
+        Map<Long, Integer> productCounts =
+                productService.countScheduledProducts(scheduled.stream().map(Live::getId).toList());
+
+        return SellerLiveTabResponse.of(
+                broadcasting,
+                scheduled.stream()
+                        .map(
+                                live ->
+                                        SellerLiveTabResponse.Scheduled.of(
+                                                live, productCounts.getOrDefault(live.getId(), 0)))
+                        .toList());
     }
 
     @Transactional(readOnly = true)

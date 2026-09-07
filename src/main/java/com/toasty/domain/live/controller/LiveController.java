@@ -10,6 +10,7 @@ import com.toasty.domain.live.controller.dto.response.LiveCreateResponse;
 import com.toasty.domain.live.controller.dto.response.LiveDetailResponse;
 import com.toasty.domain.live.controller.dto.response.LivePlaybackResponse;
 import com.toasty.domain.live.controller.dto.response.LiveStreamStatusResponse;
+import com.toasty.domain.live.controller.dto.response.SellerLiveTabResponse;
 import com.toasty.domain.live.service.LiveService;
 import com.toasty.global.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -45,6 +46,19 @@ public class LiveController {
     public ApiResponse<LiveCreateResponse> create(
             @Valid @RequestBody LiveCreateRequest request, @LoginUser AuthUser seller) {
         return ApiResponse.ok(liveService.create(request.toCommand(seller.sellerId())));
+    }
+
+    @Operation(
+            summary = "셀러 라이브탭 조회",
+            description =
+                    "셀러가 라이브탭에 들어올 때 자기 라이브 상황을 한 번에 가져옵니다. 화면 진입 시 한 번 호출하세요. 지금 방송 중인"
+                            + " 라이브(없으면 null), 예정된 라이브 목록(방송 예정 시각 오름차순), 최신 라이브 현황 세 가지를 함께"
+                            + " 내려줍니다. 종료된 라이브는 담기지 않습니다. latestStat은 주문·시청자 집계가 아직 없어 항상"
+                            + " null이니 값이 없는 화면을 그리세요. 방송 중 라이브의 판매율도 같은 이유로 0으로 나갑니다.")
+    @SellerOnly
+    @GetMapping("/me")
+    public ApiResponse<SellerLiveTabResponse> getMyLiveTab(@LoginUser AuthUser seller) {
+        return ApiResponse.ok(liveService.getMyLiveTab(seller.sellerId()));
     }
 
     @Operation(

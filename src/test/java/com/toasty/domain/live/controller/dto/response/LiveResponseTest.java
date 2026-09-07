@@ -64,7 +64,7 @@ class LiveResponseTest {
     @Test
     @DisplayName("생성 응답에도 송출정보 필드가 없다")
     void 생성_응답에는_송출정보가_없다() {
-        assertThat(LiveCreateResponse.class.getRecordComponents())
+        assertThat(LiveWithProductsResponse.class.getRecordComponents())
                 .extracting(RecordComponent::getName)
                 .doesNotContain("streamKey", "ingestEndpoint", "broadcastCredential");
     }

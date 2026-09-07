@@ -4,10 +4,10 @@ import com.toasty.domain.live.client.LiveStreamingClient;
 import com.toasty.domain.live.client.dto.StreamState;
 import com.toasty.domain.live.client.dto.StreamingChannel;
 import com.toasty.domain.live.controller.dto.response.BroadcastCredentialResponse;
-import com.toasty.domain.live.controller.dto.response.LiveCreateResponse;
 import com.toasty.domain.live.controller.dto.response.LiveDetailResponse;
 import com.toasty.domain.live.controller.dto.response.LivePlaybackResponse;
 import com.toasty.domain.live.controller.dto.response.LiveStreamStatusResponse;
+import com.toasty.domain.live.controller.dto.response.LiveWithProductsResponse;
 import com.toasty.domain.live.controller.dto.response.SellerLiveTabResponse;
 import com.toasty.domain.live.entity.Live;
 import com.toasty.domain.live.entity.LiveCreateCommand;
@@ -44,7 +44,7 @@ public class LiveService {
     // 사진 복사를 채널 생성보다 앞에 두어, 사진이 없는 요청은 채널을 만들기 전에 걸러낸다.
     // 대신 저장은 테이블 4개에 걸치므로 TransactionTemplate으로 묶어, 중간에 실패하면
     // 상품 없는 빈 라이브가 남지 않게 한다. 실패하면 이미 만든 IVS 채널과 복사한 사진을 지운다.
-    public LiveCreateResponse create(LiveCreateCommand command) {
+    public LiveWithProductsResponse create(LiveCreateCommand command) {
         List<String> imageObjectKeys =
                 productService.copyImagesToPermanent(command.sellerId(), command.products());
 
@@ -66,7 +66,7 @@ public class LiveService {
                                         command.sellerId(),
                                         command.products(),
                                         imageObjectKeys);
-                        return LiveCreateResponse.of(live, products);
+                        return LiveWithProductsResponse.of(live, products);
                     });
         } catch (RuntimeException e) {
             if (channel != null) {

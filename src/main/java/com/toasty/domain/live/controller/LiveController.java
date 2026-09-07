@@ -6,10 +6,10 @@ import com.toasty.domain.auth.entity.AuthUser;
 import com.toasty.domain.live.controller.dto.request.LiveCreateRequest;
 import com.toasty.domain.live.controller.dto.request.LiveUpdateRequest;
 import com.toasty.domain.live.controller.dto.response.BroadcastCredentialResponse;
-import com.toasty.domain.live.controller.dto.response.LiveCreateResponse;
 import com.toasty.domain.live.controller.dto.response.LiveDetailResponse;
 import com.toasty.domain.live.controller.dto.response.LivePlaybackResponse;
 import com.toasty.domain.live.controller.dto.response.LiveStreamStatusResponse;
+import com.toasty.domain.live.controller.dto.response.LiveWithProductsResponse;
 import com.toasty.domain.live.controller.dto.response.SellerLiveTabResponse;
 import com.toasty.domain.live.service.LiveService;
 import com.toasty.global.response.ApiResponse;
@@ -43,7 +43,7 @@ public class LiveController {
                             + " API로 받으세요.")
     @SellerOnly
     @PostMapping
-    public ApiResponse<LiveCreateResponse> create(
+    public ApiResponse<LiveWithProductsResponse> create(
             @Valid @RequestBody LiveCreateRequest request, @LoginUser AuthUser seller) {
         return ApiResponse.ok(liveService.create(request.toCommand(seller.sellerId())));
     }

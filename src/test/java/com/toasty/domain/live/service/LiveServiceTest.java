@@ -13,10 +13,10 @@ import static org.mockito.Mockito.verify;
 import com.toasty.domain.live.client.FakeLiveStreamingClient;
 import com.toasty.domain.live.client.dto.StreamState;
 import com.toasty.domain.live.controller.dto.response.BroadcastCredentialResponse;
-import com.toasty.domain.live.controller.dto.response.LiveCreateResponse;
 import com.toasty.domain.live.controller.dto.response.LiveDetailResponse;
 import com.toasty.domain.live.controller.dto.response.LivePlaybackResponse;
 import com.toasty.domain.live.controller.dto.response.LiveStreamStatusResponse;
+import com.toasty.domain.live.controller.dto.response.LiveWithProductsResponse;
 import com.toasty.domain.live.controller.dto.response.SellerLiveTabResponse;
 import com.toasty.domain.live.entity.Live;
 import com.toasty.domain.live.entity.LiveCreateCommand;
@@ -112,7 +112,7 @@ class LiveServiceTest {
         void 채널을_만들고_READY로_저장한다() {
             givenSaveSucceeds();
 
-            LiveCreateResponse response = liveService.create(command());
+            LiveWithProductsResponse response = liveService.create(command());
 
             assertThat(response.live().sellerId()).isEqualTo(SELLER_ID);
             assertThat(response.live().title()).isEqualTo("빈티지 여름옷 라이브");
@@ -141,7 +141,7 @@ class LiveServiceTest {
                                             com.toasty.domain.product.entity.LiveProductStatus
                                                     .SCHEDULED)));
 
-            LiveCreateResponse response = liveService.create(command());
+            LiveWithProductsResponse response = liveService.create(command());
 
             assertThat(response.products()).hasSize(1);
             assertThat(response.products().get(0).name()).isEqualTo("핸드메이드 가죽 벨트");

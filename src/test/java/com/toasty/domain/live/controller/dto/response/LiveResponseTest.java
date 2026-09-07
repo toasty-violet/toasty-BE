@@ -24,6 +24,36 @@ class LiveResponseTest {
     }
 
     @Test
+    @DisplayName("라이브탭 응답은 값이 없어도 키를 남긴다")
+    void 라이브탭_응답은_null_키를_남긴다() throws Exception {
+        String json =
+                objectMapperWithGlobalSetting()
+                        .writeValueAsString(SellerLiveTabResponse.of(null, java.util.List.of()));
+
+        assertThat(json)
+                .contains("\"latestStat\":null")
+                .contains("\"broadcasting\":null")
+                .contains("\"scheduled\":[]");
+    }
+
+    // 전역 설정이 non_null이라, 그대로 두면 화면이 빈 상태를 그릴 근거가 응답에서 사라진다.
+    private static com.fasterxml.jackson.databind.ObjectMapper objectMapperWithGlobalSetting() {
+        com.fasterxml.jackson.databind.ObjectMapper mapper =
+                new com.fasterxml.jackson.databind.ObjectMapper();
+        mapper.setSerializationInclusion(
+                com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL);
+        return mapper;
+    }
+
+    @Test
+    @DisplayName("라이브탭 응답에도 송출정보 필드가 없다")
+    void 라이브탭_응답에는_송출정보가_없다() {
+        assertThat(SellerLiveTabResponse.Broadcasting.class.getRecordComponents())
+                .extracting(RecordComponent::getName)
+                .doesNotContain("streamKey", "ingestEndpoint");
+    }
+
+    @Test
     @DisplayName("공용 상세 응답에는 송출정보 필드가 아예 없다")
     void 상세_응답에는_송출정보_필드가_없다() {
         assertThat(LiveDetailResponse.class.getRecordComponents())

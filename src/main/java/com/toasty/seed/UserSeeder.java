@@ -4,6 +4,7 @@ import com.toasty.domain.customer.entity.Customer;
 import com.toasty.domain.customer.entity.CustomerOnboardingCommand;
 import com.toasty.domain.customer.repository.CustomerRepository;
 import com.toasty.domain.seller.entity.Seller;
+import com.toasty.domain.seller.entity.SellerOnboardingCommand;
 import com.toasty.domain.seller.repository.SellerRepository;
 import com.toasty.domain.user.entity.Role;
 import com.toasty.domain.user.entity.User;
@@ -100,7 +101,18 @@ public class UserSeeder {
             return false;
         }
         User user = save(kakaoId, Role.SELLER, shopName);
-        sellerRepository.save(Seller.createForOnboarding(user.getId()));
+        SellerOnboardingCommand command =
+                new SellerOnboardingCommand(
+                        user.getId(),
+                        shopName,
+                        null,
+                        null,
+                        shopName + " 대표",
+                        MOCK_PHONE_NUMBER_FORMAT.formatted(index),
+                        null,
+                        null,
+                        null);
+        sellerRepository.save(Seller.createForOnboarding(command));
         return true;
     }
 

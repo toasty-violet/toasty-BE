@@ -31,9 +31,9 @@ public class Seller extends BaseTimeEntity {
     @Column(name = "user_id", nullable = false, unique = true)
     private Long userId;
 
-    // 샵 이미지
-    @Column(name = "shop_image_url", length = 500)
-    private String shopImageUrl;
+    // 샵 이미지가 버킷에 저장된 위치. 보여줄 주소는 읽는 쪽에서 조합한다
+    @Column(name = "shop_image_object_key", length = 500)
+    private String shopImageObjectKey;
 
     // 스토어 소개
     @Column(length = 500)
@@ -62,7 +62,7 @@ public class Seller extends BaseTimeEntity {
 
     private Seller(
             Long userId,
-            String shopImageUrl,
+            String shopImageObjectKey,
             String description,
             String sellerName,
             String phoneNumber,
@@ -70,7 +70,7 @@ public class Seller extends BaseTimeEntity {
             Bank bank,
             String accountNumber) {
         this.userId = userId;
-        this.shopImageUrl = shopImageUrl;
+        this.shopImageObjectKey = shopImageObjectKey;
         this.description = description;
         this.sellerName = sellerName;
         this.phoneNumber = phoneNumber;
@@ -80,10 +80,10 @@ public class Seller extends BaseTimeEntity {
     }
 
     /** 온보딩 제출 시점에 만들어진다. 스토어 이름은 users의 nickname이 가진다. */
-    public static Seller createForOnboarding(SellerOnboardingCommand command, String shopImageUrl) {
+    public static Seller createForOnboarding(SellerOnboardingCommand command) {
         return new Seller(
                 command.userId(),
-                shopImageUrl,
+                command.shopImageObjectKey(),
                 command.description(),
                 command.sellerName(),
                 command.phoneNumber(),

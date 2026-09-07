@@ -22,8 +22,7 @@ public class SellerService {
     public Seller createForOnboarding(SellerOnboardingCommand command) {
         requireShopImageOwnedByUser(command.userId(), command.shopImageObjectKey());
         requireBusinessNumberNotRegistered(command.businessNumber());
-        return sellerRepository.save(
-                Seller.createForOnboarding(command, toImageUrl(command.shopImageObjectKey())));
+        return sellerRepository.save(Seller.createForOnboarding(command));
     }
 
     // 업로드 주소를 발급할 때 키에 넣은 유저 번호로, 남의 사진을 자기 스토어에 붙이는 것을 막는다.
@@ -38,9 +37,5 @@ public class SellerService {
         if (businessNumber != null && sellerRepository.existsByBusinessNumber(businessNumber)) {
             throw new CustomException(SellerErrorCode.SELLER_BUSINESS_NUMBER_DUPLICATED);
         }
-    }
-
-    private String toImageUrl(String objectKey) {
-        return s3Properties.publicBaseUrl() + "/" + objectKey;
     }
 }

@@ -16,6 +16,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -62,6 +63,19 @@ public class LiveController {
             @Valid @RequestBody LiveUpdateRequest request,
             @LoginUser AuthUser seller) {
         return ApiResponse.ok(liveService.update(request.toCommand(liveId, seller.sellerId())));
+    }
+
+    @Operation(
+            summary = "라이브 삭제",
+            description =
+                    "셀러가 방송 시작 전에 저장해둔 라이브를 지웁니다. 라이브 목록이나 수정 화면에서 삭제를 누를 때 호출하세요. 편성된 상품과"
+                            + " 사진, 송출 채널까지 함께 지워지고 되돌릴 수 없습니다. 다만 다른 라이브에도 편성된 상품은 남습니다."
+                            + " 방송이 시작된 뒤에는 지난 방송 페이지가 남아야 해서 지울 수 없고, 본인의 라이브만 지울 수 있습니다.")
+    @SellerOnly
+    @DeleteMapping("/{liveId}")
+    public ApiResponse<Void> delete(@PathVariable Long liveId, @LoginUser AuthUser seller) {
+        liveService.delete(liveId, seller.sellerId());
+        return ApiResponse.ok();
     }
 
     @Operation(

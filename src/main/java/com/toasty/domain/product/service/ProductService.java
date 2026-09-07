@@ -171,14 +171,14 @@ public class ProductService {
     public List<String> removeAllForLive(Long liveId, Long sellerId) {
         List<String> obsoleteImageObjectKeys = new ArrayList<>();
         for (LiveProduct liveProduct : liveProductRepository.findByLiveId(liveId)) {
-            findOwnedProduct(liveProduct.getProductId(), sellerId);
+            requireOwnedProduct(liveProduct.getProductId(), sellerId);
             obsoleteImageObjectKeys.addAll(unschedule(liveProduct));
         }
         return obsoleteImageObjectKeys;
     }
 
     // 편성에 남의 상품이 섞여 있으면 지우지도 고치지도 않는다.
-    private Product findOwnedProduct(Long productId, Long sellerId) {
+    private Product requireOwnedProduct(Long productId, Long sellerId) {
         Product product =
                 productRepository
                         .findById(productId)
@@ -212,7 +212,7 @@ public class ProductService {
         if (liveProduct == null) {
             throw new CustomException(ProductErrorCode.PRODUCT_NOT_IN_LIVE);
         }
-        Product product = findOwnedProduct(command.productId(), sellerId);
+        Product product = requireOwnedProduct(command.productId(), sellerId);
         product.update(
                 command.name(), command.price(), command.stockQuantity(), command.description());
         liveProduct.changeDisplayOrder(displayOrder);

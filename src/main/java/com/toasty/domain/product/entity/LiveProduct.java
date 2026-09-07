@@ -44,6 +44,11 @@ public class LiveProduct extends BaseTimeEntity {
         this.displayOrder = displayOrder;
     }
 
+    /** 셀러가 상품 순서를 바꾸면 그 순서를 반영한다. */
+    public void changeDisplayOrder(int displayOrder) {
+        this.displayOrder = displayOrder;
+    }
+
     /** 상품을 라이브에 편성한다. 방송 전이라 목록에만 보이고 아직 구매할 수 없다. */
     public static LiveProduct schedule(Long liveId, Long productId, int displayOrder) {
         return new LiveProduct(liveId, productId, displayOrder);

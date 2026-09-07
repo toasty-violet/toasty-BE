@@ -10,11 +10,13 @@ import com.toasty.domain.live.controller.dto.response.LivePlaybackResponse;
 import com.toasty.domain.live.controller.dto.response.LiveStreamStatusResponse;
 import com.toasty.domain.live.entity.Live;
 import com.toasty.domain.live.entity.LiveCreateCommand;
+import com.toasty.domain.live.entity.LiveUpdateCommand;
 import com.toasty.domain.live.exception.LiveErrorCode;
 import com.toasty.domain.live.repository.LiveRepository;
 import com.toasty.domain.product.controller.dto.response.LiveProductResponse;
 import com.toasty.domain.product.service.ProductService;
 import com.toasty.global.exception.CustomException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -70,6 +72,77 @@ public class LiveService {
             productService.deleteImagesQuietly(imageObjectKeys);
             throw e;
         }
+    }
+
+    /** 셀러가 방송 전에 라이브 내용과 편성 상품을 고친다. */
+    // create와 같은 이유로 사진 복사를 트랜잭션 앞에 둔다. 수정할 수 없는 라이브는 복사 전에 걸러낸다.
+    // 편성에서 빠진 사진은 커밋된 뒤에 지운다. 먼저 지우면 트랜잭션이 깨졌을 때 사진이 사라진다.
+    public LiveDetailResponse update(LiveUpdateCommand command) {
+        requireEditableOwnLive(findById(command.liveId()), command.sellerId());
+
+        List<String> copiedImageKeys =
+                command.products() == null
+                        ? List.of()
+                        : productService.copyNewImagesToPermanent(
+                                command.sellerId(), command.products());
+
+        List<String> obsoleteImageKeys = new ArrayList<>();
+        LiveDetailResponse response;
+        try {
+            response =
+                    transactionTemplate.execute(
+                            status -> {
+                                Live live = findById(command.liveId());
+                                // 사진 복사가 도는 동안 송출이 시작됐을 수 있어 트랜잭션 안에서 다시 본다.
+                                requireEditableOwnLive(live, command.sellerId());
+                                live.update(
+                                        command.title(),
+                                        command.description(),
+                                        command.scheduledAt());
+                                if (command.products() != null) {
+                                    obsoleteImageKeys.addAll(
+                                            productService.replaceForLive(
+                                                    command.liveId(),
+                                                    command.sellerId(),
+                                                    command.products(),
+                                                    copiedImageKeys));
+                                }
+                                return LiveDetailResponse.from(live);
+                            });
+        } catch (RuntimeException e) {
+            productService.deleteImagesQuietly(copiedImageKeys);
+            throw e;
+        }
+
+        // 여기서 실패해도 되돌리지 않는다. 이미 커밋돼서 새 사진은 DB가 참조하고 있다.
+        productService.deleteImagesQuietly(obsoleteImageKeys);
+        return response;
+    }
+
+    /** 셀러가 방송 전에 저장해둔 라이브를 지운다. 편성 상품과 사진, IVS 채널도 함께 정리한다. */
+    // 검사와 삭제를 한 트랜잭션에 두지만, status는 셀러의 송출 상태 폴링으로만 갱신돼서
+    // 폴링 전이면 실제로 송출 중이어도 READY로 보여 지워진다.
+    // IVS 채널과 S3 객체는 커밋된 뒤에 지운다. 먼저 지우면 트랜잭션이 깨졌을 때 되살릴 수 없다.
+    public void delete(Long liveId, Long sellerId) {
+        List<String> obsoleteImageKeys = new ArrayList<>();
+        String channelArn =
+                transactionTemplate.execute(
+                        status -> {
+                            Live live = findById(liveId);
+                            if (!live.isOwnedBy(sellerId)) {
+                                throw new CustomException(LiveErrorCode.LIVE_FORBIDDEN);
+                            }
+                            if (!live.isDeletable()) {
+                                throw new CustomException(LiveErrorCode.LIVE_NOT_DELETABLE);
+                            }
+                            obsoleteImageKeys.addAll(productService.removeAllForLive(liveId));
+                            liveRepository.delete(live);
+                            return live.getIvsChannelArn();
+                        });
+
+        // 여기서 실패해도 되돌리지 않는다. 라이브는 이미 지워졌고 남은 자원은 로그로 추적한다.
+        deleteChannelQuietly(channelArn);
+        productService.deleteImagesQuietly(obsoleteImageKeys);
     }
 
     @Transactional(readOnly = true)
@@ -130,6 +203,15 @@ public class LiveService {
         } catch (DataIntegrityViolationException e) {
             // active_seller_id unique 위반. 이 셀러가 다른 라이브를 이미 방송 중이다.
             throw new CustomException(LiveErrorCode.LIVE_ALREADY_BROADCASTING, e);
+        }
+    }
+
+    private void requireEditableOwnLive(Live live, Long sellerId) {
+        if (!live.isOwnedBy(sellerId)) {
+            throw new CustomException(LiveErrorCode.LIVE_FORBIDDEN);
+        }
+        if (!live.isEditable()) {
+            throw new CustomException(LiveErrorCode.LIVE_NOT_EDITABLE);
         }
     }
 

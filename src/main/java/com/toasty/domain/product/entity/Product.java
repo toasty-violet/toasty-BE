@@ -52,6 +52,14 @@ public class Product extends BaseTimeEntity {
         this.description = description;
     }
 
+    /** 셀러가 라이브 수정 화면에서 상품 내용을 고친다. */
+    public void update(String name, int price, int stockQuantity, String description) {
+        this.name = name;
+        this.price = price;
+        this.stockQuantity = stockQuantity;
+        this.description = description;
+    }
+
     public static Product createForLive(Long sellerId, ProductCreateCommand command) {
         return new Product(
                 sellerId,

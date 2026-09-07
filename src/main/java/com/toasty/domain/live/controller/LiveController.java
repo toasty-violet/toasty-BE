@@ -4,6 +4,7 @@ import com.toasty.domain.auth.annotation.LoginUser;
 import com.toasty.domain.auth.annotation.SellerOnly;
 import com.toasty.domain.auth.entity.AuthUser;
 import com.toasty.domain.live.controller.dto.request.LiveCreateRequest;
+import com.toasty.domain.live.controller.dto.request.LiveUpdateRequest;
 import com.toasty.domain.live.controller.dto.response.BroadcastCredentialResponse;
 import com.toasty.domain.live.controller.dto.response.LiveCreateResponse;
 import com.toasty.domain.live.controller.dto.response.LiveDetailResponse;
@@ -16,6 +17,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -42,6 +44,24 @@ public class LiveController {
     public ApiResponse<LiveCreateResponse> create(
             @Valid @RequestBody LiveCreateRequest request, @LoginUser AuthUser seller) {
         return ApiResponse.ok(liveService.create(request.toCommand(seller.sellerId())));
+    }
+
+    @Operation(
+            summary = "라이브 수정",
+            description =
+                    "셀러가 방송 시작 전에 라이브 내용과 판매할 상품을 고칩니다. 라이브 수정 화면에서 저장을 누를 때 호출하세요. 보낸 필드만"
+                            + " 바뀌고 보내지 않은 필드는 그대로 유지됩니다. products는 부분 수정이 아니라 전체 교체입니다 —"
+                            + " 보낸 배열에 없는 상품은 편성에서 빠지고 삭제되며, 배열 순서가 그대로 노출 순서가 됩니다. 상품을"
+                            + " 건드리지 않으려면 products를 아예 빼고 보내세요. 새 상품은 productId 없이 보내고 사진의"
+                            + " objectKey를 함께 넣으며, 기존 상품의 사진을 바꿀 때만 objectKey를 넣습니다. 방송이 시작된"
+                            + " 뒤에는 시청자가 보고 있는 정보라 수정할 수 없고, 본인의 라이브만 수정할 수 있습니다.")
+    @SellerOnly
+    @PatchMapping("/{liveId}")
+    public ApiResponse<LiveDetailResponse> update(
+            @PathVariable Long liveId,
+            @Valid @RequestBody LiveUpdateRequest request,
+            @LoginUser AuthUser seller) {
+        return ApiResponse.ok(liveService.update(request.toCommand(liveId, seller.sellerId())));
     }
 
     @Operation(

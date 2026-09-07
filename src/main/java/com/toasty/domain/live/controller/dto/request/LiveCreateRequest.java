@@ -22,7 +22,7 @@ public record LiveCreateRequest(
         @Schema(description = "방송 예정 시각. 이 시각에 자동으로 시작되지는 않습니다.", example = "2026-09-05T13:00:00")
                 @NotNull(message = "방송 예정 시각은 필수입니다.") @Future(message = "방송 예정 시각은 현재 이후여야 합니다.") LocalDateTime scheduledAt,
         @Schema(description = "이번 방송에서 판매할 상품")
-                @NotEmpty(message = "판매할 상품을 한 개 이상 등록해주세요.") @Size(max = 20, message = "상품은 한 번에 20개까지 등록할 수 있습니다.") List<@Valid @NotNull Product> products) {
+                @NotEmpty(message = "판매할 상품을 한 개 이상 등록해주세요.") @Size(max = 50, message = "상품은 한 번에 50개까지 등록할 수 있습니다.") List<@Valid @NotNull Product> products) {
 
     public LiveCreateCommand toCommand(Long sellerId) {
         return new LiveCreateCommand(

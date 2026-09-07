@@ -62,6 +62,20 @@ public class LiveController {
     }
 
     @Operation(
+            summary = "라이브 상세 조회",
+            description =
+                    "셀러가 자기 라이브 하나를 편성 상품까지 가져옵니다. 라이브 수정 화면에 들어갈 때 한 번 호출해 폼을 채우세요."
+                            + " 응답이 라이브 생성 응답과 같은 형태라 생성 폼과 같은 방식으로 다루면 됩니다. 상품은 노출 순서대로"
+                            + " 내려갑니다. 방송 중이거나 종료된 라이브도 조회할 수 있고, 고칠 수 있는지는 수정 API가 판단합니다."
+                            + " 본인의 라이브만 조회할 수 있으며 송출정보는 포함하지 않습니다.")
+    @SellerOnly
+    @GetMapping("/{liveId}")
+    public ApiResponse<LiveWithProductsResponse> getMyLive(
+            @PathVariable Long liveId, @LoginUser AuthUser seller) {
+        return ApiResponse.ok(liveService.getMyLive(liveId, seller.sellerId()));
+    }
+
+    @Operation(
             summary = "라이브 수정",
             description =
                     "셀러가 방송 시작 전에 라이브 내용과 판매할 상품을 고칩니다. 라이브 수정 화면에서 저장을 누를 때 호출하세요. 보낸 필드만"

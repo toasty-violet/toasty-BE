@@ -148,6 +148,17 @@ public class LiveService {
         productService.deleteImagesQuietly(obsoleteImageKeys);
     }
 
+    /** 셀러가 라이브 하나를 편성 상품까지 가져온다. 수정 화면을 채우는 데 쓴다. */
+    // 상태로 막지 않는다. 방송 중에도 편성 상품을 읽어야 하고, 고칠 수 있는지는 update가 판단한다.
+    @Transactional(readOnly = true)
+    public LiveWithProductsResponse getMyLive(Long liveId, Long sellerId) {
+        Live live = findById(liveId);
+        if (!live.isOwnedBy(sellerId)) {
+            throw new CustomException(LiveErrorCode.LIVE_FORBIDDEN);
+        }
+        return LiveWithProductsResponse.of(live, productService.findScheduledProducts(liveId));
+    }
+
     /** 셀러가 라이브탭에서 자기 라이브 상황을 한 번에 본다. */
     // 라이브 한 번, 편성 상품 수 한 번으로 끝낸다. 라이브마다 상품을 세면 개수만큼 쿼리가 늘어난다.
     @Transactional(readOnly = true)

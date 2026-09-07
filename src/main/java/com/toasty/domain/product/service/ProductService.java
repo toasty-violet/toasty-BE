@@ -168,6 +168,37 @@ public class ProductService {
         return obsoleteImageObjectKeys;
     }
 
+    /** 라이브에 편성된 상품을 노출 순서대로 돌려준다. 상품과 대표 이미지를 각각 한 번에 묶어 읽는다. */
+    @Transactional(readOnly = true)
+    public List<LiveProductResponse> findScheduledProducts(Long liveId) {
+        List<LiveProduct> scheduled = liveProductRepository.findByLiveIdOrderByDisplayOrder(liveId);
+        if (scheduled.isEmpty()) {
+            return List.of();
+        }
+        List<Long> productIds = scheduled.stream().map(LiveProduct::getProductId).toList();
+
+        Map<Long, Product> products =
+                productRepository.findAllById(productIds).stream()
+                        .collect(Collectors.toMap(Product::getId, Function.identity()));
+        // display_order 순으로 받아 상품마다 첫 번째를 대표로 쓴다.
+        Map<Long, String> mainImageUrls =
+                productImageRepository.findByProductIdInOrderByDisplayOrder(productIds).stream()
+                        .collect(
+                                Collectors.toMap(
+                                        ProductImage::getProductId,
+                                        ProductImage::getImageUrl,
+                                        (main, rest) -> main));
+
+        return scheduled.stream()
+                .map(
+                        liveProduct ->
+                                LiveProductResponse.of(
+                                        products.get(liveProduct.getProductId()),
+                                        liveProduct,
+                                        mainImageUrls.get(liveProduct.getProductId())))
+                .toList();
+    }
+
     /** 라이브별 편성 상품 수를 한 번에 센다. 편성이 없는 라이브는 결과에 담기지 않는다. */
     @Transactional(readOnly = true)
     public Map<Long, Integer> countScheduledProducts(Collection<Long> liveIds) {

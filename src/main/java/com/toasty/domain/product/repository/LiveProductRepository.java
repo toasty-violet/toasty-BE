@@ -11,6 +11,8 @@ public interface LiveProductRepository extends JpaRepository<LiveProduct, Long> 
 
     List<LiveProduct> findByLiveId(Long liveId);
 
+    List<LiveProduct> findByLiveIdOrderByDisplayOrder(Long liveId);
+
     boolean existsByProductIdAndLiveIdNot(Long productId, Long liveId);
 
     @Query(

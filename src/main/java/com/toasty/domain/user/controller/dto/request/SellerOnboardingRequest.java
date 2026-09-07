@@ -28,6 +28,13 @@ public record SellerOnboardingRequest(
         @Schema(description = "정산 계좌번호 — 하이픈 없이 숫자만", example = "333012345678")
                 @NotBlank(message = "계좌번호는 필수입니다.") @Pattern(regexp = "^\\d{1,30}$", message = "계좌번호는 하이픈 없이 숫자만 30자리까지 입력할 수 있습니다.") String accountNumber) {
 
+    // 선택 입력값인 사업자등록번호가 빈 문자열로 들어오면 미입력으로 취급한다.
+    public SellerOnboardingRequest {
+        if (businessNumber != null && businessNumber.isBlank()) {
+            businessNumber = null;
+        }
+    }
+
     public SellerOnboardingCommand toCommand(Long userId) {
         return new SellerOnboardingCommand(
                 userId,

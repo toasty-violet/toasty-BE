@@ -13,4 +13,6 @@ public interface LiveRepository extends JpaRepository<Live, Long> {
 
     List<Live> findBySellerIdAndStatusInOrderByScheduledAtAsc(
             Long sellerId, Collection<LiveStatus> statuses);
+
+    int countBySellerIdAndStatus(Long sellerId, LiveStatus status);
 }

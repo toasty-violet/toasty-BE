@@ -93,6 +93,9 @@ public class Live extends BaseTimeEntity {
                 playbackUrl);
     }
 
+    /** 셀러가 동시에 들고 있을 수 있는 예정 라이브 수. 늘리면 라이브탭이 한 번에 읽는 양도 함께 늘어난다. */
+    public static final int MAX_SCHEDULED = 10;
+
     public boolean isOwnedBy(Long sellerId) {
         return this.sellerId.equals(sellerId);
     }

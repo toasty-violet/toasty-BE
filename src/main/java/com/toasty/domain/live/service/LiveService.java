@@ -45,6 +45,8 @@ public class LiveService {
     // 대신 저장은 테이블 4개에 걸치므로 TransactionTemplate으로 묶어, 중간에 실패하면
     // 상품 없는 빈 라이브가 남지 않게 한다. 실패하면 이미 만든 IVS 채널과 복사한 사진을 지운다.
     public LiveCreateResponse create(LiveCreateCommand command) {
+        requireScheduleRoom(command.sellerId());
+
         List<String> imageObjectKeys =
                 productService.copyImagesToPermanent(command.sellerId(), command.products());
 
@@ -230,6 +232,14 @@ public class LiveService {
         } catch (DataIntegrityViolationException e) {
             // active_seller_id unique 위반. 이 셀러가 다른 라이브를 이미 방송 중이다.
             throw new CustomException(LiveErrorCode.LIVE_ALREADY_BROADCASTING, e);
+        }
+    }
+
+    // 사진 복사와 채널 생성보다 앞에서 끊는다. 뒤에 두면 거부할 요청도 S3와 IVS를 먼저 건드린다.
+    private void requireScheduleRoom(Long sellerId) {
+        if (liveRepository.countBySellerIdAndStatus(sellerId, LiveStatus.READY)
+                >= Live.MAX_SCHEDULED) {
+            throw new CustomException(LiveErrorCode.LIVE_SCHEDULE_LIMIT_EXCEEDED);
         }
     }
 

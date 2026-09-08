@@ -160,11 +160,11 @@ public class ProductService {
             keptProductIds.add(command.productId());
         }
 
-        for (LiveProduct liveProduct : scheduled.values()) {
-            if (!keptProductIds.contains(liveProduct.getProductId())) {
-                obsoleteImageObjectKeys.addAll(unschedule(liveProduct));
-            }
-        }
+        List<LiveProduct> dropped =
+                scheduled.values().stream()
+                        .filter(liveProduct -> !keptProductIds.contains(liveProduct.getProductId()))
+                        .toList();
+        obsoleteImageObjectKeys.addAll(unscheduleAll(liveId, dropped));
         return obsoleteImageObjectKeys;
     }
 
@@ -214,11 +214,7 @@ public class ProductService {
     /** 라이브가 지워질 때 그 라이브의 편성과 상품을 정리하고, 더 이상 쓰지 않는 사진의 objectKey를 돌려준다. 돌려받은 키는 커밋된 뒤에 지운다. */
     @Transactional
     public List<String> removeAllForLive(Long liveId) {
-        List<String> obsoleteImageObjectKeys = new ArrayList<>();
-        for (LiveProduct liveProduct : liveProductRepository.findByLiveId(liveId)) {
-            obsoleteImageObjectKeys.addAll(unschedule(liveProduct));
-        }
-        return obsoleteImageObjectKeys;
+        return unscheduleAll(liveId, liveProductRepository.findByLiveId(liveId));
     }
 
     // 편성에 남의 상품이 섞여 있으면 지우지도 고치지도 않는다.
@@ -280,24 +276,35 @@ public class ProductService {
         return toObjectKey(replaced).map(List::of).orElseGet(List::of);
     }
 
-    // 다른 라이브에도 편성돼 있으면 편성만 푼다. 그 라이브에서 상품이 사라지면 안 된다.
-    private List<String> unschedule(LiveProduct liveProduct) {
-        liveProductRepository.delete(liveProduct);
-        Long productId = liveProduct.getProductId();
-        if (liveProductRepository.existsByProductIdAndLiveIdNot(
-                productId, liveProduct.getLiveId())) {
+    // 다른 라이브에도 편성된 상품은 편성만 푼다. 그 라이브에서 상품이 사라지면 안 된다.
+    // 상품 수와 무관하게 쿼리가 일정하도록 묶고, 삭제 순서로 외래키를 직접 지킨다.
+    private List<String> unscheduleAll(Long liveId, List<LiveProduct> targets) {
+        if (targets.isEmpty()) {
             return List.of();
         }
+        List<Long> productIds = targets.stream().map(LiveProduct::getProductId).toList();
+        Set<Long> keptElsewhere =
+                Set.copyOf(
+                        liveProductRepository.findProductIdsScheduledInOtherLives(
+                                productIds, liveId));
+        List<Long> deletableProductIds =
+                productIds.stream()
+                        .filter(productId -> !keptElsewhere.contains(productId))
+                        .toList();
 
         List<ProductImage> images =
-                productImageRepository.findByProductIdOrderByDisplayOrder(productId);
+                deletableProductIds.isEmpty()
+                        ? List.of()
+                        : productImageRepository.findByProductIdIn(deletableProductIds);
         List<String> objectKeys =
                 images.stream()
                         .map(image -> toObjectKey(image.getImageUrl()))
                         .flatMap(Optional::stream)
                         .toList();
-        productImageRepository.deleteAll(images);
-        productRepository.deleteById(productId);
+
+        liveProductRepository.deleteAllInBatch(targets);
+        productImageRepository.deleteAllInBatch(images);
+        productRepository.deleteAllByIdInBatch(deletableProductIds);
         return objectKeys;
     }
 

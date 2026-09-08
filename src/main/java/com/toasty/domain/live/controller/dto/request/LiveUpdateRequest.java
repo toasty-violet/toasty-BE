@@ -22,7 +22,7 @@ public record LiveUpdateRequest(
         @Schema(description = "방송 예정 시각. 보내지 않으면 그대로 둡니다.", example = "2026-09-05T13:00:00")
                 @Future(message = "방송 예정 시각은 현재 이후여야 합니다.") LocalDateTime scheduledAt,
         @Schema(description = "이번 방송에서 판매할 상품 전체. 보내지 않으면 상품을 그대로 둡니다.")
-                @Size(min = 1, max = 20, message = "상품은 1개 이상 20개까지 등록할 수 있습니다.") List<@Valid @NotNull Product> products) {
+                @Size(min = 1, max = 50, message = "상품은 1개 이상 50개까지 등록할 수 있습니다.") List<@Valid @NotNull Product> products) {
 
     public LiveUpdateCommand toCommand(Long liveId, Long sellerId) {
         return new LiveUpdateCommand(

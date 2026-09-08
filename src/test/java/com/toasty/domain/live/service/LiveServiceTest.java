@@ -172,6 +172,41 @@ class LiveServiceTest {
         }
 
         @Test
+        @DisplayName("예정된 라이브가 상한이면 거부하고 사진도 채널도 건드리지 않는다")
+        void 예정_라이브가_상한이면_거부한다() {
+            given(liveRepository.countBySellerIdAndStatus(SELLER_ID, LiveStatus.READY))
+                    .willReturn(10);
+
+            assertThatThrownBy(() -> liveService.create(command()))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(LiveErrorCode.LIVE_SCHEDULE_LIMIT_EXCEEDED);
+
+            verify(productService, never()).copyImagesToPermanent(any(), any());
+            assertThat(streamingClient.createdChannelNames()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("상한 직전이면 만들 수 있다")
+        void 상한_직전이면_만들_수_있다() {
+            given(liveRepository.countBySellerIdAndStatus(SELLER_ID, LiveStatus.READY))
+                    .willReturn(9);
+            givenSaveSucceeds();
+
+            assertThatCode(() -> liveService.create(command())).doesNotThrowAnyException();
+        }
+
+        @Test
+        @DisplayName("방송 중이거나 끝난 라이브는 상한에 세지 않는다")
+        void 예정된_것만_센다() {
+            givenSaveSucceeds();
+
+            liveService.create(command());
+
+            verify(liveRepository).countBySellerIdAndStatus(SELLER_ID, LiveStatus.READY);
+        }
+
+        @Test
         @DisplayName("채널명은 셀러를 식별할 수 있고 IVS 허용 문자와 길이를 지킨다")
         void 채널명은_IVS_제약을_지킨다() {
             givenSaveSucceeds();
@@ -287,7 +322,7 @@ class LiveServiceTest {
                             java.util.List.of(
                                     liveProduct(31L, "가죽 벨트", 0), liveProduct(32L, "도자기 컵", 1)));
 
-            LiveWithProductsResponse response = liveService.getMyLive(1L, SELLER_ID);
+            LiveWithProductsResponse response = liveService.getMyLiveDetail(1L, SELLER_ID);
 
             assertThat(response.live().title()).isEqualTo("빈티지 여름옷 라이브");
             assertThat(response.products())
@@ -302,7 +337,7 @@ class LiveServiceTest {
         void 소유자가_아니면_거부한다() {
             givenLive(1L);
 
-            assertThatThrownBy(() -> liveService.getMyLive(1L, 99L))
+            assertThatThrownBy(() -> liveService.getMyLiveDetail(1L, 99L))
                     .isInstanceOf(CustomException.class)
                     .extracting(e -> ((CustomException) e).getErrorCode())
                     .isEqualTo(LiveErrorCode.LIVE_FORBIDDEN);
@@ -315,7 +350,7 @@ class LiveServiceTest {
         void 없으면_LIVE_NOT_FOUND다() {
             given(liveRepository.findById(1L)).willReturn(Optional.empty());
 
-            assertThatThrownBy(() -> liveService.getMyLive(1L, SELLER_ID))
+            assertThatThrownBy(() -> liveService.getMyLiveDetail(1L, SELLER_ID))
                     .isInstanceOf(CustomException.class)
                     .extracting(e -> ((CustomException) e).getErrorCode())
                     .isEqualTo(LiveErrorCode.LIVE_NOT_FOUND);
@@ -327,7 +362,7 @@ class LiveServiceTest {
             Live live = givenLive(1L);
             live.end();
 
-            LiveWithProductsResponse response = liveService.getMyLive(1L, SELLER_ID);
+            LiveWithProductsResponse response = liveService.getMyLiveDetail(1L, SELLER_ID);
 
             assertThat(response.live().status()).isEqualTo(LiveStatus.ENDED);
         }
@@ -337,7 +372,7 @@ class LiveServiceTest {
         void 상품이_없으면_비어_있다() {
             givenLive(1L);
 
-            assertThat(liveService.getMyLive(1L, SELLER_ID).products()).isEmpty();
+            assertThat(liveService.getMyLiveDetail(1L, SELLER_ID).products()).isEmpty();
         }
 
         private com.toasty.domain.product.controller.dto.response.LiveProductResponse liveProduct(

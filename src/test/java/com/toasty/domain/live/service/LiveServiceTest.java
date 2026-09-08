@@ -41,6 +41,7 @@ class LiveServiceTest {
     private static final Long SELLER_ID = 7L;
 
     private LiveRepository liveRepository;
+    private com.toasty.domain.live.repository.LiveViewerCountRepository viewerCountRepository;
     private FakeLiveStreamingClient streamingClient;
     private com.toasty.domain.product.service.ProductService productService;
     private com.toasty.domain.user.service.UserService userService;
@@ -50,6 +51,8 @@ class LiveServiceTest {
     @BeforeEach
     void setUp() {
         liveRepository = mock(LiveRepository.class);
+        viewerCountRepository =
+                mock(com.toasty.domain.live.repository.LiveViewerCountRepository.class);
         streamingClient = new FakeLiveStreamingClient();
         productService = mock(com.toasty.domain.product.service.ProductService.class);
         userService = mock(com.toasty.domain.user.service.UserService.class);
@@ -57,6 +60,7 @@ class LiveServiceTest {
         liveService =
                 new LiveService(
                         liveRepository,
+                        viewerCountRepository,
                         streamingClient,
                         productService,
                         userService,
@@ -278,6 +282,7 @@ class LiveServiceTest {
             LiveService service =
                     new LiveService(
                             liveRepository,
+                            viewerCountRepository,
                             failing,
                             productService,
                             userService,
@@ -289,6 +294,48 @@ class LiveServiceTest {
                     .isEqualTo(LiveErrorCode.LIVE_CHANNEL_CREATE_FAILED);
 
             assertThat(failing.deletedChannelArns()).isEmpty();
+        }
+    }
+
+    @Nested
+    @DisplayName("시청자 수 조회")
+    class ViewerCount {
+
+        @Test
+        @DisplayName("캐시에 값이 있으면 라이브도 IVS도 건드리지 않는다")
+        void 캐시를_먼저_쓴다() {
+            given(viewerCountRepository.find("abc")).willReturn(Optional.of(132));
+
+            assertThat(liveService.getViewerCount("abc").viewerCount()).isEqualTo(132);
+
+            verify(liveRepository, never()).findByPublicId(any());
+        }
+
+        @Test
+        @DisplayName("캐시가 비었으면 IVS에서 받아 담아둔다")
+        void 받아서_담아둔다() {
+            Live live = givenLiveByPublicId("abc");
+            live.startBroadcast();
+            given(viewerCountRepository.find("abc")).willReturn(Optional.empty());
+            streamingClient.broadcasting(
+                    com.toasty.domain.live.client.dto.StreamState.BROADCASTING);
+            streamingClient.viewerCount(132);
+
+            assertThat(liveService.getViewerCount("abc").viewerCount()).isEqualTo(132);
+
+            verify(viewerCountRepository).save("abc", 132);
+        }
+
+        @Test
+        @DisplayName("방송 중이 아니면 IVS를 부르지 않고 0이다")
+        void 방송_전에는_0이다() {
+            givenLiveByPublicId("abc");
+            given(viewerCountRepository.find("abc")).willReturn(Optional.empty());
+            streamingClient.viewerCount(132);
+
+            assertThat(liveService.getViewerCount("abc").viewerCount()).isZero();
+
+            verify(viewerCountRepository).save("abc", 0);
         }
     }
 

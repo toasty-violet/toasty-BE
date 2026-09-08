@@ -1,12 +1,13 @@
 package com.toasty.domain.live.service;
 
 import com.toasty.domain.live.client.LiveStreamingClient;
-import com.toasty.domain.live.client.dto.StreamState;
+import com.toasty.domain.live.client.dto.StreamStatus;
 import com.toasty.domain.live.client.dto.StreamingChannel;
 import com.toasty.domain.live.controller.dto.response.BroadcastCredentialResponse;
 import com.toasty.domain.live.controller.dto.response.LiveDetailResponse;
 import com.toasty.domain.live.controller.dto.response.LivePlaybackResponse;
 import com.toasty.domain.live.controller.dto.response.LiveStreamStatusResponse;
+import com.toasty.domain.live.controller.dto.response.LiveViewerCountResponse;
 import com.toasty.domain.live.controller.dto.response.LiveViewerResponse;
 import com.toasty.domain.live.controller.dto.response.LiveWithProductsResponse;
 import com.toasty.domain.live.controller.dto.response.SellerLiveTabResponse;
@@ -16,6 +17,7 @@ import com.toasty.domain.live.entity.LiveStatus;
 import com.toasty.domain.live.entity.LiveUpdateCommand;
 import com.toasty.domain.live.exception.LiveErrorCode;
 import com.toasty.domain.live.repository.LiveRepository;
+import com.toasty.domain.live.repository.LiveViewerCountRepository;
 import com.toasty.domain.product.controller.dto.response.LiveProductResponse;
 import com.toasty.domain.product.controller.dto.response.LiveProductsResponse;
 import com.toasty.domain.product.entity.LiveProductPinCommand;
@@ -40,6 +42,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class LiveService {
 
     private final LiveRepository liveRepository;
+    private final LiveViewerCountRepository liveViewerCountRepository;
     private final LiveStreamingClient liveStreamingClient;
     private final ProductService productService;
     private final UserService userService;
@@ -241,11 +244,32 @@ public class LiveService {
 
     public LiveStreamStatusResponse getStreamStatus(Long liveId, Long sellerId) {
         Live live = requireOwnLive(liveId, sellerId);
-        StreamState streamState = liveStreamingClient.getStreamState(live.getIvsChannelArn());
-        if (streamState == StreamState.BROADCASTING && !live.isEnded()) {
+        StreamStatus streamStatus = liveStreamingClient.getStreamStatus(live.getIvsChannelArn());
+        if (streamStatus.isBroadcasting() && !live.isEnded()) {
             live = syncToBroadcasting(live);
         }
-        return LiveStreamStatusResponse.of(live, streamState);
+        return LiveStreamStatusResponse.of(live, streamStatus.state());
+    }
+
+    /** 시청 화면이 시청자 수를 주기적으로 읽는다. */
+    // 시청자마다 IVS를 부르면 호출이 시청자 수에 비례한다. 캐시가 살아 있는 동안은 라이브 조회도 하지 않는다.
+    // IVS를 부르므로 트랜잭션으로 묶지 않는다.
+    public LiveViewerCountResponse getViewerCount(String publicId) {
+        return liveViewerCountRepository
+                .find(publicId)
+                .map(LiveViewerCountResponse::new)
+                .orElseGet(() -> new LiveViewerCountResponse(fetchAndCacheViewerCount(publicId)));
+    }
+
+    // 방송 중이 아니면 IVS를 부를 이유가 없다. 대기 화면과 지난 방송은 0으로 그린다.
+    private int fetchAndCacheViewerCount(String publicId) {
+        Live live = findByPublicId(publicId);
+        int viewerCount =
+                live.isBroadcasting()
+                        ? liveStreamingClient.getStreamStatus(live.getIvsChannelArn()).viewerCount()
+                        : 0;
+        liveViewerCountRepository.save(publicId, viewerCount);
+        return viewerCount;
     }
 
     @Transactional(readOnly = true)

@@ -10,6 +10,7 @@ import com.toasty.domain.live.controller.dto.response.BroadcastCredentialRespons
 import com.toasty.domain.live.controller.dto.response.LiveDetailResponse;
 import com.toasty.domain.live.controller.dto.response.LivePlaybackResponse;
 import com.toasty.domain.live.controller.dto.response.LiveStreamStatusResponse;
+import com.toasty.domain.live.controller.dto.response.LiveViewerCountResponse;
 import com.toasty.domain.live.controller.dto.response.LiveViewerResponse;
 import com.toasty.domain.live.controller.dto.response.LiveWithProductsResponse;
 import com.toasty.domain.live.controller.dto.response.SellerLiveTabResponse;
@@ -206,6 +207,17 @@ public class LiveController {
     @GetMapping("/public/{publicId}/playback")
     public ApiResponse<LivePlaybackResponse> getPlayback(@PathVariable String publicId) {
         return ApiResponse.ok(liveService.getPlayback(publicId));
+    }
+
+    @Operation(
+            summary = "라이브 시청 - 시청자 수 조회",
+            description =
+                    "시청 화면 상단의 시청자 수를 채웁니다. 값이 계속 바뀌므로 시청 중에 주기적으로 호출하세요."
+                            + " 인증이 필요 없어 비로그인 유저도 호출할 수 있습니다. 방송 중이 아니면 0이 내려갑니다."
+                            + " 서버가 최대 10초 동안 값을 재사용하므로 그보다 자주 불러도 같은 값이 나옵니다.")
+    @GetMapping("/public/{publicId}/viewer-count")
+    public ApiResponse<LiveViewerCountResponse> getViewerCount(@PathVariable String publicId) {
+        return ApiResponse.ok(liveService.getViewerCount(publicId));
     }
 
     @Operation(

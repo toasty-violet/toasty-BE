@@ -244,6 +244,13 @@ public class LiveService {
         return LiveStreamStatusResponse.of(live, streamState);
     }
 
+    /** 시청자가 라이브 화면에서 상품 바와 전체 상품 시트를 채운다. */
+    @Transactional(readOnly = true)
+    public LiveProductsResponse getPublicLiveProducts(String publicId) {
+        Long liveId = findByPublicId(publicId).getId();
+        return productService.findLiveProducts(liveId);
+    }
+
     @Transactional(readOnly = true)
     public LivePlaybackResponse getPlayback(String publicId) {
         return LivePlaybackResponse.from(findByPublicId(publicId));

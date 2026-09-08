@@ -6,9 +6,9 @@ import com.toasty.domain.live.client.dto.StreamingChannel;
 import com.toasty.domain.live.controller.dto.response.BroadcastCredentialResponse;
 import com.toasty.domain.live.controller.dto.response.LiveDetailResponse;
 import com.toasty.domain.live.controller.dto.response.LivePlaybackResponse;
+import com.toasty.domain.live.controller.dto.response.LiveProductsResponse;
 import com.toasty.domain.live.controller.dto.response.LiveStreamStatusResponse;
 import com.toasty.domain.live.controller.dto.response.LiveWithProductsResponse;
-import com.toasty.domain.live.controller.dto.response.SellerLiveProductsResponse;
 import com.toasty.domain.live.controller.dto.response.SellerLiveTabResponse;
 import com.toasty.domain.live.entity.Live;
 import com.toasty.domain.live.entity.LiveCreateCommand;
@@ -164,9 +164,9 @@ public class LiveService {
 
     /** 셀러가 방송 화면에서 전체 상품 시트를 연다. */
     @Transactional(readOnly = true)
-    public SellerLiveProductsResponse getMyLiveProducts(Long liveId, Long sellerId) {
+    public LiveProductsResponse getMyLiveProducts(Long liveId, Long sellerId) {
         requireOwnLive(liveId, sellerId);
-        return new SellerLiveProductsResponse(
+        return new LiveProductsResponse(
                 productService.findCurrentPinnedProductId(liveId),
                 productService.findScheduledProducts(liveId));
     }

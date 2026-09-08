@@ -9,9 +9,9 @@ import com.toasty.domain.live.controller.dto.request.LiveUpdateRequest;
 import com.toasty.domain.live.controller.dto.response.BroadcastCredentialResponse;
 import com.toasty.domain.live.controller.dto.response.LiveDetailResponse;
 import com.toasty.domain.live.controller.dto.response.LivePlaybackResponse;
+import com.toasty.domain.live.controller.dto.response.LiveProductsResponse;
 import com.toasty.domain.live.controller.dto.response.LiveStreamStatusResponse;
 import com.toasty.domain.live.controller.dto.response.LiveWithProductsResponse;
-import com.toasty.domain.live.controller.dto.response.SellerLiveProductsResponse;
 import com.toasty.domain.live.controller.dto.response.SellerLiveTabResponse;
 import com.toasty.domain.live.entity.Live;
 import com.toasty.domain.live.service.LiveService;
@@ -119,7 +119,7 @@ public class LiveController {
                             + " null입니다. 한 번 고정한 상품은 다른 상품을 고정해도 계속 구매 가능한 상태로 남습니다.")
     @SellerOnly
     @GetMapping("/{liveId}/products")
-    public ApiResponse<SellerLiveProductsResponse> getMyLiveProducts(
+    public ApiResponse<LiveProductsResponse> getMyLiveProducts(
             @PathVariable Long liveId, @LoginUser AuthUser seller) {
         return ApiResponse.ok(liveService.getMyLiveProducts(liveId, seller.sellerId()));
     }

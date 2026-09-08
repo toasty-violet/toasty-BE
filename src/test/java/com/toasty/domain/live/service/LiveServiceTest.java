@@ -16,9 +16,9 @@ import com.toasty.domain.live.client.dto.StreamState;
 import com.toasty.domain.live.controller.dto.response.BroadcastCredentialResponse;
 import com.toasty.domain.live.controller.dto.response.LiveDetailResponse;
 import com.toasty.domain.live.controller.dto.response.LivePlaybackResponse;
+import com.toasty.domain.live.controller.dto.response.LiveProductsResponse;
 import com.toasty.domain.live.controller.dto.response.LiveStreamStatusResponse;
 import com.toasty.domain.live.controller.dto.response.LiveWithProductsResponse;
-import com.toasty.domain.live.controller.dto.response.SellerLiveProductsResponse;
 import com.toasty.domain.live.controller.dto.response.SellerLiveTabResponse;
 import com.toasty.domain.live.entity.Live;
 import com.toasty.domain.live.entity.LiveCreateCommand;
@@ -525,7 +525,7 @@ class LiveServiceTest {
                                             com.toasty.domain.product.entity.LiveProductStatus
                                                     .ACTIVE)));
 
-            SellerLiveProductsResponse response = liveService.getMyLiveProducts(1L, SELLER_ID);
+            LiveProductsResponse response = liveService.getMyLiveProducts(1L, SELLER_ID);
 
             assertThat(response.currentPinnedProductId()).isEqualTo(31L);
             assertThat(response.products()).hasSize(1);

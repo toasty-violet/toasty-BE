@@ -14,6 +14,7 @@ import com.toasty.domain.product.repository.ProductImageRepository;
 import com.toasty.domain.product.repository.ProductRepository;
 import com.toasty.global.config.S3Properties;
 import com.toasty.global.exception.CustomException;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
@@ -207,6 +208,45 @@ public class ProductService {
                 .findFirstByLiveIdAndStatusOrderByPinnedAtDesc(liveId, LiveProductStatus.ACTIVE)
                 .map(LiveProduct::getProductId)
                 .orElse(null);
+    }
+
+    /** 셀러가 방송 중에 상품을 고정한다. 이미 고정됐던 상품이면 고정 시각만 새로 찍는다. */
+    // 한 번 고정한 상품은 계속 구매할 수 있다. 다른 상품을 고정해도 되돌리지 않는다.
+    @Transactional
+    public void pinForLive(Long liveId, Long productId, Long sellerId) {
+        LiveProduct liveProduct = requireScheduled(liveId, productId);
+        if (requireOwnedProduct(productId, sellerId).isSoldOut()) {
+            throw new CustomException(ProductErrorCode.PRODUCT_OUT_OF_STOCK);
+        }
+        liveProduct.pin(LocalDateTime.now());
+    }
+
+    /** 셀러가 방송 중에 가격과 재고를 고친다. 상품 추가·삭제는 방송 중에 할 수 없다. */
+    @Transactional
+    public void changePriceAndStockDuringLive(
+            Long liveId, Long productId, Long sellerId, int price, int stockQuantity) {
+        requireScheduled(liveId, productId);
+        requireOwnedProduct(productId, sellerId).changePriceAndStock(price, stockQuantity);
+    }
+
+    /** 방송이 끝나면 편성했던 상품을 일반 판매로 넘긴다. 그래야 방송이 끝난 뒤에도 상품 목록에서 팔린다. */
+    @Transactional
+    public void convertToGeneralSale(Long liveId) {
+        List<Long> productIds =
+                liveProductRepository.findByLiveIdOrderByDisplayOrder(liveId).stream()
+                        .map(LiveProduct::getProductId)
+                        .toList();
+        if (productIds.isEmpty()) {
+            return;
+        }
+        productRepository.findAllById(productIds).forEach(Product::convertToGeneralSale);
+    }
+
+    // 그 라이브에 편성된 상품인지 본다. 남의 라이브 상품 번호로는 통과할 수 없다.
+    private LiveProduct requireScheduled(Long liveId, Long productId) {
+        return liveProductRepository
+                .findByLiveIdAndProductId(liveId, productId)
+                .orElseThrow(() -> new CustomException(ProductErrorCode.PRODUCT_NOT_IN_LIVE));
     }
 
     /** 라이브별 편성 상품 수를 한 번에 센다. 편성이 없는 라이브는 결과에 담기지 않는다. */

@@ -18,6 +18,7 @@ import com.toasty.domain.product.entity.Product;
 import com.toasty.domain.product.entity.ProductCreateCommand;
 import com.toasty.domain.product.entity.ProductImage;
 import com.toasty.domain.product.entity.ProductUpsertCommand;
+import com.toasty.domain.product.entity.SalesType;
 import com.toasty.domain.product.exception.ProductErrorCode;
 import com.toasty.domain.product.repository.LiveProductRepository;
 import com.toasty.domain.product.repository.ProductImageRepository;
@@ -421,6 +422,149 @@ class ProductServiceTest {
                                 productService.deleteImagesQuietly(
                                         List.of("products/images/7/old.jpg")))
                 .doesNotThrowAnyException();
+    }
+
+    @Nested
+    @DisplayName("방송 중 상품 관리")
+    class DuringBroadcast {
+
+        private LiveProduct givenScheduledWithStock(Long productId, int stock) {
+            LiveProduct liveProduct = LiveProduct.schedule(LIVE_ID, productId, 0);
+            Product product =
+                    Product.createForLive(
+                            SELLER_ID,
+                            new ProductCreateCommand("가죽 벨트", 45000, stock, null, "k.jpg"));
+            given(productRepository.findById(productId)).willReturn(java.util.Optional.of(product));
+            given(liveProductRepository.findByLiveIdAndProductId(LIVE_ID, productId))
+                    .willReturn(java.util.Optional.of(liveProduct));
+            return liveProduct;
+        }
+
+        @Test
+        @DisplayName("고정하면 구매 가능해지고 고정 시각이 찍힌다")
+        void 고정하면_구매_가능해진다() {
+            LiveProduct liveProduct = givenScheduledWithStock(31L, 1);
+
+            productService.pinForLive(LIVE_ID, 31L, SELLER_ID);
+
+            assertThat(liveProduct.getStatus()).isEqualTo(LiveProductStatus.ACTIVE);
+            assertThat(liveProduct.getPinnedAt()).isNotNull();
+        }
+
+        @Test
+        @DisplayName("이미 고정했던 상품을 다시 고정하면 구매 가능 상태는 그대로고 시각만 갱신된다")
+        void 다시_고정해도_구매_가능은_유지된다() {
+            LiveProduct liveProduct = givenScheduledWithStock(31L, 1);
+            productService.pinForLive(LIVE_ID, 31L, SELLER_ID);
+            java.time.LocalDateTime first = liveProduct.getPinnedAt();
+
+            productService.pinForLive(LIVE_ID, 31L, SELLER_ID);
+
+            assertThat(liveProduct.getStatus()).isEqualTo(LiveProductStatus.ACTIVE);
+            assertThat(liveProduct.getPinnedAt()).isAfterOrEqualTo(first);
+        }
+
+        @Test
+        @DisplayName("품절된 상품은 고정할 수 없다")
+        void 품절된_상품은_고정할_수_없다() {
+            LiveProduct liveProduct = givenScheduledWithStock(31L, 0);
+
+            assertThatThrownBy(() -> productService.pinForLive(LIVE_ID, 31L, SELLER_ID))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(ProductErrorCode.PRODUCT_OUT_OF_STOCK);
+            assertThat(liveProduct.getStatus()).isEqualTo(LiveProductStatus.SCHEDULED);
+        }
+
+        @Test
+        @DisplayName("이 라이브에 편성되지 않은 상품은 고정할 수 없다")
+        void 편성되지_않은_상품은_고정할_수_없다() {
+            given(liveProductRepository.findByLiveIdAndProductId(LIVE_ID, 99L))
+                    .willReturn(java.util.Optional.empty());
+
+            assertThatThrownBy(() -> productService.pinForLive(LIVE_ID, 99L, SELLER_ID))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(ProductErrorCode.PRODUCT_NOT_IN_LIVE);
+        }
+
+        @Test
+        @DisplayName("가장 최근에 고정한 상품이 현재 고정 상품이다")
+        void 현재_고정_상품을_찾는다() {
+            given(
+                            liveProductRepository.findFirstByLiveIdAndStatusOrderByPinnedAtDesc(
+                                    LIVE_ID, LiveProductStatus.ACTIVE))
+                    .willReturn(java.util.Optional.of(LiveProduct.schedule(LIVE_ID, 31L, 0)));
+
+            assertThat(productService.findCurrentPinnedProductId(LIVE_ID)).isEqualTo(31L);
+        }
+
+        @Test
+        @DisplayName("아무것도 고정하지 않았으면 현재 고정 상품이 없다")
+        void 고정한_적이_없으면_null이다() {
+            given(
+                            liveProductRepository.findFirstByLiveIdAndStatusOrderByPinnedAtDesc(
+                                    LIVE_ID, LiveProductStatus.ACTIVE))
+                    .willReturn(java.util.Optional.empty());
+
+            assertThat(productService.findCurrentPinnedProductId(LIVE_ID)).isNull();
+        }
+
+        @Test
+        @DisplayName("방송 중에는 가격과 재고만 바뀐다")
+        void 가격과_재고를_고친다() {
+            givenScheduledWithStock(31L, 1);
+
+            productService.changePriceAndStockDuringLive(LIVE_ID, 31L, SELLER_ID, 39000, 5);
+
+            Product product = productRepository.findById(31L).orElseThrow();
+            assertThat(product.getPrice()).isEqualTo(39000);
+            assertThat(product.getStockQuantity()).isEqualTo(5);
+            assertThat(product.getName()).isEqualTo("가죽 벨트");
+        }
+
+        @Test
+        @DisplayName("이 라이브에 편성되지 않은 상품은 가격을 고칠 수 없다")
+        void 편성되지_않은_상품은_고칠_수_없다() {
+            given(liveProductRepository.findByLiveIdAndProductId(LIVE_ID, 99L))
+                    .willReturn(java.util.Optional.empty());
+
+            assertThatThrownBy(
+                            () ->
+                                    productService.changePriceAndStockDuringLive(
+                                            LIVE_ID, 99L, SELLER_ID, 32000, 3))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(ProductErrorCode.PRODUCT_NOT_IN_LIVE);
+
+            verify(productRepository, never()).findById(any());
+        }
+
+        @Test
+        @DisplayName("방송이 끝나면 편성 상품이 일반 판매로 넘어간다")
+        void 종료하면_일반_판매가_된다() {
+            Product product =
+                    Product.createForLive(
+                            SELLER_ID, new ProductCreateCommand("가죽 벨트", 45000, 1, null, "k.jpg"));
+            given(liveProductRepository.findByLiveIdOrderByDisplayOrder(LIVE_ID))
+                    .willReturn(List.of(LiveProduct.schedule(LIVE_ID, 31L, 0)));
+            given(productRepository.findAllById(List.of(31L))).willReturn(List.of(product));
+
+            productService.convertToGeneralSale(LIVE_ID);
+
+            assertThat(product.getSalesType()).isEqualTo(SalesType.GENERAL);
+        }
+
+        @Test
+        @DisplayName("편성 상품이 없으면 아무것도 조회하지 않는다")
+        void 편성이_없으면_넘어간다() {
+            given(liveProductRepository.findByLiveIdOrderByDisplayOrder(LIVE_ID))
+                    .willReturn(List.of());
+
+            productService.convertToGeneralSale(LIVE_ID);
+
+            verify(productRepository, never()).findAllById(any());
+        }
     }
 
     @Nested

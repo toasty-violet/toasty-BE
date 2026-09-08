@@ -11,6 +11,8 @@ import org.springframework.data.repository.query.Param;
 
 public interface LiveProductRepository extends JpaRepository<LiveProduct, Long> {
 
+    Optional<LiveProduct> findByLiveIdAndProductId(Long liveId, Long productId);
+
     /** 방송 화면에 "현재 고정 상품"으로 띄울 편성. 고정된 적이 없으면 비어 있다. */
     Optional<LiveProduct> findFirstByLiveIdAndStatusOrderByPinnedAtDesc(
             Long liveId, LiveProductStatus status);

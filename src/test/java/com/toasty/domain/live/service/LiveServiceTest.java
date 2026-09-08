@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
@@ -541,6 +542,82 @@ class LiveServiceTest {
                     .isEqualTo(LiveErrorCode.LIVE_FORBIDDEN);
 
             verify(productService, never()).findScheduledProducts(any());
+        }
+
+        @Test
+        @DisplayName("방송 중일 때만 고정할 수 있다")
+        void 방송_전에는_고정할_수_없다() {
+            givenLive(1L);
+
+            assertThatThrownBy(() -> liveService.pinProduct(1L, 31L, SELLER_ID))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(LiveErrorCode.LIVE_NOT_BROADCASTING);
+
+            verify(productService, never()).pinForLive(any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("방송 중이면 고정을 상품 쪽에 넘긴다")
+        void 방송_중이면_고정한다() {
+            Live live = givenLive(1L);
+            live.startBroadcast();
+
+            liveService.pinProduct(1L, 31L, SELLER_ID);
+
+            verify(productService).pinForLive(1L, 31L, SELLER_ID);
+        }
+
+        @Test
+        @DisplayName("소유자가 아니면 고정할 수 없다")
+        void 남의_라이브는_고정할_수_없다() {
+            Live live = givenLive(1L);
+            live.startBroadcast();
+
+            assertThatThrownBy(() -> liveService.pinProduct(1L, 31L, 99L))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(LiveErrorCode.LIVE_FORBIDDEN);
+        }
+
+        @Test
+        @DisplayName("방송 중일 때만 가격·재고를 고칠 수 있다")
+        void 방송_전에는_수정할_수_없다() {
+            givenLive(1L);
+
+            assertThatThrownBy(
+                            () ->
+                                    liveService.changeProductPriceAndStock(
+                                            1L, 31L, SELLER_ID, 39000, 5))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(LiveErrorCode.LIVE_NOT_BROADCASTING);
+
+            verify(productService, never())
+                    .changePriceAndStockDuringLive(any(), any(), any(), anyInt(), anyInt());
+        }
+
+        @Test
+        @DisplayName("방송을 끝내면 편성 상품이 일반 판매로 넘어간다")
+        void 종료하면_일반_판매로_넘긴다() {
+            Live live = givenLive(1L);
+            live.startBroadcast();
+            givenSaveSucceeds();
+
+            liveService.end(1L, SELLER_ID);
+
+            verify(productService).convertToGeneralSale(1L);
+        }
+
+        @Test
+        @DisplayName("이미 끝난 라이브를 다시 종료해도 상품을 두 번 넘기지 않는다")
+        void 이미_끝났으면_넘기지_않는다() {
+            Live live = givenLive(1L);
+            live.end();
+
+            liveService.end(1L, SELLER_ID);
+
+            verify(productService, never()).convertToGeneralSale(any());
         }
     }
 

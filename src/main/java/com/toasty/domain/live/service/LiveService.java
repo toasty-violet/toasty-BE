@@ -171,12 +171,35 @@ public class LiveService {
                 productService.findScheduledProducts(liveId));
     }
 
+    /** 셀러가 방송 중에 소개할 상품을 고정한다. */
+    @Transactional
+    public void pinProduct(Long liveId, Long productId, Long sellerId) {
+        requireBroadcastingOwnLive(liveId, sellerId);
+        productService.pinForLive(liveId, productId, sellerId);
+    }
+
+    /** 셀러가 방송 중에 상품의 가격과 재고를 고친다. */
+    @Transactional
+    public void changeProductPriceAndStock(
+            Long liveId, Long productId, Long sellerId, int price, int stockQuantity) {
+        requireBroadcastingOwnLive(liveId, sellerId);
+        productService.changePriceAndStockDuringLive(
+                liveId, productId, sellerId, price, stockQuantity);
+    }
+
     private Live requireOwnLive(Long liveId, Long sellerId) {
         Live live = findById(liveId);
         if (!live.isOwnedBy(sellerId)) {
             throw new CustomException(LiveErrorCode.LIVE_FORBIDDEN);
         }
         return live;
+    }
+
+    // lives.status는 스트림 상태 조회가 LIVE로 옮긴다. 방송 화면이 그 조회를 하고 있어야 고정과 수정이 열린다.
+    private void requireBroadcastingOwnLive(Long liveId, Long sellerId) {
+        if (!requireOwnLive(liveId, sellerId).isBroadcasting()) {
+            throw new CustomException(LiveErrorCode.LIVE_NOT_BROADCASTING);
+        }
     }
 
     /** 셀러가 라이브탭에서 자기 라이브 상황을 한 번에 본다. */
@@ -248,6 +271,8 @@ public class LiveService {
         liveStreamingClient.stopStream(live.getIvsChannelArn());
         liveStreamingClient.deleteStreamKeys(live.getIvsChannelArn());
         live.end();
+        // 방송이 끝나면 편성 상품이 일반 판매로 넘어간다. 그래야 방송이 끝난 뒤에도 계속 팔린다.
+        productService.convertToGeneralSale(liveId);
         return LiveDetailResponse.from(liveRepository.save(live));
     }
 

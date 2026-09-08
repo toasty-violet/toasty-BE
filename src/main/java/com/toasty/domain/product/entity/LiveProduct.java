@@ -49,6 +49,14 @@ public class LiveProduct extends BaseTimeEntity {
         this.displayOrder = displayOrder;
     }
 
+    /** 셀러가 방송 중에 이 상품을 소개하기 시작한다. */
+    // 한 번 고정하면 구매 가능 상태는 되돌아가지 않는다. 다른 상품을 고정해도 이 상품은 계속 팔린다.
+    // 고정 시각만 갱신되어 방송 화면의 "현재 고정 상품" 표시가 옮겨간다.
+    public void pin(LocalDateTime pinnedAt) {
+        this.status = LiveProductStatus.ACTIVE;
+        this.pinnedAt = pinnedAt;
+    }
+
     /** 셀러가 상품 순서를 바꾸면 그 순서를 반영한다. */
     public void changeDisplayOrder(int displayOrder) {
         this.displayOrder = displayOrder;

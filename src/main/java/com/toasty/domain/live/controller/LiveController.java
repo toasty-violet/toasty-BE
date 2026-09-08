@@ -10,6 +10,7 @@ import com.toasty.domain.live.controller.dto.response.BroadcastCredentialRespons
 import com.toasty.domain.live.controller.dto.response.LiveDetailResponse;
 import com.toasty.domain.live.controller.dto.response.LivePlaybackResponse;
 import com.toasty.domain.live.controller.dto.response.LiveStreamStatusResponse;
+import com.toasty.domain.live.controller.dto.response.LiveViewerResponse;
 import com.toasty.domain.live.controller.dto.response.LiveWithProductsResponse;
 import com.toasty.domain.live.controller.dto.response.SellerLiveTabResponse;
 import com.toasty.domain.live.entity.Live;
@@ -213,9 +214,10 @@ public class LiveController {
                     "유저가 라이브 시청 화면에 들어올 때 필요한 정보를 가져옵니다. 시청 화면 진입 시 한 번 호출하세요. 인증이 필요 없어"
                             + " 비로그인 유저도 호출할 수 있습니다. 경로의 publicId는 라이브 생성 응답으로 받은 값이며, 순차 liveId를"
                             + " 시청 화면 URL에 노출하지 않기 위해 공개 조회는 이 값만 받습니다. 재생에 필요한 playbackUrl과 라이브"
-                            + " 정보를 반환하며, 송출정보(streamKey, ingestEndpoint)는 포함하지 않습니다.")
+                            + " 정보, 화면 상단에 띄울 셀러의 스토어 이름과 대표 이미지를 반환합니다. 시청자 수는 계속 바뀌므로 여기 담지"
+                            + " 않고 시청자 수 조회에서 따로 받습니다. 송출정보(streamKey, ingestEndpoint)는 포함하지 않습니다.")
     @GetMapping("/public/{publicId}")
-    public ApiResponse<LiveDetailResponse> getByPublicId(@PathVariable String publicId) {
+    public ApiResponse<LiveViewerResponse> getByPublicId(@PathVariable String publicId) {
         return ApiResponse.ok(liveService.getByPublicId(publicId));
     }
 }

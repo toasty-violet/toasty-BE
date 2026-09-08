@@ -16,6 +16,7 @@ import com.toasty.domain.live.controller.dto.response.BroadcastCredentialRespons
 import com.toasty.domain.live.controller.dto.response.LiveDetailResponse;
 import com.toasty.domain.live.controller.dto.response.LivePlaybackResponse;
 import com.toasty.domain.live.controller.dto.response.LiveStreamStatusResponse;
+import com.toasty.domain.live.controller.dto.response.LiveViewerResponse;
 import com.toasty.domain.live.controller.dto.response.LiveWithProductsResponse;
 import com.toasty.domain.live.controller.dto.response.SellerLiveTabResponse;
 import com.toasty.domain.live.entity.Live;
@@ -25,6 +26,7 @@ import com.toasty.domain.live.entity.LiveUpdateCommand;
 import com.toasty.domain.live.exception.LiveErrorCode;
 import com.toasty.domain.live.repository.LiveRepository;
 import com.toasty.domain.product.controller.dto.response.LiveProductsResponse;
+import com.toasty.domain.seller.controller.dto.response.SellerProfileResponse;
 import com.toasty.global.exception.CustomException;
 import java.util.List;
 import java.util.Optional;
@@ -41,6 +43,7 @@ class LiveServiceTest {
     private LiveRepository liveRepository;
     private FakeLiveStreamingClient streamingClient;
     private com.toasty.domain.product.service.ProductService productService;
+    private com.toasty.domain.user.service.UserService userService;
     private org.springframework.transaction.support.TransactionTemplate transactionTemplate;
     private LiveService liveService;
 
@@ -49,10 +52,15 @@ class LiveServiceTest {
         liveRepository = mock(LiveRepository.class);
         streamingClient = new FakeLiveStreamingClient();
         productService = mock(com.toasty.domain.product.service.ProductService.class);
+        userService = mock(com.toasty.domain.user.service.UserService.class);
         transactionTemplate = passthroughTransaction();
         liveService =
                 new LiveService(
-                        liveRepository, streamingClient, productService, transactionTemplate);
+                        liveRepository,
+                        streamingClient,
+                        productService,
+                        userService,
+                        transactionTemplate);
     }
 
     // 콜백을 그대로 실행하는 가짜 트랜잭션. 단위 테스트에는 커밋·롤백이 필요 없다.
@@ -269,7 +277,11 @@ class LiveServiceTest {
                     };
             LiveService service =
                     new LiveService(
-                            liveRepository, failing, productService, passthroughTransaction());
+                            liveRepository,
+                            failing,
+                            productService,
+                            userService,
+                            passthroughTransaction());
 
             assertThatThrownBy(() -> service.create(command()))
                     .isInstanceOf(CustomException.class)
@@ -285,17 +297,24 @@ class LiveServiceTest {
     class GetByPublicId {
 
         @Test
-        @DisplayName("publicId로 조회해 저장된 값을 그대로 반환한다")
+        @DisplayName("publicId로 조회해 저장된 값과 셀러 정보를 함께 반환한다")
         void 저장된_값을_반환한다() {
             givenLiveByPublicId("public-id");
+            given(userService.findSellerProfile(SELLER_ID))
+                    .willReturn(
+                            new SellerProfileResponse(
+                                    SELLER_ID, "토스티샵", "https://cdn.example.com/shop.jpg"));
 
-            LiveDetailResponse response = liveService.getByPublicId("public-id");
+            LiveViewerResponse response = liveService.getByPublicId("public-id");
 
-            assertThat(response.sellerId()).isEqualTo(SELLER_ID);
             assertThat(response.playbackUrl()).isEqualTo("https://playback/abc.m3u8");
             assertThat(response.status()).isEqualTo(LiveStatus.READY);
             assertThat(response.startedAt()).isNull();
             assertThat(response.endedAt()).isNull();
+            assertThat(response.seller().sellerId()).isEqualTo(SELLER_ID);
+            assertThat(response.seller().shopName()).isEqualTo("토스티샵");
+            assertThat(response.seller().shopImageUrl())
+                    .isEqualTo("https://cdn.example.com/shop.jpg");
         }
 
         @Test

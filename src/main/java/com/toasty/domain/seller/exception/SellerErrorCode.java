@@ -8,6 +8,7 @@ import org.springframework.http.HttpStatus;
 @Getter
 @RequiredArgsConstructor
 public enum SellerErrorCode implements ErrorCode {
+    SELLER_NOT_FOUND(HttpStatus.NOT_FOUND, "SELLER_NOT_FOUND", "판매자를 찾을 수 없습니다."),
     SELLER_UPLOAD_URL_ISSUE_FAILED(
             HttpStatus.BAD_GATEWAY, "SELLER_UPLOAD_URL_ISSUE_FAILED", "사진 업로드 주소 발급에 실패했습니다."),
 

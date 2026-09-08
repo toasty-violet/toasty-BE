@@ -3,7 +3,9 @@ package com.toasty.domain.user.service;
 import com.toasty.domain.auth.entity.AuthUser;
 import com.toasty.domain.customer.entity.CustomerOnboardingCommand;
 import com.toasty.domain.customer.service.CustomerService;
+import com.toasty.domain.seller.controller.dto.response.SellerProfileResponse;
 import com.toasty.domain.seller.entity.SellerOnboardingCommand;
+import com.toasty.domain.seller.entity.SellerShop;
 import com.toasty.domain.seller.service.SellerService;
 import com.toasty.domain.user.controller.dto.response.NicknameSearchResponse;
 import com.toasty.domain.user.controller.dto.response.UserMeResponse;
@@ -49,6 +51,19 @@ public class UserService {
                 .findById(userId)
                 .map(UserMeResponse::from)
                 .orElseThrow(() -> new CustomException(UserErrorCode.USER_NOT_FOUND));
+    }
+
+    /** 다른 도메인이 화면에 셀러를 표시할 때 쓴다. */
+    // 스토어 이름은 users.nickname에, 대표 이미지는 sellers에 있어 둘을 합쳐 준다.
+    @Transactional(readOnly = true)
+    public SellerProfileResponse findSellerProfile(Long sellerId) {
+        SellerShop shop = sellerService.findShop(sellerId);
+        String shopName =
+                userRepository
+                        .findById(shop.userId())
+                        .map(User::getNickname)
+                        .orElseThrow(() -> new CustomException(UserErrorCode.USER_NOT_FOUND));
+        return new SellerProfileResponse(shop.sellerId(), shopName, shop.shopImageUrl());
     }
 
     /** 입력한 닉네임을 이미 다른 유저가 쓰고 있는지 확인한다. 자기 닉네임을 그대로 둔 경우는 중복으로 보지 않는다. */

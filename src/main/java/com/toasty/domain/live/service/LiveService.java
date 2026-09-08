@@ -7,6 +7,7 @@ import com.toasty.domain.live.controller.dto.response.BroadcastCredentialRespons
 import com.toasty.domain.live.controller.dto.response.LiveDetailResponse;
 import com.toasty.domain.live.controller.dto.response.LivePlaybackResponse;
 import com.toasty.domain.live.controller.dto.response.LiveStreamStatusResponse;
+import com.toasty.domain.live.controller.dto.response.LiveViewerResponse;
 import com.toasty.domain.live.controller.dto.response.LiveWithProductsResponse;
 import com.toasty.domain.live.controller.dto.response.SellerLiveTabResponse;
 import com.toasty.domain.live.entity.Live;
@@ -20,6 +21,7 @@ import com.toasty.domain.product.controller.dto.response.LiveProductsResponse;
 import com.toasty.domain.product.entity.LiveProductPinCommand;
 import com.toasty.domain.product.entity.LiveProductUpdateCommand;
 import com.toasty.domain.product.service.ProductService;
+import com.toasty.domain.user.service.UserService;
 import com.toasty.global.exception.CustomException;
 import java.util.ArrayList;
 import java.util.List;
@@ -40,6 +42,7 @@ public class LiveService {
     private final LiveRepository liveRepository;
     private final LiveStreamingClient liveStreamingClient;
     private final ProductService productService;
+    private final UserService userService;
     private final TransactionTemplate transactionTemplate;
 
     /** 셀러가 라이브를 개설하면서 이번 방송에서 팔 상품을 함께 등록한다. */
@@ -222,8 +225,9 @@ public class LiveService {
     }
 
     @Transactional(readOnly = true)
-    public LiveDetailResponse getByPublicId(String publicId) {
-        return LiveDetailResponse.from(findByPublicId(publicId));
+    public LiveViewerResponse getByPublicId(String publicId) {
+        Live live = findByPublicId(publicId);
+        return LiveViewerResponse.of(live, userService.findSellerProfile(live.getSellerId()));
     }
 
     public BroadcastCredentialResponse reissueCredential(Long liveId, Long sellerId) {

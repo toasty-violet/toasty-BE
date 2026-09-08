@@ -9,6 +9,7 @@ import com.toasty.domain.auth.repository.RefreshTokenRepository;
 import com.toasty.domain.auth.token.JwtTokenProvider;
 import com.toasty.domain.auth.token.RefreshTokenGenerator;
 import com.toasty.domain.user.entity.User;
+import com.toasty.domain.user.entity.UserWithdrawCommand;
 import com.toasty.domain.user.service.UserService;
 import com.toasty.global.config.RefreshTokenProperties;
 import com.toasty.global.exception.CustomException;
@@ -64,6 +65,13 @@ public class AuthService {
                 jwtTokenProvider.generateAccessToken(userId),
                 issueRefreshToken(userId),
                 refreshTokenProperties.expiration());
+    }
+
+    // 유저를 탈퇴 처리하고 모든 기기를 로그아웃시킨다.
+    // 토큰을 먼저 지우면 탈퇴가 실패했을 때 멀쩡한 유저만 로그아웃되므로 탈퇴가 끝난 뒤에 지운다.
+    public void withdraw(UserWithdrawCommand command) {
+        userService.withdraw(command);
+        refreshTokenRepository.deleteAllByUserId(command.userId());
     }
 
     // 이 기기의 리프레시 토큰만 지운다. 토큰이 없거나 저장소에 없어도 예외 없이 통과시킨다

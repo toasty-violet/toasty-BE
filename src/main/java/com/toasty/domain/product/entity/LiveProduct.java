@@ -9,6 +9,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -36,6 +37,10 @@ public class LiveProduct extends BaseTimeEntity {
 
     @Column(name = "display_order", nullable = false)
     private int displayOrder;
+
+    // 마지막으로 고정한 시각. 고정된 적이 없으면 null이다.
+    @Column(name = "pinned_at")
+    private LocalDateTime pinnedAt;
 
     private LiveProduct(Long liveId, Long productId, int displayOrder) {
         this.liveId = liveId;

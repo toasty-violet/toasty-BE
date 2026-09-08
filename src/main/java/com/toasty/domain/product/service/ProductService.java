@@ -2,6 +2,7 @@ package com.toasty.domain.product.service;
 
 import com.toasty.domain.product.controller.dto.response.LiveProductResponse;
 import com.toasty.domain.product.entity.LiveProduct;
+import com.toasty.domain.product.entity.LiveProductStatus;
 import com.toasty.domain.product.entity.Product;
 import com.toasty.domain.product.entity.ProductCreateCommand;
 import com.toasty.domain.product.entity.ProductImage;
@@ -197,6 +198,15 @@ public class ProductService {
                                         liveProduct,
                                         mainImageUrls.get(liveProduct.getProductId())))
                 .toList();
+    }
+
+    /** 방송 화면에 "현재 고정 상품"으로 띄울 상품. 고정된 적이 없으면 null이다. */
+    @Transactional(readOnly = true)
+    public Long findCurrentPinnedProductId(Long liveId) {
+        return liveProductRepository
+                .findFirstByLiveIdAndStatusOrderByPinnedAtDesc(liveId, LiveProductStatus.ACTIVE)
+                .map(LiveProduct::getProductId)
+                .orElse(null);
     }
 
     /** 라이브별 편성 상품 수를 한 번에 센다. 편성이 없는 라이브는 결과에 담기지 않는다. */

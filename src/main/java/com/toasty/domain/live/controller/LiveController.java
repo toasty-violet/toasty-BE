@@ -10,6 +10,7 @@ import com.toasty.domain.live.controller.dto.response.LiveDetailResponse;
 import com.toasty.domain.live.controller.dto.response.LivePlaybackResponse;
 import com.toasty.domain.live.controller.dto.response.LiveStreamStatusResponse;
 import com.toasty.domain.live.controller.dto.response.LiveWithProductsResponse;
+import com.toasty.domain.live.controller.dto.response.SellerLiveProductsResponse;
 import com.toasty.domain.live.controller.dto.response.SellerLiveTabResponse;
 import com.toasty.domain.live.entity.Live;
 import com.toasty.domain.live.service.LiveService;
@@ -49,6 +50,19 @@ public class LiveController {
     public ApiResponse<LiveWithProductsResponse> create(
             @Valid @RequestBody LiveCreateRequest request, @LoginUser AuthUser seller) {
         return ApiResponse.ok(liveService.create(request.toCommand(seller.sellerId())));
+    }
+
+    @Operation(
+            summary = "방송 중 전체 상품 조회",
+            description =
+                    "셀러가 방송 화면에서 전체 상품 시트를 열 때 호출합니다. 편성한 순서대로 내려가고,"
+                            + " currentPinnedProductId가 지금 소개 중인 상품입니다. 아직 아무것도 고정하지 않았으면"
+                            + " null입니다. 한 번 고정한 상품은 다른 상품을 고정해도 계속 구매 가능한 상태로 남습니다.")
+    @SellerOnly
+    @GetMapping("/{liveId}/products")
+    public ApiResponse<SellerLiveProductsResponse> getMyLiveProducts(
+            @PathVariable Long liveId, @LoginUser AuthUser seller) {
+        return ApiResponse.ok(liveService.getMyLiveProducts(liveId, seller.sellerId()));
     }
 
     @Operation(

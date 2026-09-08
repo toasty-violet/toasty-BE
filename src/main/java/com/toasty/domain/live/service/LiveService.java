@@ -8,6 +8,7 @@ import com.toasty.domain.live.controller.dto.response.LiveDetailResponse;
 import com.toasty.domain.live.controller.dto.response.LivePlaybackResponse;
 import com.toasty.domain.live.controller.dto.response.LiveStreamStatusResponse;
 import com.toasty.domain.live.controller.dto.response.LiveWithProductsResponse;
+import com.toasty.domain.live.controller.dto.response.SellerLiveProductsResponse;
 import com.toasty.domain.live.controller.dto.response.SellerLiveTabResponse;
 import com.toasty.domain.live.entity.Live;
 import com.toasty.domain.live.entity.LiveCreateCommand;
@@ -159,6 +160,23 @@ public class LiveService {
             throw new CustomException(LiveErrorCode.LIVE_FORBIDDEN);
         }
         return LiveWithProductsResponse.of(live, productService.findScheduledProducts(liveId));
+    }
+
+    /** 셀러가 방송 화면에서 전체 상품 시트를 연다. */
+    @Transactional(readOnly = true)
+    public SellerLiveProductsResponse getMyLiveProducts(Long liveId, Long sellerId) {
+        requireOwnLive(liveId, sellerId);
+        return new SellerLiveProductsResponse(
+                productService.findCurrentPinnedProductId(liveId),
+                productService.findScheduledProducts(liveId));
+    }
+
+    private Live requireOwnLive(Long liveId, Long sellerId) {
+        Live live = findById(liveId);
+        if (!live.isOwnedBy(sellerId)) {
+            throw new CustomException(LiveErrorCode.LIVE_FORBIDDEN);
+        }
+        return live;
     }
 
     /** 셀러가 라이브탭에서 자기 라이브 상황을 한 번에 본다. */

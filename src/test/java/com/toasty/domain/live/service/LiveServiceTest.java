@@ -17,6 +17,7 @@ import com.toasty.domain.live.controller.dto.response.LiveDetailResponse;
 import com.toasty.domain.live.controller.dto.response.LivePlaybackResponse;
 import com.toasty.domain.live.controller.dto.response.LiveStreamStatusResponse;
 import com.toasty.domain.live.controller.dto.response.LiveWithProductsResponse;
+import com.toasty.domain.live.controller.dto.response.SellerLiveProductsResponse;
 import com.toasty.domain.live.controller.dto.response.SellerLiveTabResponse;
 import com.toasty.domain.live.entity.Live;
 import com.toasty.domain.live.entity.LiveCreateCommand;
@@ -496,6 +497,50 @@ class LiveServiceTest {
                             eq(SELLER_ID), captor.capture());
             assertThat(captor.getValue())
                     .containsExactlyInAnyOrder(LiveStatus.LIVE, LiveStatus.READY);
+        }
+    }
+
+    @Nested
+    @DisplayName("방송 중 상품 관리")
+    class LiveProducts {
+
+        @Test
+        @DisplayName("전체 상품 시트에 현재 고정 상품과 편성 목록을 함께 준다")
+        void 시트를_채운다() {
+            givenLive(1L);
+            given(productService.findCurrentPinnedProductId(1L)).willReturn(31L);
+            given(productService.findScheduledProducts(1L))
+                    .willReturn(
+                            java.util.List.of(
+                                    new com.toasty.domain.product.controller.dto.response
+                                            .LiveProductResponse(
+                                            31L,
+                                            41L,
+                                            "가죽 벨트",
+                                            45000,
+                                            1,
+                                            "https://cdn.example.com/a.jpg",
+                                            0,
+                                            com.toasty.domain.product.entity.LiveProductStatus
+                                                    .ACTIVE)));
+
+            SellerLiveProductsResponse response = liveService.getMyLiveProducts(1L, SELLER_ID);
+
+            assertThat(response.currentPinnedProductId()).isEqualTo(31L);
+            assertThat(response.products()).hasSize(1);
+        }
+
+        @Test
+        @DisplayName("소유자가 아니면 시트를 볼 수 없다")
+        void 소유자가_아니면_거부한다() {
+            givenLive(1L);
+
+            assertThatThrownBy(() -> liveService.getMyLiveProducts(1L, 99L))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(LiveErrorCode.LIVE_FORBIDDEN);
+
+            verify(productService, never()).findScheduledProducts(any());
         }
     }
 

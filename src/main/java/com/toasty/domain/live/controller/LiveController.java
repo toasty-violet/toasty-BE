@@ -221,6 +221,21 @@ public class LiveController {
     }
 
     @Operation(
+            summary = "라이브 시청 - 상품 조회",
+            description =
+                    "시청자가 라이브 화면의 하단 상품 바와 전체 상품 시트를 채울 때 호출합니다. 시청 화면 진입 시 한 번 부르고,"
+                            + " 셀러가 상품을 바꿀 수 있으므로 시트를 열 때마다 다시 부르세요. 인증이 필요 없어 비로그인 유저도"
+                            + " 호출할 수 있습니다. 편성한 순서대로 내려가며 전체 상품 개수는 products의 길이입니다."
+                            + " currentPinnedProductId가 지금 소개 중인 상품이고, 아직 아무것도 고정하지 않았으면 null입니다."
+                            + " 구매 버튼은 status가 ACTIVE인 상품에만 열리고, 그중 stockQuantity가 0이면 품절로 막습니다."
+                            + " status가 SCHEDULED면 아직 소개 전이라 버튼을 띄우지 않습니다. 방송 전이나 종료 뒤에도"
+                            + " 호출할 수 있고, 방송 전에는 모든 상품이 SCHEDULED라 구매 버튼이 열리지 않습니다.")
+    @GetMapping("/public/{publicId}/products")
+    public ApiResponse<LiveProductsResponse> getPublicLiveProducts(@PathVariable String publicId) {
+        return ApiResponse.ok(liveService.getPublicLiveProducts(publicId));
+    }
+
+    @Operation(
             summary = "라이브 시청",
             description =
                     "유저가 라이브 시청 화면에 들어올 때 필요한 정보를 가져옵니다. 시청 화면 진입 시 한 번 호출하세요. 인증이 필요 없어"

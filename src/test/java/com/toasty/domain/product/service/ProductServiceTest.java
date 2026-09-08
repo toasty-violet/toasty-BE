@@ -270,6 +270,7 @@ class ProductServiceTest {
                 .willReturn(images);
         given(productImageRepository.findByProductIdOrderByDisplayOrder(productId))
                 .willReturn(images);
+        given(productImageRepository.findByProductIdIn(List.of(productId))).willReturn(images);
         return liveProduct;
     }
 
@@ -291,8 +292,8 @@ class ProductServiceTest {
                             java.util.Collections.singletonList("products/images/7/b.jpg"));
 
             assertThat(obsolete).containsExactly("products/images/7/old.jpg");
-            verify(liveProductRepository).delete(dropped);
-            verify(productRepository).deleteById(31L);
+            verify(liveProductRepository).deleteAllInBatch(List.of(dropped));
+            verify(productRepository).deleteAllByIdInBatch(List.of(31L));
         }
 
         @Test
@@ -300,15 +301,15 @@ class ProductServiceTest {
         void 다른_라이브의_상품은_남긴다() {
             LiveProduct dropped = givenScheduled(31L, SELLER_ID, "products/images/7/old.jpg");
             given(liveProductRepository.findByLiveId(LIVE_ID)).willReturn(List.of(dropped));
-            given(liveProductRepository.existsByProductIdAndLiveIdNot(31L, LIVE_ID))
-                    .willReturn(true);
+            given(liveProductRepository.findProductIdsScheduledInOtherLives(List.of(31L), LIVE_ID))
+                    .willReturn(List.of(31L));
 
             List<String> obsolete =
                     productService.replaceForLive(LIVE_ID, SELLER_ID, List.of(), List.of());
 
             assertThat(obsolete).isEmpty();
-            verify(liveProductRepository).delete(dropped);
-            verify(productRepository, never()).deleteById(any());
+            verify(liveProductRepository).deleteAllInBatch(List.of(dropped));
+            verify(productRepository).deleteAllByIdInBatch(List.of());
         }
 
         @Test
@@ -428,8 +429,8 @@ class ProductServiceTest {
             List<String> obsolete = productService.removeAllForLive(LIVE_ID);
 
             assertThat(obsolete).containsExactly("products/images/7/a.jpg");
-            verify(liveProductRepository).delete(first);
-            verify(productRepository).deleteById(31L);
+            verify(liveProductRepository).deleteAllInBatch(List.of(first));
+            verify(productRepository).deleteAllByIdInBatch(List.of(31L));
         }
 
         @Test
@@ -437,14 +438,14 @@ class ProductServiceTest {
         void 다른_라이브의_상품은_남긴다() {
             LiveProduct first = givenScheduled(31L, SELLER_ID, "products/images/7/a.jpg");
             given(liveProductRepository.findByLiveId(LIVE_ID)).willReturn(List.of(first));
-            given(liveProductRepository.existsByProductIdAndLiveIdNot(31L, LIVE_ID))
-                    .willReturn(true);
+            given(liveProductRepository.findProductIdsScheduledInOtherLives(List.of(31L), LIVE_ID))
+                    .willReturn(List.of(31L));
 
             List<String> obsolete = productService.removeAllForLive(LIVE_ID);
 
             assertThat(obsolete).isEmpty();
-            verify(liveProductRepository).delete(first);
-            verify(productRepository, never()).deleteById(any());
+            verify(liveProductRepository).deleteAllInBatch(List.of(first));
+            verify(productRepository).deleteAllByIdInBatch(List.of());
         }
 
         @Test

@@ -124,18 +124,18 @@ public class UserService {
     }
 
     /**
-     * 유저를 탈퇴 처리한다. 유저 행은 남고, 판매자·구매자 정보도 거래 상대방 식별을 위해 남는다.
+     * 유저를 탈퇴 처리하고, 카카오 연결을 끊는 데 쓰도록 지워지기 전의 카카오 회원번호를 돌려준다.
      *
-     * <p>배송지는 지우고, 판매자라면 아직 끝나지 않은 라이브를 먼저 정리한다.
+     * <p>유저 행은 남고, 판매자·구매자 정보도 거래 상대방 식별을 위해 남는다. 배송지는 지우고, 판매자라면 아직 끝나지 않은 라이브를 먼저 정리한다.
      */
     // 라이브 정리는 IVS와 S3를 부르느라 수 초가 걸려, DB 커넥션을 잡지 않도록 트랜잭션 밖에 둔다.
     // 라이브만 정리되고 탈퇴가 실패하면 유저는 그대로 남으므로 다시 요청하면 된다.
-    public void withdraw(UserWithdrawCommand command) {
+    public String withdraw(UserWithdrawCommand command) {
         if (command.sellerId() != null) {
             liveService.cleanUpForSellerWithdrawal(command.sellerId());
         }
 
-        transactionTemplate.executeWithoutResult(
+        return transactionTemplate.execute(
                 status -> {
                     User user =
                             userRepository
@@ -148,7 +148,10 @@ public class UserService {
                     if (command.customerId() != null) {
                         customerService.deleteAddresses(command.customerId());
                     }
+                    // 탈퇴 처리가 회원번호를 지우므로 먼저 빼둔다.
+                    String kakaoId = user.getKakaoId();
                     user.withdraw();
+                    return kakaoId;
                 });
     }
 }

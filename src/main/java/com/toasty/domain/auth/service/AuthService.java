@@ -15,8 +15,10 @@ import com.toasty.global.config.RefreshTokenProperties;
 import com.toasty.global.exception.CustomException;
 import java.time.Duration;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthService {
@@ -67,11 +69,22 @@ public class AuthService {
                 refreshTokenProperties.expiration());
     }
 
-    // 유저를 탈퇴 처리하고 모든 기기를 로그아웃시킨다.
+    // 유저를 탈퇴 처리하고 모든 기기를 로그아웃시킨 뒤 카카오 연결까지 끊는다.
     // 토큰을 먼저 지우면 탈퇴가 실패했을 때 멀쩡한 유저만 로그아웃되므로 탈퇴가 끝난 뒤에 지운다.
     public void withdraw(UserWithdrawCommand command) {
-        userService.withdraw(command);
+        String kakaoId = userService.withdraw(command);
         refreshTokenRepository.deleteAllByUserId(command.userId());
+        unlinkKakaoQuietly(kakaoId);
+    }
+
+    // 연결 끊기가 실패해도 탈퇴를 되돌리지 않는다. 카카오가 응답하지 않는다고 탈퇴를 막을 수는 없다.
+    // 남은 연결은 로그로 추적한다. 이 회원은 다시 로그인할 때 동의 화면 없이 새 유저로 가입된다.
+    private void unlinkKakaoQuietly(String kakaoId) {
+        try {
+            kakaoAuthClient.unlink(kakaoId);
+        } catch (RuntimeException e) {
+            log.error("카카오 연결 끊기 실패. 앱 연결이 남았다 - kakaoId={}", kakaoId, e);
+        }
     }
 
     // 이 기기의 리프레시 토큰만 지운다. 토큰이 없거나 저장소에 없어도 예외 없이 통과시킨다

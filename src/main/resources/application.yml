@@ -78,6 +78,8 @@ kakao:
   client-secret: ${KAKAO_CLIENT_SECRET:}
   # 프론트가 인가 요청에 쓴 값과 정확히 같아야 토큰 교환이 통과한다.
   redirect-uri: ${KAKAO_REDIRECT_URI:http://localhost:3000/auth/login/callback}
+  # 탈퇴 시 카카오 연결을 끊는 데 쓴다. 모든 회원에 대해 동작하는 키라 프론트로 내보내면 안 된다.
+  admin-key: ${KAKAO_ADMIN_KEY}
 
 auth:
   # 만료시간은 30m, 14d 처럼 단위를 붙여 쓴다.

@@ -1,7 +1,6 @@
-package com.toasty.domain.live.controller.dto.response;
+package com.toasty.domain.product.controller.dto.response;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.toasty.domain.product.controller.dto.response.LiveProductResponse;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 

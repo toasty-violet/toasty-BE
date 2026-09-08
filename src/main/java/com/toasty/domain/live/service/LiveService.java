@@ -6,7 +6,6 @@ import com.toasty.domain.live.client.dto.StreamingChannel;
 import com.toasty.domain.live.controller.dto.response.BroadcastCredentialResponse;
 import com.toasty.domain.live.controller.dto.response.LiveDetailResponse;
 import com.toasty.domain.live.controller.dto.response.LivePlaybackResponse;
-import com.toasty.domain.live.controller.dto.response.LiveProductsResponse;
 import com.toasty.domain.live.controller.dto.response.LiveStreamStatusResponse;
 import com.toasty.domain.live.controller.dto.response.LiveWithProductsResponse;
 import com.toasty.domain.live.controller.dto.response.SellerLiveTabResponse;
@@ -17,6 +16,7 @@ import com.toasty.domain.live.entity.LiveUpdateCommand;
 import com.toasty.domain.live.exception.LiveErrorCode;
 import com.toasty.domain.live.repository.LiveRepository;
 import com.toasty.domain.product.controller.dto.response.LiveProductResponse;
+import com.toasty.domain.product.controller.dto.response.LiveProductsResponse;
 import com.toasty.domain.product.service.ProductService;
 import com.toasty.global.exception.CustomException;
 import java.util.ArrayList;
@@ -166,9 +166,7 @@ public class LiveService {
     @Transactional(readOnly = true)
     public LiveProductsResponse getMyLiveProducts(Long liveId, Long sellerId) {
         requireOwnLive(liveId, sellerId);
-        return new LiveProductsResponse(
-                productService.findCurrentPinnedProductId(liveId),
-                productService.findScheduledProducts(liveId));
+        return productService.findLiveProducts(liveId);
     }
 
     /** 셀러가 방송 중에 소개할 상품을 고정한다. */

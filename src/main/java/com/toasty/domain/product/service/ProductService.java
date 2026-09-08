@@ -1,8 +1,8 @@
 package com.toasty.domain.product.service;
 
 import com.toasty.domain.product.controller.dto.response.LiveProductResponse;
+import com.toasty.domain.product.controller.dto.response.LiveProductsResponse;
 import com.toasty.domain.product.entity.LiveProduct;
-import com.toasty.domain.product.entity.LiveProductStatus;
 import com.toasty.domain.product.entity.Product;
 import com.toasty.domain.product.entity.ProductCreateCommand;
 import com.toasty.domain.product.entity.ProductImage;
@@ -17,6 +17,7 @@ import com.toasty.global.exception.CustomException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -173,7 +174,26 @@ public class ProductService {
     /** 라이브에 편성된 상품을 노출 순서대로 돌려준다. 상품과 대표 이미지를 각각 한 번에 묶어 읽는다. */
     @Transactional(readOnly = true)
     public List<LiveProductResponse> findScheduledProducts(Long liveId) {
+        return toResponses(liveProductRepository.findByLiveIdOrderByDisplayOrder(liveId));
+    }
+
+    /** 방송 화면의 전체 상품 시트를 채운다. */
+    // 현재 고정 상품은 편성 목록에 이미 딸려 온 pinnedAt으로 고른다. 같은 테이블을 두 번 읽지 않는다.
+    @Transactional(readOnly = true)
+    public LiveProductsResponse findLiveProducts(Long liveId) {
         List<LiveProduct> scheduled = liveProductRepository.findByLiveIdOrderByDisplayOrder(liveId);
+        return new LiveProductsResponse(currentPinnedProductId(scheduled), toResponses(scheduled));
+    }
+
+    private Long currentPinnedProductId(List<LiveProduct> scheduled) {
+        return scheduled.stream()
+                .filter(liveProduct -> liveProduct.getPinnedAt() != null)
+                .max(Comparator.comparing(LiveProduct::getPinnedAt))
+                .map(LiveProduct::getProductId)
+                .orElse(null);
+    }
+
+    private List<LiveProductResponse> toResponses(List<LiveProduct> scheduled) {
         if (scheduled.isEmpty()) {
             return List.of();
         }
@@ -199,15 +219,6 @@ public class ProductService {
                                         liveProduct,
                                         mainImageUrls.get(liveProduct.getProductId())))
                 .toList();
-    }
-
-    /** 방송 화면에 "현재 고정 상품"으로 띄울 상품. 고정된 적이 없으면 null이다. */
-    @Transactional(readOnly = true)
-    public Long findCurrentPinnedProductId(Long liveId) {
-        return liveProductRepository
-                .findFirstByLiveIdAndStatusOrderByPinnedAtDesc(liveId, LiveProductStatus.ACTIVE)
-                .map(LiveProduct::getProductId)
-                .orElse(null);
     }
 
     /** 셀러가 방송 중에 상품을 고정한다. 이미 고정됐던 상품이면 고정 시각만 새로 찍는다. */

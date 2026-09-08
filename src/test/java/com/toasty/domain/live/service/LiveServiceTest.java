@@ -16,7 +16,6 @@ import com.toasty.domain.live.client.dto.StreamState;
 import com.toasty.domain.live.controller.dto.response.BroadcastCredentialResponse;
 import com.toasty.domain.live.controller.dto.response.LiveDetailResponse;
 import com.toasty.domain.live.controller.dto.response.LivePlaybackResponse;
-import com.toasty.domain.live.controller.dto.response.LiveProductsResponse;
 import com.toasty.domain.live.controller.dto.response.LiveStreamStatusResponse;
 import com.toasty.domain.live.controller.dto.response.LiveWithProductsResponse;
 import com.toasty.domain.live.controller.dto.response.SellerLiveTabResponse;
@@ -26,6 +25,7 @@ import com.toasty.domain.live.entity.LiveStatus;
 import com.toasty.domain.live.entity.LiveUpdateCommand;
 import com.toasty.domain.live.exception.LiveErrorCode;
 import com.toasty.domain.live.repository.LiveRepository;
+import com.toasty.domain.product.controller.dto.response.LiveProductsResponse;
 import com.toasty.global.exception.CustomException;
 import java.util.List;
 import java.util.Optional;
@@ -506,29 +506,13 @@ class LiveServiceTest {
     class LiveProducts {
 
         @Test
-        @DisplayName("전체 상품 시트에 현재 고정 상품과 편성 목록을 함께 준다")
+        @DisplayName("전체 상품 시트를 상품 쪽에서 받아 그대로 준다")
         void 시트를_채운다() {
             givenLive(1L);
-            given(productService.findCurrentPinnedProductId(1L)).willReturn(31L);
-            given(productService.findScheduledProducts(1L))
-                    .willReturn(
-                            java.util.List.of(
-                                    new com.toasty.domain.product.controller.dto.response
-                                            .LiveProductResponse(
-                                            31L,
-                                            41L,
-                                            "가죽 벨트",
-                                            45000,
-                                            1,
-                                            "https://cdn.example.com/a.jpg",
-                                            0,
-                                            com.toasty.domain.product.entity.LiveProductStatus
-                                                    .ACTIVE)));
+            LiveProductsResponse sheet = new LiveProductsResponse(31L, java.util.List.of());
+            given(productService.findLiveProducts(1L)).willReturn(sheet);
 
-            LiveProductsResponse response = liveService.getMyLiveProducts(1L, SELLER_ID);
-
-            assertThat(response.currentPinnedProductId()).isEqualTo(31L);
-            assertThat(response.products()).hasSize(1);
+            assertThat(liveService.getMyLiveProducts(1L, SELLER_ID)).isSameAs(sheet);
         }
 
         @Test
@@ -541,7 +525,7 @@ class LiveServiceTest {
                     .extracting(e -> ((CustomException) e).getErrorCode())
                     .isEqualTo(LiveErrorCode.LIVE_FORBIDDEN);
 
-            verify(productService, never()).findScheduledProducts(any());
+            verify(productService, never()).findLiveProducts(any());
         }
 
         @Test

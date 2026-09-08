@@ -12,6 +12,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.toasty.domain.product.controller.dto.response.LiveProductResponse;
+import com.toasty.domain.product.controller.dto.response.LiveProductsResponse;
 import com.toasty.domain.product.entity.LiveProduct;
 import com.toasty.domain.product.entity.LiveProductStatus;
 import com.toasty.domain.product.entity.Product;
@@ -488,25 +489,58 @@ class ProductServiceTest {
         }
 
         @Test
-        @DisplayName("가장 최근에 고정한 상품이 현재 고정 상품이다")
-        void 현재_고정_상품을_찾는다() {
-            given(
-                            liveProductRepository.findFirstByLiveIdAndStatusOrderByPinnedAtDesc(
-                                    LIVE_ID, LiveProductStatus.ACTIVE))
-                    .willReturn(java.util.Optional.of(LiveProduct.schedule(LIVE_ID, 31L, 0)));
+        @DisplayName("시트를 만들 때 가장 최근에 고정한 상품을 현재 고정 상품으로 고른다")
+        void 현재_고정_상품을_고른다() {
+            LiveProduct first = LiveProduct.schedule(LIVE_ID, 31L, 0);
+            LiveProduct second = LiveProduct.schedule(LIVE_ID, 32L, 1);
+            first.pin(java.time.LocalDateTime.now().minusMinutes(5));
+            second.pin(java.time.LocalDateTime.now());
+            givenSheet(List.of(first, second));
 
-            assertThat(productService.findCurrentPinnedProductId(LIVE_ID)).isEqualTo(31L);
+            assertThat(productService.findLiveProducts(LIVE_ID).currentPinnedProductId())
+                    .isEqualTo(32L);
         }
 
         @Test
         @DisplayName("아무것도 고정하지 않았으면 현재 고정 상품이 없다")
         void 고정한_적이_없으면_null이다() {
-            given(
-                            liveProductRepository.findFirstByLiveIdAndStatusOrderByPinnedAtDesc(
-                                    LIVE_ID, LiveProductStatus.ACTIVE))
-                    .willReturn(java.util.Optional.empty());
+            givenSheet(List.of(LiveProduct.schedule(LIVE_ID, 31L, 0)));
 
-            assertThat(productService.findCurrentPinnedProductId(LIVE_ID)).isNull();
+            LiveProductsResponse response = productService.findLiveProducts(LIVE_ID);
+
+            assertThat(response.currentPinnedProductId()).isNull();
+            assertThat(response.products()).hasSize(1);
+        }
+
+        @Test
+        @DisplayName("편성이 없으면 현재 고정 상품도 목록도 비어 있다")
+        void 편성이_없으면_비어_있다() {
+            givenSheet(List.of());
+
+            LiveProductsResponse response = productService.findLiveProducts(LIVE_ID);
+
+            assertThat(response.currentPinnedProductId()).isNull();
+            assertThat(response.products()).isEmpty();
+        }
+
+        private void givenSheet(List<LiveProduct> scheduled) {
+            given(liveProductRepository.findByLiveIdOrderByDisplayOrder(LIVE_ID))
+                    .willReturn(scheduled);
+            given(productRepository.findAllById(any()))
+                    .willReturn(
+                            scheduled.stream()
+                                    .map(lp -> product(lp.getProductId(), "가죽 벨트"))
+                                    .toList());
+            given(productImageRepository.findByProductIdInOrderByDisplayOrder(any()))
+                    .willReturn(List.of());
+        }
+
+        private Product product(Long productId, String name) {
+            Product product =
+                    Product.createForLive(
+                            SELLER_ID, new ProductCreateCommand(name, 45000, 1, null, "k.jpg"));
+            org.springframework.test.util.ReflectionTestUtils.setField(product, "id", productId);
+            return product;
         }
 
         @Test

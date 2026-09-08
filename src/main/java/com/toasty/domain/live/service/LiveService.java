@@ -271,8 +271,6 @@ public class LiveService {
         liveStreamingClient.stopStream(live.getIvsChannelArn());
         liveStreamingClient.deleteStreamKeys(live.getIvsChannelArn());
         live.end();
-        // 방송이 끝나면 편성 상품이 일반 판매로 넘어간다. 그래야 방송이 끝난 뒤에도 계속 팔린다.
-        productService.convertToGeneralSale(liveId);
         return LiveDetailResponse.from(liveRepository.save(live));
     }
 

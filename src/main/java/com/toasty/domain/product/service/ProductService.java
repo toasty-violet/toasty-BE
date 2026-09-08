@@ -229,19 +229,6 @@ public class ProductService {
         requireOwnedProduct(productId, sellerId).changePriceAndStock(price, stockQuantity);
     }
 
-    /** 방송이 끝나면 편성했던 상품을 일반 판매로 넘긴다. 그래야 방송이 끝난 뒤에도 상품 목록에서 팔린다. */
-    @Transactional
-    public void convertToGeneralSale(Long liveId) {
-        List<Long> productIds =
-                liveProductRepository.findByLiveIdOrderByDisplayOrder(liveId).stream()
-                        .map(LiveProduct::getProductId)
-                        .toList();
-        if (productIds.isEmpty()) {
-            return;
-        }
-        productRepository.findAllById(productIds).forEach(Product::convertToGeneralSale);
-    }
-
     // 그 라이브에 편성된 상품인지 본다. 남의 라이브 상품 번호로는 통과할 수 없다.
     private LiveProduct requireScheduled(Long liveId, Long productId) {
         return liveProductRepository

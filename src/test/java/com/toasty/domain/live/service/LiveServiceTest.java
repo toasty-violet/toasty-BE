@@ -596,29 +596,6 @@ class LiveServiceTest {
             verify(productService, never())
                     .changePriceAndStockDuringLive(any(), any(), any(), anyInt(), anyInt());
         }
-
-        @Test
-        @DisplayName("방송을 끝내면 편성 상품이 일반 판매로 넘어간다")
-        void 종료하면_일반_판매로_넘긴다() {
-            Live live = givenLive(1L);
-            live.startBroadcast();
-            givenSaveSucceeds();
-
-            liveService.end(1L, SELLER_ID);
-
-            verify(productService).convertToGeneralSale(1L);
-        }
-
-        @Test
-        @DisplayName("이미 끝난 라이브를 다시 종료해도 상품을 두 번 넘기지 않는다")
-        void 이미_끝났으면_넘기지_않는다() {
-            Live live = givenLive(1L);
-            live.end();
-
-            liveService.end(1L, SELLER_ID);
-
-            verify(productService, never()).convertToGeneralSale(any());
-        }
     }
 
     @Nested

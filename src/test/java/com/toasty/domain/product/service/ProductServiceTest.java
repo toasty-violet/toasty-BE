@@ -18,7 +18,6 @@ import com.toasty.domain.product.entity.Product;
 import com.toasty.domain.product.entity.ProductCreateCommand;
 import com.toasty.domain.product.entity.ProductImage;
 import com.toasty.domain.product.entity.ProductUpsertCommand;
-import com.toasty.domain.product.entity.SalesType;
 import com.toasty.domain.product.exception.ProductErrorCode;
 import com.toasty.domain.product.repository.LiveProductRepository;
 import com.toasty.domain.product.repository.ProductImageRepository;
@@ -538,32 +537,6 @@ class ProductServiceTest {
                     .isEqualTo(ProductErrorCode.PRODUCT_NOT_IN_LIVE);
 
             verify(productRepository, never()).findById(any());
-        }
-
-        @Test
-        @DisplayName("방송이 끝나면 편성 상품이 일반 판매로 넘어간다")
-        void 종료하면_일반_판매가_된다() {
-            Product product =
-                    Product.createForLive(
-                            SELLER_ID, new ProductCreateCommand("가죽 벨트", 45000, 1, null, "k.jpg"));
-            given(liveProductRepository.findByLiveIdOrderByDisplayOrder(LIVE_ID))
-                    .willReturn(List.of(LiveProduct.schedule(LIVE_ID, 31L, 0)));
-            given(productRepository.findAllById(List.of(31L))).willReturn(List.of(product));
-
-            productService.convertToGeneralSale(LIVE_ID);
-
-            assertThat(product.getSalesType()).isEqualTo(SalesType.GENERAL);
-        }
-
-        @Test
-        @DisplayName("편성 상품이 없으면 아무것도 조회하지 않는다")
-        void 편성이_없으면_넘어간다() {
-            given(liveProductRepository.findByLiveIdOrderByDisplayOrder(LIVE_ID))
-                    .willReturn(List.of());
-
-            productService.convertToGeneralSale(LIVE_ID);
-
-            verify(productRepository, never()).findAllById(any());
         }
     }
 

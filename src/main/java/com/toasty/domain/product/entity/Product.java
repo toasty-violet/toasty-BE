@@ -66,11 +66,6 @@ public class Product extends BaseTimeEntity {
         this.stockQuantity = stockQuantity;
     }
 
-    /** 방송이 끝나면 일반 판매로 넘어가 라이브 밖에서도 팔린다. 되돌리지 않는다. */
-    public void convertToGeneralSale() {
-        this.salesType = SalesType.GENERAL;
-    }
-
     public boolean isSoldOut() {
         return stockQuantity <= 0;
     }

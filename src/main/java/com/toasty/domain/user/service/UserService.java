@@ -3,6 +3,8 @@ package com.toasty.domain.user.service;
 import com.toasty.domain.auth.entity.AuthUser;
 import com.toasty.domain.customer.entity.CustomerOnboardingCommand;
 import com.toasty.domain.customer.service.CustomerService;
+import com.toasty.domain.seller.entity.SellerOnboardingCommand;
+import com.toasty.domain.seller.service.SellerService;
 import com.toasty.domain.user.controller.dto.response.NicknameSearchResponse;
 import com.toasty.domain.user.controller.dto.response.UserMeResponse;
 import com.toasty.domain.user.entity.Role;
@@ -23,6 +25,7 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final CustomerService customerService;
+    private final SellerService sellerService;
 
     /** 인증 필터가 액세스 토큰의 userId로 호출한다. 토큰은 유효해도 그 사이 탈퇴했을 수 있어, 판단은 호출한 쪽에 맡기고 Optional로 돌려준다. */
     @Transactional(readOnly = true)
@@ -74,6 +77,24 @@ public class UserService {
         user.completeOnboarding(Role.CUSTOMER, command.nickname());
         flushNicknameOrThrow();
         customerService.createForOnboarding(command);
+    }
+
+    /** 판매자 온보딩 제출을 받아 역할을 판매자로 설정하고 스토어 이름을 닉네임으로 확정한다. */
+    @Transactional
+    public void completeSellerOnboarding(SellerOnboardingCommand command) {
+        User user =
+                userRepository
+                        .findById(command.userId())
+                        .orElseThrow(() -> new CustomException(UserErrorCode.USER_NOT_FOUND));
+        if (user.isOnboardingCompleted()) {
+            throw new CustomException(UserErrorCode.USER_ONBOARDING_ALREADY_COMPLETED);
+        }
+        if (userRepository.existsByNicknameAndIdNot(command.shopName(), user.getId())) {
+            throw new CustomException(UserErrorCode.USER_NICKNAME_DUPLICATED);
+        }
+        user.completeOnboarding(Role.SELLER, command.shopName());
+        flushNicknameOrThrow();
+        sellerService.createForOnboarding(command);
     }
 
     /**

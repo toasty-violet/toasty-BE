@@ -6,10 +6,10 @@ import com.toasty.domain.auth.entity.AuthUser;
 import com.toasty.domain.live.controller.dto.request.LiveCreateRequest;
 import com.toasty.domain.live.controller.dto.request.LiveUpdateRequest;
 import com.toasty.domain.live.controller.dto.response.BroadcastCredentialResponse;
-import com.toasty.domain.live.controller.dto.response.LiveCreateResponse;
 import com.toasty.domain.live.controller.dto.response.LiveDetailResponse;
 import com.toasty.domain.live.controller.dto.response.LivePlaybackResponse;
 import com.toasty.domain.live.controller.dto.response.LiveStreamStatusResponse;
+import com.toasty.domain.live.controller.dto.response.LiveWithProductsResponse;
 import com.toasty.domain.live.controller.dto.response.SellerLiveTabResponse;
 import com.toasty.domain.live.entity.Live;
 import com.toasty.domain.live.service.LiveService;
@@ -46,7 +46,7 @@ public class LiveController {
                             + "개까지 가지고 있을 수 있고, 그보다 많으면 409로 거부됩니다.")
     @SellerOnly
     @PostMapping
-    public ApiResponse<LiveCreateResponse> create(
+    public ApiResponse<LiveWithProductsResponse> create(
             @Valid @RequestBody LiveCreateRequest request, @LoginUser AuthUser seller) {
         return ApiResponse.ok(liveService.create(request.toCommand(seller.sellerId())));
     }
@@ -62,6 +62,20 @@ public class LiveController {
     @GetMapping("/me")
     public ApiResponse<SellerLiveTabResponse> getMyLiveTab(@LoginUser AuthUser seller) {
         return ApiResponse.ok(liveService.getMyLiveTab(seller.sellerId()));
+    }
+
+    @Operation(
+            summary = "라이브 상세 조회",
+            description =
+                    "셀러가 자기 라이브 하나를 편성 상품까지 가져옵니다. 라이브 수정 화면에 들어갈 때 한 번 호출해 폼을 채우세요."
+                            + " 응답이 라이브 생성 응답과 같은 형태라 생성 폼과 같은 방식으로 다루면 됩니다. 상품은 노출 순서대로"
+                            + " 내려갑니다. 방송 중이거나 종료된 라이브도 조회할 수 있고, 고칠 수 있는지는 수정 API가 판단합니다."
+                            + " 본인의 라이브만 조회할 수 있으며 송출정보는 포함하지 않습니다.")
+    @SellerOnly
+    @GetMapping("/{liveId}")
+    public ApiResponse<LiveWithProductsResponse> getMyLiveDetail(
+            @PathVariable Long liveId, @LoginUser AuthUser seller) {
+        return ApiResponse.ok(liveService.getMyLiveDetail(liveId, seller.sellerId()));
     }
 
     @Operation(

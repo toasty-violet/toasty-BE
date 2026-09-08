@@ -9,5 +9,6 @@ public interface ProductImageRepository extends JpaRepository<ProductImage, Long
 
     List<ProductImage> findByProductIdOrderByDisplayOrder(Long productId);
 
-    List<ProductImage> findByProductIdIn(Collection<Long> productIds);
+    /** 노출 순서로 정렬해 준다. 상품마다 첫 번째가 대표 이미지다. */
+    List<ProductImage> findByProductIdInOrderByDisplayOrder(Collection<Long> productIds);
 }

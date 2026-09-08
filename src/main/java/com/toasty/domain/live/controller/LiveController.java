@@ -6,10 +6,12 @@ import com.toasty.domain.auth.entity.AuthUser;
 import com.toasty.domain.live.controller.dto.request.LiveCreateRequest;
 import com.toasty.domain.live.controller.dto.request.LiveUpdateRequest;
 import com.toasty.domain.live.controller.dto.response.BroadcastCredentialResponse;
-import com.toasty.domain.live.controller.dto.response.LiveCreateResponse;
 import com.toasty.domain.live.controller.dto.response.LiveDetailResponse;
 import com.toasty.domain.live.controller.dto.response.LivePlaybackResponse;
 import com.toasty.domain.live.controller.dto.response.LiveStreamStatusResponse;
+import com.toasty.domain.live.controller.dto.response.LiveWithProductsResponse;
+import com.toasty.domain.live.controller.dto.response.SellerLiveTabResponse;
+import com.toasty.domain.live.entity.Live;
 import com.toasty.domain.live.service.LiveService;
 import com.toasty.global.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -39,12 +41,41 @@ public class LiveController {
                     "셀러가 새 라이브를 개설하면서 이번 방송에서 팔 상품을 함께 등록합니다. 라이브 설정 화면에서 방송 저장을 누를 때 한 번"
                             + " 호출하세요. 상품 사진은 먼저 업로드 주소를 발급받아 S3에 올린 뒤 그 objectKey를 넣습니다. 보낸 상품"
                             + " 순서가 그대로 라이브 내 노출 순서가 됩니다. 송출정보는 이 응답에 없습니다 — 송출 직전에 재발급"
-                            + " API로 받으세요.")
+                            + " API로 받으세요. 아직 방송하지 않은 라이브를 "
+                            + Live.MAX_SCHEDULED
+                            + "개까지 가지고 있을 수 있고, 그보다 많으면 409로 거부됩니다.")
     @SellerOnly
     @PostMapping
-    public ApiResponse<LiveCreateResponse> create(
+    public ApiResponse<LiveWithProductsResponse> create(
             @Valid @RequestBody LiveCreateRequest request, @LoginUser AuthUser seller) {
         return ApiResponse.ok(liveService.create(request.toCommand(seller.sellerId())));
+    }
+
+    @Operation(
+            summary = "셀러 라이브탭 조회",
+            description =
+                    "셀러가 라이브탭에 들어올 때 자기 라이브 상황을 한 번에 가져옵니다. 화면 진입 시 한 번 호출하세요. 지금 방송 중인"
+                            + " 라이브(없으면 null), 예정된 라이브 목록(방송 예정 시각 오름차순), 최신 라이브 현황 세 가지를 함께"
+                            + " 내려줍니다. 종료된 라이브는 담기지 않습니다. latestStat은 주문·시청자 집계가 아직 없어 항상"
+                            + " null이니 값이 없는 화면을 그리세요. 방송 중 라이브의 판매율도 같은 이유로 0으로 나갑니다.")
+    @SellerOnly
+    @GetMapping("/me")
+    public ApiResponse<SellerLiveTabResponse> getMyLiveTab(@LoginUser AuthUser seller) {
+        return ApiResponse.ok(liveService.getMyLiveTab(seller.sellerId()));
+    }
+
+    @Operation(
+            summary = "라이브 상세 조회",
+            description =
+                    "셀러가 자기 라이브 하나를 편성 상품까지 가져옵니다. 라이브 수정 화면에 들어갈 때 한 번 호출해 폼을 채우세요."
+                            + " 응답이 라이브 생성 응답과 같은 형태라 생성 폼과 같은 방식으로 다루면 됩니다. 상품은 노출 순서대로"
+                            + " 내려갑니다. 방송 중이거나 종료된 라이브도 조회할 수 있고, 고칠 수 있는지는 수정 API가 판단합니다."
+                            + " 본인의 라이브만 조회할 수 있으며 송출정보는 포함하지 않습니다.")
+    @SellerOnly
+    @GetMapping("/{liveId}")
+    public ApiResponse<LiveWithProductsResponse> getMyLiveDetail(
+            @PathVariable Long liveId, @LoginUser AuthUser seller) {
+        return ApiResponse.ok(liveService.getMyLiveDetail(liveId, seller.sellerId()));
     }
 
     @Operation(

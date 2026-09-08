@@ -4,12 +4,14 @@ import com.toasty.domain.live.client.LiveStreamingClient;
 import com.toasty.domain.live.client.dto.StreamState;
 import com.toasty.domain.live.client.dto.StreamingChannel;
 import com.toasty.domain.live.controller.dto.response.BroadcastCredentialResponse;
-import com.toasty.domain.live.controller.dto.response.LiveCreateResponse;
 import com.toasty.domain.live.controller.dto.response.LiveDetailResponse;
 import com.toasty.domain.live.controller.dto.response.LivePlaybackResponse;
 import com.toasty.domain.live.controller.dto.response.LiveStreamStatusResponse;
+import com.toasty.domain.live.controller.dto.response.LiveWithProductsResponse;
+import com.toasty.domain.live.controller.dto.response.SellerLiveTabResponse;
 import com.toasty.domain.live.entity.Live;
 import com.toasty.domain.live.entity.LiveCreateCommand;
+import com.toasty.domain.live.entity.LiveStatus;
 import com.toasty.domain.live.entity.LiveUpdateCommand;
 import com.toasty.domain.live.exception.LiveErrorCode;
 import com.toasty.domain.live.repository.LiveRepository;
@@ -18,6 +20,7 @@ import com.toasty.domain.product.service.ProductService;
 import com.toasty.global.exception.CustomException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -41,7 +44,9 @@ public class LiveService {
     // 사진 복사를 채널 생성보다 앞에 두어, 사진이 없는 요청은 채널을 만들기 전에 걸러낸다.
     // 대신 저장은 테이블 4개에 걸치므로 TransactionTemplate으로 묶어, 중간에 실패하면
     // 상품 없는 빈 라이브가 남지 않게 한다. 실패하면 이미 만든 IVS 채널과 복사한 사진을 지운다.
-    public LiveCreateResponse create(LiveCreateCommand command) {
+    public LiveWithProductsResponse create(LiveCreateCommand command) {
+        requireScheduleRoom(command.sellerId());
+
         List<String> imageObjectKeys =
                 productService.copyImagesToPermanent(command.sellerId(), command.products());
 
@@ -63,7 +68,7 @@ public class LiveService {
                                         command.sellerId(),
                                         command.products(),
                                         imageObjectKeys);
-                        return LiveCreateResponse.of(live, products);
+                        return LiveWithProductsResponse.of(live, products);
                     });
         } catch (RuntimeException e) {
             if (channel != null) {
@@ -145,6 +150,41 @@ public class LiveService {
         productService.deleteImagesQuietly(obsoleteImageKeys);
     }
 
+    /** 셀러가 라이브 하나를 편성 상품까지 가져온다. 수정 화면을 채우는 데 쓴다. */
+    // 상태로 막지 않는다. 방송 중에도 편성 상품을 읽어야 하고, 고칠 수 있는지는 update가 판단한다.
+    @Transactional(readOnly = true)
+    public LiveWithProductsResponse getMyLiveDetail(Long liveId, Long sellerId) {
+        Live live = findById(liveId);
+        if (!live.isOwnedBy(sellerId)) {
+            throw new CustomException(LiveErrorCode.LIVE_FORBIDDEN);
+        }
+        return LiveWithProductsResponse.of(live, productService.findScheduledProducts(liveId));
+    }
+
+    /** 셀러가 라이브탭에서 자기 라이브 상황을 한 번에 본다. */
+    // 라이브 한 번, 편성 상품 수 한 번으로 끝낸다. 라이브마다 상품을 세면 개수만큼 쿼리가 늘어난다.
+    @Transactional(readOnly = true)
+    public SellerLiveTabResponse getMyLiveTab(Long sellerId) {
+        List<Live> lives =
+                liveRepository.findBySellerIdAndStatusInOrderByScheduledAtAsc(
+                        sellerId, List.of(LiveStatus.LIVE, LiveStatus.READY));
+
+        Live broadcasting = lives.stream().filter(Live::isBroadcasting).findFirst().orElse(null);
+        List<Live> scheduled = lives.stream().filter(live -> !live.isBroadcasting()).toList();
+
+        Map<Long, Integer> productCounts =
+                productService.countScheduledProducts(scheduled.stream().map(Live::getId).toList());
+
+        return SellerLiveTabResponse.of(
+                broadcasting,
+                scheduled.stream()
+                        .map(
+                                live ->
+                                        SellerLiveTabResponse.Scheduled.of(
+                                                live, productCounts.getOrDefault(live.getId(), 0)))
+                        .toList());
+    }
+
     @Transactional(readOnly = true)
     public LiveDetailResponse getByPublicId(String publicId) {
         return LiveDetailResponse.from(findByPublicId(publicId));
@@ -203,6 +243,14 @@ public class LiveService {
         } catch (DataIntegrityViolationException e) {
             // active_seller_id unique 위반. 이 셀러가 다른 라이브를 이미 방송 중이다.
             throw new CustomException(LiveErrorCode.LIVE_ALREADY_BROADCASTING, e);
+        }
+    }
+
+    // 사진 복사와 채널 생성보다 앞에서 끊는다. 뒤에 두면 거부할 요청도 S3와 IVS를 먼저 건드린다.
+    private void requireScheduleRoom(Long sellerId) {
+        if (liveRepository.countBySellerIdAndStatus(sellerId, LiveStatus.READY)
+                >= Live.MAX_SCHEDULED) {
+            throw new CustomException(LiveErrorCode.LIVE_SCHEDULE_LIMIT_EXCEEDED);
         }
     }
 

@@ -82,4 +82,11 @@ public class Address extends BaseTimeEntity {
             Long customerId, CustomerOnboardingCommand.AddressCommand command) {
         return new Address(customerId, command, true);
     }
+
+    /** 유저가 선택한 종류의 주소(도로명, 지번)를 반환한다 */
+    public String selectedAddress() {
+        boolean road = addressType == AddressType.R;
+        String selected = road ? roadAddress : jibunAddress;
+        return selected != null ? selected : (road ? jibunAddress : roadAddress);
+    }
 }

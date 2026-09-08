@@ -3,8 +3,11 @@ package com.toasty.domain.customer.service;
 import com.toasty.domain.customer.entity.Address;
 import com.toasty.domain.customer.entity.Customer;
 import com.toasty.domain.customer.entity.CustomerOnboardingCommand;
+import com.toasty.domain.customer.entity.CustomerProfile;
+import com.toasty.domain.customer.exception.CustomerErrorCode;
 import com.toasty.domain.customer.repository.AddressRepository;
 import com.toasty.domain.customer.repository.CustomerRepository;
+import com.toasty.global.exception.CustomException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,5 +25,28 @@ public class CustomerService {
         Customer customer = customerRepository.save(Customer.createForOnboarding(command));
         addressRepository.save(Address.createDefault(customer.getId(), command.address()));
         return customer;
+    }
+
+    /** 구매자의 이름·연락처와 기본 배송지를 조회한다. */
+    @Transactional(readOnly = true)
+    public CustomerProfile getProfile(Long customerId) {
+        Customer customer =
+                customerRepository
+                        .findById(customerId)
+                        .orElseThrow(
+                                () -> new CustomException(CustomerErrorCode.CUSTOMER_NOT_FOUND));
+        Address address =
+                addressRepository
+                        .findByCustomerIdAndIsDefaultTrue(customerId)
+                        .orElseThrow(
+                                () ->
+                                        new CustomException(
+                                                CustomerErrorCode.CUSTOMER_ADDRESS_NOT_FOUND));
+        return new CustomerProfile(
+                customer.getName(),
+                customer.getPhoneNumber(),
+                address.getPostalCode(),
+                address.selectedAddress(),
+                address.getDetailAddress());
     }
 }

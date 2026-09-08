@@ -1,4 +1,4 @@
-# 배포 서버용. 앱과 Redis만 띄우고 MySQL은 RDS를 쓴다. 실행:
+# 배포 서버용. Caddy·앱·Redis를 띄우고 MySQL은 RDS를 쓴다. 실행:
 #   docker compose -f docker/prod/docker-compose.yml up -d
 #
 # 컨테이너 이름은 고정하지 않는다. 로컬 개발용 compose와 이름이 겹쳐 한쪽이 못 뜬다.
@@ -16,8 +16,9 @@ services:
       SPRING_PROFILES_ACTIVE: prod
       # 같은 compose 네트워크 안에서는 서비스 이름으로 붙는다.
       REDIS_HOST: redis
-    ports:
-      - "8080:8080"
+    # 포트를 밖으로 열지 않는다. 열어두면 HTTPS를 건너뛰고 8080으로 바로 들어올 수 있다.
+    expose:
+      - "8080"
     depends_on:
       redis:
         condition: service_healthy
@@ -42,5 +43,24 @@ services:
       timeout: 3s
       retries: 20
 
+  caddy:
+    image: caddy:2-alpine
+    env_file: .env
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # 발급받은 인증서가 여기 있다. 날리면 재배포마다 새로 발급받아 Let's Encrypt 횟수 제한에 걸린다.
+      - toasty-caddy-data:/data
+      - toasty-caddy-config:/config
+    # 앱 상태를 조건으로 걸지 않는다. 앱이 죽어 있어도 인증서 갱신은 계속돼야 한다.
+    depends_on:
+      - app
+    restart: unless-stopped
+
 volumes:
   toasty-redis-data:
+  toasty-caddy-data:
+  toasty-caddy-config:

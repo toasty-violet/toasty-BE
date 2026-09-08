@@ -1,0 +1,9 @@
+# 앞단에서 HTTPS를 받아 앱 컨테이너로 넘긴다.
+# 인증서는 Let's Encrypt에서 자동으로 받고 만료 전에 알아서 갱신한다.
+{
+	email {$ACME_EMAIL}
+}
+
+{$API_DOMAIN} {
+	reverse_proxy app:8080
+}

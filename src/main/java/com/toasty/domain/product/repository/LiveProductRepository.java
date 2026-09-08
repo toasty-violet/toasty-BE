@@ -9,8 +9,7 @@ import org.springframework.data.repository.query.Param;
 
 public interface LiveProductRepository extends JpaRepository<LiveProduct, Long> {
 
-    List<LiveProduct> findByLiveId(Long liveId);
-
+    /** 편성은 항상 노출 순서로 읽는다. 순서가 필요 없는 곳도 편성이 최대 50건이라 정렬 비용이 무의미하다. */
     List<LiveProduct> findByLiveIdOrderByDisplayOrder(Long liveId);
 
     @Query(

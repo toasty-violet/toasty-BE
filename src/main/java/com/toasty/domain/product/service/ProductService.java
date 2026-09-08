@@ -138,7 +138,7 @@ public class ProductService {
         requireNoDuplicatedProduct(commands);
 
         Map<Long, LiveProduct> scheduled =
-                liveProductRepository.findByLiveId(liveId).stream()
+                liveProductRepository.findByLiveIdOrderByDisplayOrder(liveId).stream()
                         .collect(Collectors.toMap(LiveProduct::getProductId, Function.identity()));
 
         List<String> obsoleteImageObjectKeys = new ArrayList<>();
@@ -214,7 +214,7 @@ public class ProductService {
     /** 라이브가 지워질 때 그 라이브의 편성과 상품을 정리하고, 더 이상 쓰지 않는 사진의 objectKey를 돌려준다. 돌려받은 키는 커밋된 뒤에 지운다. */
     @Transactional
     public List<String> removeAllForLive(Long liveId) {
-        return unscheduleAll(liveId, liveProductRepository.findByLiveId(liveId));
+        return unscheduleAll(liveId, liveProductRepository.findByLiveIdOrderByDisplayOrder(liveId));
     }
 
     // 편성에 남의 상품이 섞여 있으면 지우지도 고치지도 않는다.
@@ -295,7 +295,8 @@ public class ProductService {
         List<ProductImage> images =
                 deletableProductIds.isEmpty()
                         ? List.of()
-                        : productImageRepository.findByProductIdIn(deletableProductIds);
+                        : productImageRepository.findByProductIdInOrderByDisplayOrder(
+                                deletableProductIds);
         List<String> objectKeys =
                 images.stream()
                         .map(image -> toObjectKey(image.getImageUrl()))

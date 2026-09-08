@@ -270,7 +270,8 @@ class ProductServiceTest {
                 .willReturn(images);
         given(productImageRepository.findByProductIdOrderByDisplayOrder(productId))
                 .willReturn(images);
-        given(productImageRepository.findByProductIdIn(List.of(productId))).willReturn(images);
+        given(productImageRepository.findByProductIdInOrderByDisplayOrder(List.of(productId)))
+                .willReturn(images);
         return liveProduct;
     }
 
@@ -282,7 +283,8 @@ class ProductServiceTest {
         @DisplayName("배열에 없는 상품은 편성을 풀고 상품과 사진을 지운 뒤 그 사진 키를 돌려준다")
         void 빠진_상품을_정리한다() {
             LiveProduct dropped = givenScheduled(31L, SELLER_ID, "products/images/7/old.jpg");
-            given(liveProductRepository.findByLiveId(LIVE_ID)).willReturn(List.of(dropped));
+            given(liveProductRepository.findByLiveIdOrderByDisplayOrder(LIVE_ID))
+                    .willReturn(List.of(dropped));
 
             List<String> obsolete =
                     productService.replaceForLive(
@@ -300,7 +302,8 @@ class ProductServiceTest {
         @DisplayName("다른 라이브에도 편성된 상품은 편성만 풀고 상품을 지우지 않는다")
         void 다른_라이브의_상품은_남긴다() {
             LiveProduct dropped = givenScheduled(31L, SELLER_ID, "products/images/7/old.jpg");
-            given(liveProductRepository.findByLiveId(LIVE_ID)).willReturn(List.of(dropped));
+            given(liveProductRepository.findByLiveIdOrderByDisplayOrder(LIVE_ID))
+                    .willReturn(List.of(dropped));
             given(liveProductRepository.findProductIdsScheduledInOtherLives(List.of(31L), LIVE_ID))
                     .willReturn(List.of(31L));
 
@@ -320,7 +323,8 @@ class ProductServiceTest {
             Product other =
                     Product.createForLive(SELLER_ID, command("도자기 컵", "products/pending/7/b.jpg"));
             given(productRepository.findById(32L)).willReturn(java.util.Optional.of(other));
-            given(liveProductRepository.findByLiveId(LIVE_ID)).willReturn(List.of(first, second));
+            given(liveProductRepository.findByLiveIdOrderByDisplayOrder(LIVE_ID))
+                    .willReturn(List.of(first, second));
 
             productService.replaceForLive(
                     LIVE_ID,
@@ -335,7 +339,8 @@ class ProductServiceTest {
         @Test
         @DisplayName("이 라이브에 편성되지 않은 상품 번호는 PRODUCT_NOT_IN_LIVE다")
         void 편성되지_않은_상품은_거부한다() {
-            given(liveProductRepository.findByLiveId(LIVE_ID)).willReturn(List.of());
+            given(liveProductRepository.findByLiveIdOrderByDisplayOrder(LIVE_ID))
+                    .willReturn(List.of());
 
             assertThatThrownBy(
                             () ->
@@ -353,7 +358,8 @@ class ProductServiceTest {
         @DisplayName("편성돼 있어도 다른 셀러의 상품이면 PRODUCT_NOT_IN_LIVE다")
         void 남의_상품은_거부한다() {
             LiveProduct scheduled = givenScheduled(31L, 99L, "products/images/99/a.jpg");
-            given(liveProductRepository.findByLiveId(LIVE_ID)).willReturn(List.of(scheduled));
+            given(liveProductRepository.findByLiveIdOrderByDisplayOrder(LIVE_ID))
+                    .willReturn(List.of(scheduled));
 
             assertThatThrownBy(
                             () ->
@@ -382,14 +388,15 @@ class ProductServiceTest {
                     .isInstanceOf(CustomException.class)
                     .extracting(e -> ((CustomException) e).getErrorCode())
                     .isEqualTo(ProductErrorCode.PRODUCT_DUPLICATED);
-            verify(liveProductRepository, never()).findByLiveId(any());
+            verify(liveProductRepository, never()).findByLiveIdOrderByDisplayOrder(any());
         }
 
         @Test
         @DisplayName("사진을 바꾸면 대표 이미지를 갈아끼우고 이전 사진 키를 돌려준다")
         void 사진을_교체한다() {
             LiveProduct scheduled = givenScheduled(31L, SELLER_ID, "products/images/7/old.jpg");
-            given(liveProductRepository.findByLiveId(LIVE_ID)).willReturn(List.of(scheduled));
+            given(liveProductRepository.findByLiveIdOrderByDisplayOrder(LIVE_ID))
+                    .willReturn(List.of(scheduled));
 
             List<String> obsolete =
                     productService.replaceForLive(
@@ -424,7 +431,8 @@ class ProductServiceTest {
         @DisplayName("편성과 상품·사진을 모두 지우고 지울 사진 키를 돌려준다")
         void 전부_정리한다() {
             LiveProduct first = givenScheduled(31L, SELLER_ID, "products/images/7/a.jpg");
-            given(liveProductRepository.findByLiveId(LIVE_ID)).willReturn(List.of(first));
+            given(liveProductRepository.findByLiveIdOrderByDisplayOrder(LIVE_ID))
+                    .willReturn(List.of(first));
 
             List<String> obsolete = productService.removeAllForLive(LIVE_ID);
 
@@ -437,7 +445,8 @@ class ProductServiceTest {
         @DisplayName("다른 라이브에도 편성된 상품은 편성만 풀고 남긴다")
         void 다른_라이브의_상품은_남긴다() {
             LiveProduct first = givenScheduled(31L, SELLER_ID, "products/images/7/a.jpg");
-            given(liveProductRepository.findByLiveId(LIVE_ID)).willReturn(List.of(first));
+            given(liveProductRepository.findByLiveIdOrderByDisplayOrder(LIVE_ID))
+                    .willReturn(List.of(first));
             given(liveProductRepository.findProductIdsScheduledInOtherLives(List.of(31L), LIVE_ID))
                     .willReturn(List.of(31L));
 
@@ -451,7 +460,8 @@ class ProductServiceTest {
         @Test
         @DisplayName("편성된 상품이 없으면 아무것도 지우지 않는다")
         void 편성이_없으면_아무것도_안_한다() {
-            given(liveProductRepository.findByLiveId(LIVE_ID)).willReturn(List.of());
+            given(liveProductRepository.findByLiveIdOrderByDisplayOrder(LIVE_ID))
+                    .willReturn(List.of());
 
             assertThat(productService.removeAllForLive(LIVE_ID)).isEmpty();
 

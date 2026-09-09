@@ -8,6 +8,7 @@ import com.toasty.domain.auth.exception.AuthErrorCode;
 import com.toasty.domain.auth.repository.RefreshTokenRepository;
 import com.toasty.domain.auth.token.JwtTokenProvider;
 import com.toasty.domain.auth.token.RefreshTokenGenerator;
+import com.toasty.domain.live.service.LiveService;
 import com.toasty.domain.user.entity.User;
 import com.toasty.domain.user.entity.UserWithdrawCommand;
 import com.toasty.domain.user.service.UserService;
@@ -25,6 +26,7 @@ public class AuthService {
 
     private final KakaoAuthClient kakaoAuthClient;
     private final UserService userService;
+    private final LiveService liveService;
     private final JwtTokenProvider jwtTokenProvider;
     private final RefreshTokenGenerator refreshTokenGenerator;
     private final RefreshTokenRepository refreshTokenRepository;
@@ -69,9 +71,15 @@ public class AuthService {
                 refreshTokenProperties.expiration());
     }
 
-    // 유저를 탈퇴 처리하고 모든 기기를 로그아웃시킨 뒤 카카오 연결까지 끊는다.
+    // 판매자라면 아직 끝나지 않은 라이브를 정리한 뒤, 유저를 탈퇴 처리하고 모든 기기를 로그아웃시킨 뒤 카카오 연결까지 끊는다.
+    // 라이브 정리는 IVS와 S3를 부르느라 수 초가 걸려, DB 커넥션을 잡지 않도록 탈퇴 트랜잭션 밖에 둔다.
+    // 라이브만 정리되고 탈퇴가 실패하면 유저는 그대로 남으므로 다시 요청하면 된다.
     // 토큰을 먼저 지우면 탈퇴가 실패했을 때 멀쩡한 유저만 로그아웃되므로 탈퇴가 끝난 뒤에 지운다.
     public void withdraw(UserWithdrawCommand command) {
+        if (command.sellerId() != null) {
+            liveService.cleanUpForSellerWithdrawal(command.sellerId());
+        }
+
         String kakaoId = userService.withdraw(command);
         refreshTokenRepository.deleteAllByUserId(command.userId());
         unlinkKakaoQuietly(kakaoId);

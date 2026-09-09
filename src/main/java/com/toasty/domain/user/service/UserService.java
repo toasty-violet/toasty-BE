@@ -3,7 +3,6 @@ package com.toasty.domain.user.service;
 import com.toasty.domain.auth.entity.AuthUser;
 import com.toasty.domain.customer.entity.CustomerOnboardingCommand;
 import com.toasty.domain.customer.service.CustomerService;
-import com.toasty.domain.live.service.LiveService;
 import com.toasty.domain.seller.entity.SellerOnboardingCommand;
 import com.toasty.domain.seller.service.SellerService;
 import com.toasty.domain.user.controller.dto.response.NicknameSearchResponse;
@@ -29,7 +28,6 @@ public class UserService {
     private final UserRepository userRepository;
     private final CustomerService customerService;
     private final SellerService sellerService;
-    private final LiveService liveService;
     private final TransactionTemplate transactionTemplate;
 
     /** 인증 필터가 액세스 토큰의 userId로 호출한다. 토큰은 유효해도 그 사이 탈퇴했을 수 있어, 판단은 호출한 쪽에 맡기고 Optional로 돌려준다. */
@@ -126,15 +124,9 @@ public class UserService {
     /**
      * 유저를 탈퇴 처리하고, 카카오 연결을 끊는 데 쓰도록 지워지기 전의 카카오 회원번호를 돌려준다.
      *
-     * <p>유저 행은 남고, 판매자·구매자 정보도 거래 상대방 식별을 위해 남는다. 배송지는 지우고, 판매자라면 아직 끝나지 않은 라이브를 먼저 정리한다.
+     * <p>유저 행은 남고, 판매자·구매자 정보도 거래 상대방 식별을 위해 남는다. 배송지는 지운다.
      */
-    // 라이브 정리는 IVS와 S3를 부르느라 수 초가 걸려, DB 커넥션을 잡지 않도록 트랜잭션 밖에 둔다.
-    // 라이브만 정리되고 탈퇴가 실패하면 유저는 그대로 남으므로 다시 요청하면 된다.
     public String withdraw(UserWithdrawCommand command) {
-        if (command.sellerId() != null) {
-            liveService.cleanUpForSellerWithdrawal(command.sellerId());
-        }
-
         return transactionTemplate.execute(
                 status -> {
                     User user =

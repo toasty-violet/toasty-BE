@@ -3,6 +3,7 @@ package com.toasty.domain.user.service;
 import com.toasty.domain.auth.entity.AuthUser;
 import com.toasty.domain.customer.controller.dto.response.CustomerProfileResponse;
 import com.toasty.domain.customer.entity.CustomerOnboardingCommand;
+import com.toasty.domain.customer.entity.CustomerProfileUpdateCommand;
 import com.toasty.domain.customer.service.CustomerService;
 import com.toasty.domain.seller.controller.dto.response.SellerProfileResponse;
 import com.toasty.domain.seller.entity.SellerOnboardingCommand;
@@ -66,6 +67,21 @@ public class UserService {
                         .orElseThrow(() -> new CustomException(UserErrorCode.USER_NOT_FOUND));
         return CustomerProfileResponse.of(
                 user.getNickname(), customerService.getProfile(customerId));
+    }
+
+    /** 구매자 내 정보 수정 제출을 받아 닉네임과 구매자 정보를 바꾼다. */
+    @Transactional
+    public void updateCustomerProfile(CustomerProfileUpdateCommand command) {
+        User user =
+                userRepository
+                        .findById(command.userId())
+                        .orElseThrow(() -> new CustomException(UserErrorCode.USER_NOT_FOUND));
+        if (userRepository.existsByNicknameAndIdNot(command.nickname(), user.getId())) {
+            throw new CustomException(UserErrorCode.USER_NICKNAME_DUPLICATED);
+        }
+        user.updateNickname(command.nickname());
+        flushNicknameOrThrow();
+        customerService.updateProfile(command);
     }
 
     /** 다른 도메인이 화면에 셀러를 표시할 때 쓴다. */

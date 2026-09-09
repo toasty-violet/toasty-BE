@@ -65,6 +65,7 @@ aws:
   # 셀러 샵 이미지 설정.
   seller-s3:
     bucket: ${AWS_S3_BUCKET}
+    public-base-url: ${AWS_S3_PUBLIC_BASE_URL}
     # 샵 이미지가 머무는 경로다. 수명주기 규칙이 건드리지 않는다.
     image-prefix: sellers/images/
     presigned-url-expiry-seconds: 300
@@ -78,6 +79,8 @@ kakao:
   client-secret: ${KAKAO_CLIENT_SECRET:}
   # 프론트가 인가 요청에 쓴 값과 정확히 같아야 토큰 교환이 통과한다.
   redirect-uri: ${KAKAO_REDIRECT_URI:http://localhost:3000/auth/login/callback}
+  # 탈퇴 시 카카오 연결을 끊는 데 쓴다. 모든 회원에 대해 동작하는 키라 프론트로 내보내면 안 된다.
+  admin-key: ${KAKAO_ADMIN_KEY}
 
 point3:
   base-url: https://api.point3.io
@@ -101,9 +104,8 @@ management:
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
-    # 정렬을 고정해 목록 순서가 매번 바뀌지 않게 한다.
-    tags-sorter: alpha
-    operations-sorter: alpha
+    # 태그 순서도 태그 안의 API 순서도 SwaggerConfig가 정한다.
+    # 여기에 tags-sorter나 operations-sorter를 넣으면 그 순서를 덮어쓴다.
 
 logging:
   level:

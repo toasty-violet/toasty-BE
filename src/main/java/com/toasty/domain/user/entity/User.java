@@ -9,6 +9,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.time.LocalDateTime;
 import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -26,6 +27,8 @@ import lombok.NoArgsConstructor;
 public class User extends BaseTimeEntity {
 
     private static final String TEMPORARY_NICKNAME_PREFIX = "user_";
+    private static final String WITHDRAWN_KAKAO_ID_PREFIX = "withdrawn_";
+    private static final String WITHDRAWN_NICKNAME_PREFIX = "del_";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -43,6 +46,10 @@ public class User extends BaseTimeEntity {
     // 구매자에게는 닉네임, 판매자에게는 상점명 — 가입 시점에는 임시 닉네임이 들어가고 온보딩에서 교체된다
     @Column(length = 20, nullable = false, unique = true)
     private String nickname;
+
+    // 탈퇴 시각 — null이면 이용 중인 유저
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;
 
     private User(String kakaoId, Role role, String nickname) {
         this.kakaoId = kakaoId;
@@ -70,5 +77,33 @@ public class User extends BaseTimeEntity {
     public void completeOnboarding(Role role, String nickname) {
         this.role = role;
         this.nickname = nickname;
+    }
+
+    /** 내 정보 수정으로 닉네임을 바꾼다. */
+    public void updateNickname(String nickname) {
+        this.nickname = nickname;
+    }
+
+    public boolean isWithdrawn() {
+        return deletedAt != null;
+    }
+
+    /**
+     * 유저를 탈퇴 처리한다. 행은 남기고 탈퇴 시각만 기록한다.
+     *
+     * <p>구매자·판매자 정보는 거래 상대방을 식별하는 데 필요해 함께 지우지 않는다.
+     */
+    // kakaoId와 nickname은 unique라 값을 그대로 두면 같은 계정으로 재가입하거나 그 닉네임을 다시 쓸 수 없다.
+    // 그래서 다른 유저와 겹치지 않는 값으로 바꿔 자리를 비운다.
+    public void withdraw() {
+        this.deletedAt = LocalDateTime.now();
+        this.kakaoId = WITHDRAWN_KAKAO_ID_PREFIX + id;
+        this.nickname = generateWithdrawnNickname();
+    }
+
+    // 닉네임은 20자까지라 id 대신 길이가 고정된 값을 쓴다.
+    private static String generateWithdrawnNickname() {
+        return WITHDRAWN_NICKNAME_PREFIX
+                + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
     }
 }

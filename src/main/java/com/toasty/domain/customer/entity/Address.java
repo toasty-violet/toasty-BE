@@ -64,22 +64,41 @@ public class Address extends BaseTimeEntity {
     @Column(name = "is_default", nullable = false)
     private boolean isDefault;
 
-    private Address(
-            Long customerId, CustomerOnboardingCommand.AddressCommand command, boolean isDefault) {
+    private Address(Long customerId, AddressDetail detail, boolean isDefault) {
         this.customerId = customerId;
-        this.postalCode = command.postalCode();
-        this.roadAddress = command.roadAddress();
-        this.jibunAddress = command.jibunAddress();
-        this.addressType = command.addressType();
-        this.buildingName = command.buildingName();
-        this.legalDong = command.legalDong();
-        this.detailAddress = command.detailAddress();
         this.isDefault = isDefault;
+        apply(detail);
     }
 
     /** 온보딩에서 받은 첫 배송지. 다른 주소가 없으므로 기본 주소가 된다. */
-    public static Address createDefault(
-            Long customerId, CustomerOnboardingCommand.AddressCommand command) {
-        return new Address(customerId, command, true);
+    public static Address createDefault(Long customerId, AddressDetail detail) {
+        return new Address(customerId, detail, true);
+    }
+
+    /** 내 정보 수정에서 받은 주소로 갈아끼운다. 기본 주소 여부는 그대로 둔다. */
+    public void update(AddressDetail detail) {
+        apply(detail);
+    }
+
+    private void apply(AddressDetail detail) {
+        this.postalCode = detail.postalCode();
+        this.roadAddress = detail.roadAddress();
+        this.jibunAddress = detail.jibunAddress();
+        this.addressType = detail.addressType();
+        this.buildingName = detail.buildingName();
+        this.legalDong = detail.legalDong();
+        this.detailAddress = detail.detailAddress();
+    }
+
+    /** 저장된 값을 그대로 꺼낸다. 내 정보 조회가 수정 화면의 입력창을 채우는 데 쓴다. */
+    public AddressDetail toDetail() {
+        return new AddressDetail(
+                postalCode,
+                roadAddress,
+                jibunAddress,
+                addressType,
+                buildingName,
+                legalDong,
+                detailAddress);
     }
 }

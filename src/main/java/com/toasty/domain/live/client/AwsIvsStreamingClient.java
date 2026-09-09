@@ -2,6 +2,7 @@ package com.toasty.domain.live.client;
 
 import com.toasty.domain.live.client.dto.BroadcastCredential;
 import com.toasty.domain.live.client.dto.StreamState;
+import com.toasty.domain.live.client.dto.StreamStatus;
 import com.toasty.domain.live.client.dto.StreamingChannel;
 import com.toasty.domain.live.exception.LiveErrorCode;
 import com.toasty.global.config.IvsProperties;
@@ -23,6 +24,7 @@ import software.amazon.awssdk.services.ivs.model.ListStreamKeysResponse;
 import software.amazon.awssdk.services.ivs.model.ResourceNotFoundException;
 import software.amazon.awssdk.services.ivs.model.ServiceQuotaExceededException;
 import software.amazon.awssdk.services.ivs.model.ServiceUnavailableException;
+import software.amazon.awssdk.services.ivs.model.Stream;
 import software.amazon.awssdk.services.ivs.model.StreamKeySummary;
 import software.amazon.awssdk.services.ivs.model.ThrottlingException;
 
@@ -116,12 +118,12 @@ public class AwsIvsStreamingClient implements LiveStreamingClient {
     }
 
     @Override
-    public StreamState getStreamState(String channelArn) {
+    public StreamStatus getStreamStatus(String channelArn) {
         try {
-            ivsClient.getStream(request -> request.channelArn(channelArn));
-            return StreamState.BROADCASTING;
+            var stream = ivsClient.getStream(request -> request.channelArn(channelArn)).stream();
+            return new StreamStatus(StreamState.BROADCASTING, toViewerCount(stream));
         } catch (ChannelNotBroadcastingException e) {
-            return StreamState.NOT_BROADCASTING;
+            return StreamStatus.notBroadcasting();
         } catch (Exception e) {
             if (isTransient(e)) {
                 log.warn("송출 상태 조회 일시 실패 - channelArn={}", channelArn, e);
@@ -130,6 +132,14 @@ public class AwsIvsStreamingClient implements LiveStreamingClient {
             log.error("송출 상태 조회 실패 - channelArn={}", channelArn, e);
             throw new CustomException(LiveErrorCode.LIVE_STREAM_STATUS_FETCH_FAILED, e);
         }
+    }
+
+    // 송출 중이라는 사실이 먼저다. 시청자 수가 비어 오더라도 상태 조회를 실패시키지 않는다.
+    private int toViewerCount(Stream stream) {
+        if (stream == null || stream.viewerCount() == null) {
+            return 0;
+        }
+        return Math.toIntExact(stream.viewerCount());
     }
 
     @Override

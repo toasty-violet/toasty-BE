@@ -9,6 +9,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -37,11 +38,23 @@ public class LiveProduct extends BaseTimeEntity {
     @Column(name = "display_order", nullable = false)
     private int displayOrder;
 
+    // 마지막으로 고정한 시각. 고정된 적이 없으면 null이다.
+    @Column(name = "pinned_at")
+    private LocalDateTime pinnedAt;
+
     private LiveProduct(Long liveId, Long productId, int displayOrder) {
         this.liveId = liveId;
         this.productId = productId;
         this.status = LiveProductStatus.SCHEDULED;
         this.displayOrder = displayOrder;
+    }
+
+    /** 셀러가 방송 중에 이 상품을 소개하기 시작한다. */
+    // 한 번 고정하면 구매 가능 상태는 되돌아가지 않는다. 다른 상품을 고정해도 이 상품은 계속 팔린다.
+    // 고정 시각만 갱신되어 방송 화면의 "현재 고정 상품" 표시가 옮겨간다.
+    public void pin(LocalDateTime pinnedAt) {
+        this.status = LiveProductStatus.ACTIVE;
+        this.pinnedAt = pinnedAt;
     }
 
     /** 셀러가 상품 순서를 바꾸면 그 순서를 반영한다. */

@@ -2,6 +2,7 @@ package com.toasty.domain.live.client;
 
 import com.toasty.domain.live.client.dto.BroadcastCredential;
 import com.toasty.domain.live.client.dto.StreamState;
+import com.toasty.domain.live.client.dto.StreamStatus;
 import com.toasty.domain.live.client.dto.StreamingChannel;
 import java.util.ArrayList;
 import java.util.List;
@@ -20,6 +21,7 @@ public class FakeLiveStreamingClient implements LiveStreamingClient {
     private RuntimeException deleteFailure;
     private RuntimeException reissueFailure;
     private StreamState streamState = StreamState.NOT_BROADCASTING;
+    private int viewerCount;
 
     public static String arnOf(String channelName) {
         return "arn:aws:ivs:ap-northeast-2:123456789012:channel/" + channelName;
@@ -58,8 +60,8 @@ public class FakeLiveStreamingClient implements LiveStreamingClient {
     }
 
     @Override
-    public StreamState getStreamState(String channelArn) {
-        return streamState;
+    public StreamStatus getStreamStatus(String channelArn) {
+        return new StreamStatus(streamState, viewerCount);
     }
 
     @Override
@@ -73,6 +75,10 @@ public class FakeLiveStreamingClient implements LiveStreamingClient {
 
     public void failOnReissue(RuntimeException failure) {
         this.reissueFailure = failure;
+    }
+
+    public void viewerCount(int viewerCount) {
+        this.viewerCount = viewerCount;
     }
 
     public void broadcasting(StreamState streamState) {

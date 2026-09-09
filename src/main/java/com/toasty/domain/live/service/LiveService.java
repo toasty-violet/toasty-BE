@@ -1,23 +1,34 @@
 package com.toasty.domain.live.service;
 
 import com.toasty.domain.live.client.LiveStreamingClient;
-import com.toasty.domain.live.client.dto.StreamState;
+import com.toasty.domain.live.client.dto.StreamStatus;
 import com.toasty.domain.live.client.dto.StreamingChannel;
 import com.toasty.domain.live.controller.dto.response.BroadcastCredentialResponse;
-import com.toasty.domain.live.controller.dto.response.LiveCreateResponse;
 import com.toasty.domain.live.controller.dto.response.LiveDetailResponse;
 import com.toasty.domain.live.controller.dto.response.LivePlaybackResponse;
 import com.toasty.domain.live.controller.dto.response.LiveStreamStatusResponse;
+import com.toasty.domain.live.controller.dto.response.LiveViewerCountResponse;
+import com.toasty.domain.live.controller.dto.response.LiveViewerResponse;
+import com.toasty.domain.live.controller.dto.response.LiveWithProductsResponse;
+import com.toasty.domain.live.controller.dto.response.SellerLiveTabResponse;
 import com.toasty.domain.live.entity.Live;
 import com.toasty.domain.live.entity.LiveCreateCommand;
+import com.toasty.domain.live.entity.LiveStatus;
 import com.toasty.domain.live.entity.LiveUpdateCommand;
 import com.toasty.domain.live.exception.LiveErrorCode;
 import com.toasty.domain.live.repository.LiveRepository;
+import com.toasty.domain.live.repository.LiveViewerCountRepository;
 import com.toasty.domain.product.controller.dto.response.LiveProductResponse;
+import com.toasty.domain.product.controller.dto.response.LiveProductsResponse;
+import com.toasty.domain.product.entity.LiveProductPinCommand;
+import com.toasty.domain.product.entity.LiveProductUpdateCommand;
 import com.toasty.domain.product.service.ProductService;
+import com.toasty.domain.user.service.UserService;
 import com.toasty.global.exception.CustomException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,8 +43,10 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class LiveService {
 
     private final LiveRepository liveRepository;
+    private final LiveViewerCountRepository liveViewerCountRepository;
     private final LiveStreamingClient liveStreamingClient;
     private final ProductService productService;
+    private final UserService userService;
     private final TransactionTemplate transactionTemplate;
 
     /** 셀러가 라이브를 개설하면서 이번 방송에서 팔 상품을 함께 등록한다. */
@@ -41,7 +54,9 @@ public class LiveService {
     // 사진 복사를 채널 생성보다 앞에 두어, 사진이 없는 요청은 채널을 만들기 전에 걸러낸다.
     // 대신 저장은 테이블 4개에 걸치므로 TransactionTemplate으로 묶어, 중간에 실패하면
     // 상품 없는 빈 라이브가 남지 않게 한다. 실패하면 이미 만든 IVS 채널과 복사한 사진을 지운다.
-    public LiveCreateResponse create(LiveCreateCommand command) {
+    public LiveWithProductsResponse create(LiveCreateCommand command) {
+        requireScheduleRoom(command.sellerId());
+
         List<String> imageObjectKeys =
                 productService.copyImagesToPermanent(command.sellerId(), command.products());
 
@@ -63,7 +78,7 @@ public class LiveService {
                                         command.sellerId(),
                                         command.products(),
                                         imageObjectKeys);
-                        return LiveCreateResponse.of(live, products);
+                        return LiveWithProductsResponse.of(live, products);
                     });
         } catch (RuntimeException e) {
             if (channel != null) {
@@ -145,16 +160,97 @@ public class LiveService {
         productService.deleteImagesQuietly(obsoleteImageKeys);
     }
 
-    @Transactional(readOnly = true)
-    public LiveDetailResponse getByPublicId(String publicId) {
-        return LiveDetailResponse.from(findByPublicId(publicId));
+    /** 셀러가 탈퇴할 때 아직 끝나지 않은 라이브를 정리한다. 방송 중이면 끝내고, 예정 라이브는 지운다. */
+    // 지난 방송은 시청자와 주문 이력이 참조하므로 건드리지 않는다.
+    public void cleanUpForSellerWithdrawal(Long sellerId) {
+        List<Live> lives =
+                liveRepository.findBySellerIdAndStatusInOrderByScheduledAtAsc(
+                        sellerId, List.of(LiveStatus.LIVE, LiveStatus.READY));
+        for (Live live : lives) {
+            if (live.isBroadcasting()) {
+                end(live.getId(), sellerId);
+            } else {
+                delete(live.getId(), sellerId);
+            }
+        }
     }
 
-    public BroadcastCredentialResponse reissueCredential(Long liveId, Long sellerId) {
+    /** 셀러가 라이브 하나를 편성 상품까지 가져온다. 수정 화면을 채우는 데 쓴다. */
+    // 상태로 막지 않는다. 방송 중에도 편성 상품을 읽어야 하고, 고칠 수 있는지는 update가 판단한다.
+    @Transactional(readOnly = true)
+    public LiveWithProductsResponse getMyLiveDetail(Long liveId, Long sellerId) {
+        Live live = requireOwnLive(liveId, sellerId);
+        return LiveWithProductsResponse.of(live, productService.findScheduledProducts(liveId));
+    }
+
+    /** 셀러가 방송 화면에서 전체 상품 시트를 연다. */
+    @Transactional(readOnly = true)
+    public LiveProductsResponse getMyLiveProducts(Long liveId, Long sellerId) {
+        requireOwnLive(liveId, sellerId);
+        return productService.findLiveProducts(liveId);
+    }
+
+    /** 셀러가 방송 중에 소개할 상품을 고정한다. */
+    @Transactional
+    public void pinProduct(LiveProductPinCommand command) {
+        requireBroadcastingOwnLive(command.liveId(), command.sellerId());
+        productService.pinForLive(command);
+    }
+
+    /** 셀러가 방송 중에 상품의 가격과 재고를 고친다. */
+    @Transactional
+    public void changeProductPriceAndStock(LiveProductUpdateCommand command) {
+        requireBroadcastingOwnLive(command.liveId(), command.sellerId());
+        productService.changePriceAndStockDuringLive(command);
+    }
+
+    private Live requireOwnLive(Long liveId, Long sellerId) {
         Live live = findById(liveId);
         if (!live.isOwnedBy(sellerId)) {
             throw new CustomException(LiveErrorCode.LIVE_FORBIDDEN);
         }
+        return live;
+    }
+
+    // lives.status는 스트림 상태 조회가 LIVE로 옮긴다. 방송 화면이 그 조회를 하고 있어야 고정과 수정이 열린다.
+    private void requireBroadcastingOwnLive(Long liveId, Long sellerId) {
+        if (!requireOwnLive(liveId, sellerId).isBroadcasting()) {
+            throw new CustomException(LiveErrorCode.LIVE_NOT_BROADCASTING);
+        }
+    }
+
+    /** 셀러가 라이브탭에서 자기 라이브 상황을 한 번에 본다. */
+    // 라이브 한 번, 편성 상품 수 한 번으로 끝낸다. 라이브마다 상품을 세면 개수만큼 쿼리가 늘어난다.
+    @Transactional(readOnly = true)
+    public SellerLiveTabResponse getMyLiveTab(Long sellerId) {
+        List<Live> lives =
+                liveRepository.findBySellerIdAndStatusInOrderByScheduledAtAsc(
+                        sellerId, List.of(LiveStatus.LIVE, LiveStatus.READY));
+
+        Live broadcasting = lives.stream().filter(Live::isBroadcasting).findFirst().orElse(null);
+        List<Live> scheduled = lives.stream().filter(live -> !live.isBroadcasting()).toList();
+
+        Map<Long, Integer> productCounts =
+                productService.countScheduledProducts(scheduled.stream().map(Live::getId).toList());
+
+        return SellerLiveTabResponse.of(
+                broadcasting,
+                scheduled.stream()
+                        .map(
+                                live ->
+                                        SellerLiveTabResponse.Scheduled.of(
+                                                live, productCounts.getOrDefault(live.getId(), 0)))
+                        .toList());
+    }
+
+    @Transactional(readOnly = true)
+    public LiveViewerResponse getByPublicId(String publicId) {
+        Live live = findByPublicId(publicId);
+        return LiveViewerResponse.of(live, userService.findSellerProfile(live.getSellerId()));
+    }
+
+    public BroadcastCredentialResponse reissueCredential(Long liveId, Long sellerId) {
+        Live live = requireOwnLive(liveId, sellerId);
         if (live.isEnded()) {
             throw new CustomException(LiveErrorCode.LIVE_ALREADY_ENDED);
         }
@@ -163,15 +259,44 @@ public class LiveService {
     }
 
     public LiveStreamStatusResponse getStreamStatus(Long liveId, Long sellerId) {
-        Live live = findById(liveId);
-        if (!live.isOwnedBy(sellerId)) {
-            throw new CustomException(LiveErrorCode.LIVE_FORBIDDEN);
-        }
-        StreamState streamState = liveStreamingClient.getStreamState(live.getIvsChannelArn());
-        if (streamState == StreamState.BROADCASTING && !live.isEnded()) {
+        Live live = requireOwnLive(liveId, sellerId);
+        StreamStatus streamStatus = liveStreamingClient.getStreamStatus(live.getIvsChannelArn());
+        if (streamStatus.isBroadcasting() && !live.isEnded()) {
             live = syncToBroadcasting(live);
         }
-        return LiveStreamStatusResponse.of(live, streamState);
+        return LiveStreamStatusResponse.of(live, streamStatus.state());
+    }
+
+    /** 시청 화면이 시청자 수를 주기적으로 읽는다. */
+    // 값이 있는데 갱신을 선점하지 못했으면 다른 요청이 최근에 물어본 것이라 직전 값을 그대로 준다.
+    // 그래야 만료 순간에 몰린 요청이 저마다 IVS를 부르지 않는다. IVS를 부르므로 트랜잭션으로 묶지 않는다.
+    public LiveViewerCountResponse getViewerCount(String publicId) {
+        Optional<Integer> cached = liveViewerCountRepository.find(publicId);
+        if (cached.isPresent() && !liveViewerCountRepository.tryStartRefresh(publicId)) {
+            return new LiveViewerCountResponse(cached.get());
+        }
+        return new LiveViewerCountResponse(fetchAndCacheViewerCount(publicId));
+    }
+
+    // 끝난 방송만 막고 나머지는 IVS에 묻는다. lives.status는 셀러의 송출 상태 조회로만 갱신돼서,
+    // 그걸로 막으면 영상은 나가는데 시청자 수만 0으로 내려가는 구간이 생긴다.
+    private int fetchAndCacheViewerCount(String publicId) {
+        Live live = findByPublicId(publicId);
+        int viewerCount =
+                live.isEnded()
+                        ? 0
+                        : liveStreamingClient
+                                .getStreamStatus(live.getIvsChannelArn())
+                                .viewerCount();
+        liveViewerCountRepository.save(publicId, viewerCount);
+        return viewerCount;
+    }
+
+    /** 시청자가 라이브 화면에서 상품 바와 전체 상품 시트를 채운다. */
+    @Transactional(readOnly = true)
+    public LiveProductsResponse getPublicLiveProducts(String publicId) {
+        Long liveId = findByPublicId(publicId).getId();
+        return productService.findLiveProducts(liveId);
     }
 
     @Transactional(readOnly = true)
@@ -180,10 +305,7 @@ public class LiveService {
     }
 
     public LiveDetailResponse end(Long liveId, Long sellerId) {
-        Live live = findById(liveId);
-        if (!live.isOwnedBy(sellerId)) {
-            throw new CustomException(LiveErrorCode.LIVE_FORBIDDEN);
-        }
+        Live live = requireOwnLive(liveId, sellerId);
         if (live.isEnded()) {
             return LiveDetailResponse.from(live);
         }
@@ -203,6 +325,14 @@ public class LiveService {
         } catch (DataIntegrityViolationException e) {
             // active_seller_id unique 위반. 이 셀러가 다른 라이브를 이미 방송 중이다.
             throw new CustomException(LiveErrorCode.LIVE_ALREADY_BROADCASTING, e);
+        }
+    }
+
+    // 사진 복사와 채널 생성보다 앞에서 끊는다. 뒤에 두면 거부할 요청도 S3와 IVS를 먼저 건드린다.
+    private void requireScheduleRoom(Long sellerId) {
+        if (liveRepository.countBySellerIdAndStatus(sellerId, LiveStatus.READY)
+                >= Live.MAX_SCHEDULED) {
+            throw new CustomException(LiveErrorCode.LIVE_SCHEDULE_LIMIT_EXCEEDED);
         }
     }
 

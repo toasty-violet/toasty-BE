@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -12,16 +14,22 @@ import static org.mockito.Mockito.verify;
 import com.toasty.domain.live.client.FakeLiveStreamingClient;
 import com.toasty.domain.live.client.dto.StreamState;
 import com.toasty.domain.live.controller.dto.response.BroadcastCredentialResponse;
-import com.toasty.domain.live.controller.dto.response.LiveCreateResponse;
 import com.toasty.domain.live.controller.dto.response.LiveDetailResponse;
 import com.toasty.domain.live.controller.dto.response.LivePlaybackResponse;
 import com.toasty.domain.live.controller.dto.response.LiveStreamStatusResponse;
+import com.toasty.domain.live.controller.dto.response.LiveViewerResponse;
+import com.toasty.domain.live.controller.dto.response.LiveWithProductsResponse;
+import com.toasty.domain.live.controller.dto.response.SellerLiveTabResponse;
 import com.toasty.domain.live.entity.Live;
 import com.toasty.domain.live.entity.LiveCreateCommand;
 import com.toasty.domain.live.entity.LiveStatus;
 import com.toasty.domain.live.entity.LiveUpdateCommand;
 import com.toasty.domain.live.exception.LiveErrorCode;
 import com.toasty.domain.live.repository.LiveRepository;
+import com.toasty.domain.product.controller.dto.response.LiveProductResponse;
+import com.toasty.domain.product.controller.dto.response.LiveProductsResponse;
+import com.toasty.domain.product.entity.LiveProductStatus;
+import com.toasty.domain.seller.controller.dto.response.SellerProfileResponse;
 import com.toasty.global.exception.CustomException;
 import java.util.List;
 import java.util.Optional;
@@ -36,20 +44,30 @@ class LiveServiceTest {
     private static final Long SELLER_ID = 7L;
 
     private LiveRepository liveRepository;
+    private com.toasty.domain.live.repository.LiveViewerCountRepository viewerCountRepository;
     private FakeLiveStreamingClient streamingClient;
     private com.toasty.domain.product.service.ProductService productService;
+    private com.toasty.domain.user.service.UserService userService;
     private org.springframework.transaction.support.TransactionTemplate transactionTemplate;
     private LiveService liveService;
 
     @BeforeEach
     void setUp() {
         liveRepository = mock(LiveRepository.class);
+        viewerCountRepository =
+                mock(com.toasty.domain.live.repository.LiveViewerCountRepository.class);
         streamingClient = new FakeLiveStreamingClient();
         productService = mock(com.toasty.domain.product.service.ProductService.class);
+        userService = mock(com.toasty.domain.user.service.UserService.class);
         transactionTemplate = passthroughTransaction();
         liveService =
                 new LiveService(
-                        liveRepository, streamingClient, productService, transactionTemplate);
+                        liveRepository,
+                        viewerCountRepository,
+                        streamingClient,
+                        productService,
+                        userService,
+                        transactionTemplate);
     }
 
     // 콜백을 그대로 실행하는 가짜 트랜잭션. 단위 테스트에는 커밋·롤백이 필요 없다.
@@ -101,6 +119,24 @@ class LiveServiceTest {
         return live;
     }
 
+    private void givenLiveByPublicId(String publicId, Long liveId) {
+        org.springframework.test.util.ReflectionTestUtils.setField(
+                givenLiveByPublicId(publicId), "id", liveId);
+    }
+
+    private LiveProductResponse liveProduct(
+            Long productId, String name, int displayOrder, LiveProductStatus status) {
+        return new LiveProductResponse(
+                productId,
+                productId + 10,
+                name,
+                45000,
+                1,
+                "https://cdn.example.com/a.jpg",
+                displayOrder,
+                status);
+    }
+
     @Nested
     @DisplayName("라이브 생성")
     class Create {
@@ -110,7 +146,7 @@ class LiveServiceTest {
         void 채널을_만들고_READY로_저장한다() {
             givenSaveSucceeds();
 
-            LiveCreateResponse response = liveService.create(command());
+            LiveWithProductsResponse response = liveService.create(command());
 
             assertThat(response.live().sellerId()).isEqualTo(SELLER_ID);
             assertThat(response.live().title()).isEqualTo("빈티지 여름옷 라이브");
@@ -139,7 +175,7 @@ class LiveServiceTest {
                                             com.toasty.domain.product.entity.LiveProductStatus
                                                     .SCHEDULED)));
 
-            LiveCreateResponse response = liveService.create(command());
+            LiveWithProductsResponse response = liveService.create(command());
 
             assertThat(response.products()).hasSize(1);
             assertThat(response.products().get(0).name()).isEqualTo("핸드메이드 가죽 벨트");
@@ -167,6 +203,41 @@ class LiveServiceTest {
 
             assertThat(streamingClient.deletedChannelArns()).hasSize(1);
             verify(productService).deleteImagesQuietly(imageKeys);
+        }
+
+        @Test
+        @DisplayName("예정된 라이브가 상한이면 거부하고 사진도 채널도 건드리지 않는다")
+        void 예정_라이브가_상한이면_거부한다() {
+            given(liveRepository.countBySellerIdAndStatus(SELLER_ID, LiveStatus.READY))
+                    .willReturn(10);
+
+            assertThatThrownBy(() -> liveService.create(command()))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(LiveErrorCode.LIVE_SCHEDULE_LIMIT_EXCEEDED);
+
+            verify(productService, never()).copyImagesToPermanent(any(), any());
+            assertThat(streamingClient.createdChannelNames()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("상한 직전이면 만들 수 있다")
+        void 상한_직전이면_만들_수_있다() {
+            given(liveRepository.countBySellerIdAndStatus(SELLER_ID, LiveStatus.READY))
+                    .willReturn(9);
+            givenSaveSucceeds();
+
+            assertThatCode(() -> liveService.create(command())).doesNotThrowAnyException();
+        }
+
+        @Test
+        @DisplayName("방송 중이거나 끝난 라이브는 상한에 세지 않는다")
+        void 예정된_것만_센다() {
+            givenSaveSucceeds();
+
+            liveService.create(command());
+
+            verify(liveRepository).countBySellerIdAndStatus(SELLER_ID, LiveStatus.READY);
         }
 
         @Test
@@ -231,7 +302,12 @@ class LiveServiceTest {
                     };
             LiveService service =
                     new LiveService(
-                            liveRepository, failing, productService, passthroughTransaction());
+                            liveRepository,
+                            viewerCountRepository,
+                            failing,
+                            productService,
+                            userService,
+                            passthroughTransaction());
 
             assertThatThrownBy(() -> service.create(command()))
                     .isInstanceOf(CustomException.class)
@@ -243,21 +319,97 @@ class LiveServiceTest {
     }
 
     @Nested
+    @DisplayName("시청자 수 조회")
+    class ViewerCount {
+
+        @Test
+        @DisplayName("값이 있고 갱신 주기 전이면 라이브도 IVS도 건드리지 않는다")
+        void 직전_값을_그대로_쓴다() {
+            given(viewerCountRepository.find("abc")).willReturn(Optional.of(132));
+            given(viewerCountRepository.tryStartRefresh("abc")).willReturn(false);
+
+            assertThat(liveService.getViewerCount("abc").viewerCount()).isEqualTo(132);
+
+            verify(liveRepository, never()).findByPublicId(any());
+            verify(viewerCountRepository, never()).save(any(), anyInt());
+        }
+
+        @Test
+        @DisplayName("갱신을 선점한 요청만 IVS에서 새로 받아 담는다")
+        void 선점한_요청이_갱신한다() {
+            Live live = givenLiveByPublicId("abc");
+            live.startBroadcast();
+            given(viewerCountRepository.find("abc")).willReturn(Optional.of(100));
+            given(viewerCountRepository.tryStartRefresh("abc")).willReturn(true);
+            streamingClient.viewerCount(132);
+
+            assertThat(liveService.getViewerCount("abc").viewerCount()).isEqualTo(132);
+
+            verify(viewerCountRepository).save("abc", 132);
+        }
+
+        @Test
+        @DisplayName("담아둔 값이 없으면 선점과 무관하게 받아서 담는다")
+        void 값이_없으면_받아온다() {
+            Live live = givenLiveByPublicId("abc");
+            live.startBroadcast();
+            given(viewerCountRepository.find("abc")).willReturn(Optional.empty());
+            streamingClient.viewerCount(132);
+
+            assertThat(liveService.getViewerCount("abc").viewerCount()).isEqualTo(132);
+
+            verify(viewerCountRepository).save("abc", 132);
+        }
+
+        @Test
+        @DisplayName("방송 전이어도 IVS에 물어본다")
+        void 방송_전에도_물어본다() {
+            givenLiveByPublicId("abc");
+            given(viewerCountRepository.find("abc")).willReturn(Optional.empty());
+            streamingClient.broadcasting(
+                    com.toasty.domain.live.client.dto.StreamState.BROADCASTING);
+            streamingClient.viewerCount(132);
+
+            assertThat(liveService.getViewerCount("abc").viewerCount()).isEqualTo(132);
+        }
+
+        @Test
+        @DisplayName("끝난 방송은 IVS를 부르지 않고 0이다")
+        void 끝난_방송은_0이다() {
+            Live live = givenLiveByPublicId("abc");
+            live.end();
+            given(viewerCountRepository.find("abc")).willReturn(Optional.empty());
+            streamingClient.viewerCount(132);
+
+            assertThat(liveService.getViewerCount("abc").viewerCount()).isZero();
+
+            verify(viewerCountRepository).save("abc", 0);
+        }
+    }
+
+    @Nested
     @DisplayName("라이브 시청")
     class GetByPublicId {
 
         @Test
-        @DisplayName("publicId로 조회해 저장된 값을 그대로 반환한다")
+        @DisplayName("publicId로 조회해 저장된 값과 셀러 정보를 함께 반환한다")
         void 저장된_값을_반환한다() {
             givenLiveByPublicId("public-id");
+            given(userService.findSellerProfile(SELLER_ID))
+                    .willReturn(
+                            new SellerProfileResponse(
+                                    SELLER_ID, "토스티샵", "https://cdn.example.com/shop.jpg"));
 
-            LiveDetailResponse response = liveService.getByPublicId("public-id");
+            LiveViewerResponse response = liveService.getByPublicId("public-id");
 
-            assertThat(response.sellerId()).isEqualTo(SELLER_ID);
             assertThat(response.playbackUrl()).isEqualTo("https://playback/abc.m3u8");
             assertThat(response.status()).isEqualTo(LiveStatus.READY);
             assertThat(response.startedAt()).isNull();
             assertThat(response.endedAt()).isNull();
+            assertThat(response.seller().sellerId()).isEqualTo(SELLER_ID);
+            assertThat(response.seller().shopName()).isEqualTo("토스티샵");
+            assertThat(response.seller().shopImageUrl())
+                    .isEqualTo("https://cdn.example.com/shop.jpg");
         }
 
         @Test
@@ -269,6 +421,310 @@ class LiveServiceTest {
                     .isInstanceOf(CustomException.class)
                     .extracting(e -> ((CustomException) e).getErrorCode())
                     .isEqualTo(LiveErrorCode.LIVE_NOT_FOUND);
+        }
+    }
+
+    @Nested
+    @DisplayName("라이브 상세 조회")
+    class GetMyLive {
+
+        @Test
+        @DisplayName("라이브와 편성 상품을 노출 순서대로 함께 준다")
+        void 라이브와_상품을_함께_준다() {
+            givenLive(1L);
+            given(productService.findScheduledProducts(1L))
+                    .willReturn(
+                            java.util.List.of(
+                                    liveProduct(31L, "가죽 벨트", 0, LiveProductStatus.SCHEDULED),
+                                    liveProduct(32L, "도자기 컵", 1, LiveProductStatus.SCHEDULED)));
+
+            LiveWithProductsResponse response = liveService.getMyLiveDetail(1L, SELLER_ID);
+
+            assertThat(response.live().title()).isEqualTo("빈티지 여름옷 라이브");
+            assertThat(response.products())
+                    .extracting(
+                            com.toasty.domain.product.controller.dto.response.LiveProductResponse
+                                    ::name)
+                    .containsExactly("가죽 벨트", "도자기 컵");
+        }
+
+        @Test
+        @DisplayName("소유자가 아니면 거부하고 상품을 조회하지 않는다")
+        void 소유자가_아니면_거부한다() {
+            givenLive(1L);
+
+            assertThatThrownBy(() -> liveService.getMyLiveDetail(1L, 99L))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(LiveErrorCode.LIVE_FORBIDDEN);
+
+            verify(productService, never()).findScheduledProducts(any());
+        }
+
+        @Test
+        @DisplayName("없으면 LIVE_NOT_FOUND다")
+        void 없으면_LIVE_NOT_FOUND다() {
+            given(liveRepository.findById(1L)).willReturn(Optional.empty());
+
+            assertThatThrownBy(() -> liveService.getMyLiveDetail(1L, SELLER_ID))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(LiveErrorCode.LIVE_NOT_FOUND);
+        }
+
+        @Test
+        @DisplayName("종료된 라이브도 조회된다")
+        void 종료된_라이브도_조회된다() {
+            Live live = givenLive(1L);
+            live.end();
+
+            LiveWithProductsResponse response = liveService.getMyLiveDetail(1L, SELLER_ID);
+
+            assertThat(response.live().status()).isEqualTo(LiveStatus.ENDED);
+        }
+
+        @Test
+        @DisplayName("편성된 상품이 없으면 빈 목록이다")
+        void 상품이_없으면_비어_있다() {
+            givenLive(1L);
+
+            assertThat(liveService.getMyLiveDetail(1L, SELLER_ID).products()).isEmpty();
+        }
+    }
+
+    @Nested
+    @DisplayName("셀러 라이브탭 조회")
+    class GetMyLiveTab {
+
+        private Live scheduledLive(Long liveId, String title) {
+            Live live =
+                    Live.create(
+                            new LiveCreateCommand(
+                                    SELLER_ID,
+                                    title,
+                                    "설명",
+                                    java.time.LocalDateTime.now().plusDays(1),
+                                    java.util.List.of()),
+                            "arn:aws:ivs:channel/" + liveId,
+                            "https://playback/" + liveId + ".m3u8");
+            org.springframework.test.util.ReflectionTestUtils.setField(live, "id", liveId);
+            return live;
+        }
+
+        @Test
+        @DisplayName("방송 중이 없으면 broadcasting은 null이고 예정만 담긴다")
+        void 방송_중이_없으면_null이다() {
+            given(
+                            liveRepository.findBySellerIdAndStatusInOrderByScheduledAtAsc(
+                                    eq(SELLER_ID), any()))
+                    .willReturn(java.util.List.of(scheduledLive(1L, "예정 라이브")));
+
+            SellerLiveTabResponse response = liveService.getMyLiveTab(SELLER_ID);
+
+            assertThat(response.broadcasting()).isNull();
+            assertThat(response.scheduled()).hasSize(1);
+            assertThat(response.scheduled().get(0).title()).isEqualTo("예정 라이브");
+        }
+
+        @Test
+        @DisplayName("방송 중인 라이브는 단건으로 빠지고 예정 목록에는 담기지 않는다")
+        void 방송_중은_단건으로_뺀다() {
+            Live broadcasting = scheduledLive(1L, "방송 중 라이브");
+            broadcasting.startBroadcast();
+            given(
+                            liveRepository.findBySellerIdAndStatusInOrderByScheduledAtAsc(
+                                    eq(SELLER_ID), any()))
+                    .willReturn(java.util.List.of(broadcasting, scheduledLive(2L, "예정 라이브")));
+
+            SellerLiveTabResponse response = liveService.getMyLiveTab(SELLER_ID);
+
+            assertThat(response.broadcasting().title()).isEqualTo("방송 중 라이브");
+            assertThat(response.broadcasting().publicId()).isNotBlank();
+            assertThat(response.scheduled())
+                    .extracting(SellerLiveTabResponse.Scheduled::title)
+                    .containsExactly("예정 라이브");
+        }
+
+        @Test
+        @DisplayName("편성 상품 수를 라이브별로 맞춰 담고, 편성이 없으면 0이다")
+        void 상품_수를_라이브별로_담는다() {
+            given(
+                            liveRepository.findBySellerIdAndStatusInOrderByScheduledAtAsc(
+                                    eq(SELLER_ID), any()))
+                    .willReturn(
+                            java.util.List.of(scheduledLive(1L, "첫째"), scheduledLive(2L, "둘째")));
+            given(productService.countScheduledProducts(java.util.List.of(1L, 2L)))
+                    .willReturn(java.util.Map.of(1L, 32));
+
+            SellerLiveTabResponse response = liveService.getMyLiveTab(SELLER_ID);
+
+            assertThat(response.scheduled())
+                    .extracting(
+                            SellerLiveTabResponse.Scheduled::title,
+                            SellerLiveTabResponse.Scheduled::productCount)
+                    .containsExactly(
+                            org.assertj.core.groups.Tuple.tuple("첫째", 32),
+                            org.assertj.core.groups.Tuple.tuple("둘째", 0));
+        }
+
+        @Test
+        @DisplayName("라이브가 하나도 없으면 빈 목록이고 상품 수를 세지 않는다")
+        void 라이브가_없으면_비어_있다() {
+            given(
+                            liveRepository.findBySellerIdAndStatusInOrderByScheduledAtAsc(
+                                    eq(SELLER_ID), any()))
+                    .willReturn(java.util.List.of());
+
+            SellerLiveTabResponse response = liveService.getMyLiveTab(SELLER_ID);
+
+            assertThat(response.broadcasting()).isNull();
+            assertThat(response.scheduled()).isEmpty();
+            assertThat(response.latestStat()).isNull();
+        }
+
+        @Test
+        @DisplayName("종료된 라이브는 조회 대상에서 빠진다")
+        void 종료된_라이브는_조회하지_않는다() {
+            given(
+                            liveRepository.findBySellerIdAndStatusInOrderByScheduledAtAsc(
+                                    eq(SELLER_ID), any()))
+                    .willReturn(java.util.List.of());
+
+            liveService.getMyLiveTab(SELLER_ID);
+
+            org.mockito.ArgumentCaptor<java.util.Collection<LiveStatus>> captor =
+                    org.mockito.ArgumentCaptor.forClass(java.util.Collection.class);
+            verify(liveRepository)
+                    .findBySellerIdAndStatusInOrderByScheduledAtAsc(
+                            eq(SELLER_ID), captor.capture());
+            assertThat(captor.getValue())
+                    .containsExactlyInAnyOrder(LiveStatus.LIVE, LiveStatus.READY);
+        }
+    }
+
+    @Nested
+    @DisplayName("시청 화면 상품 조회")
+    class PublicLiveProducts {
+
+        @Test
+        @DisplayName("publicId로 현재 고정 상품과 편성 목록을 함께 준다")
+        void 시트를_채운다() {
+            givenLiveByPublicId("abc", 1L);
+            LiveProductsResponse sheet =
+                    new LiveProductsResponse(
+                            31L,
+                            java.util.List.of(
+                                    liveProduct(31L, "가죽 벨트", 0, LiveProductStatus.ACTIVE)));
+            given(productService.findLiveProducts(1L)).willReturn(sheet);
+
+            assertThat(liveService.getPublicLiveProducts("abc")).isSameAs(sheet);
+        }
+
+        @Test
+        @DisplayName("없는 publicId면 LIVE_NOT_FOUND다")
+        void 없으면_LIVE_NOT_FOUND다() {
+            given(liveRepository.findByPublicId("unknown")).willReturn(Optional.empty());
+
+            assertThatThrownBy(() -> liveService.getPublicLiveProducts("unknown"))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(LiveErrorCode.LIVE_NOT_FOUND);
+
+            verify(productService, never()).findLiveProducts(any());
+        }
+    }
+
+    @Nested
+    @DisplayName("방송 중 상품 관리")
+    class LiveProducts {
+
+        @Test
+        @DisplayName("전체 상품 시트를 상품 쪽에서 받아 그대로 준다")
+        void 시트를_채운다() {
+            givenLive(1L);
+            LiveProductsResponse sheet = new LiveProductsResponse(31L, java.util.List.of());
+            given(productService.findLiveProducts(1L)).willReturn(sheet);
+
+            assertThat(liveService.getMyLiveProducts(1L, SELLER_ID)).isSameAs(sheet);
+        }
+
+        @Test
+        @DisplayName("소유자가 아니면 시트를 볼 수 없다")
+        void 소유자가_아니면_거부한다() {
+            givenLive(1L);
+
+            assertThatThrownBy(() -> liveService.getMyLiveProducts(1L, 99L))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(LiveErrorCode.LIVE_FORBIDDEN);
+
+            verify(productService, never()).findLiveProducts(any());
+        }
+
+        @Test
+        @DisplayName("방송 중일 때만 고정할 수 있다")
+        void 방송_전에는_고정할_수_없다() {
+            givenLive(1L);
+
+            assertThatThrownBy(
+                            () ->
+                                    liveService.pinProduct(
+                                            new com.toasty.domain.product.entity
+                                                    .LiveProductPinCommand(1L, 31L, SELLER_ID)))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(LiveErrorCode.LIVE_NOT_BROADCASTING);
+
+            verify(productService, never()).pinForLive(any());
+        }
+
+        @Test
+        @DisplayName("방송 중이면 고정을 상품 쪽에 넘긴다")
+        void 방송_중이면_고정한다() {
+            Live live = givenLive(1L);
+            live.startBroadcast();
+
+            liveService.pinProduct(
+                    new com.toasty.domain.product.entity.LiveProductPinCommand(1L, 31L, SELLER_ID));
+
+            verify(productService)
+                    .pinForLive(
+                            new com.toasty.domain.product.entity.LiveProductPinCommand(
+                                    1L, 31L, SELLER_ID));
+        }
+
+        @Test
+        @DisplayName("소유자가 아니면 고정할 수 없다")
+        void 남의_라이브는_고정할_수_없다() {
+            Live live = givenLive(1L);
+            live.startBroadcast();
+
+            assertThatThrownBy(
+                            () ->
+                                    liveService.pinProduct(
+                                            new com.toasty.domain.product.entity
+                                                    .LiveProductPinCommand(1L, 31L, 99L)))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(LiveErrorCode.LIVE_FORBIDDEN);
+        }
+
+        @Test
+        @DisplayName("방송 중일 때만 가격·재고를 고칠 수 있다")
+        void 방송_전에는_수정할_수_없다() {
+            givenLive(1L);
+
+            assertThatThrownBy(
+                            () ->
+                                    liveService.changeProductPriceAndStock(
+                                            new com.toasty.domain.product.entity
+                                                    .LiveProductUpdateCommand(
+                                                    1L, 31L, SELLER_ID, 39000, 5)))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(LiveErrorCode.LIVE_NOT_BROADCASTING);
+
+            verify(productService, never()).changePriceAndStockDuringLive(any());
         }
     }
 

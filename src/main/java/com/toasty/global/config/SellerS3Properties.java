@@ -10,4 +10,4 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  */
 @ConfigurationProperties(prefix = "aws.seller-s3")
 public record SellerS3Properties(
-        String bucket, String imagePrefix, int presignedUrlExpirySeconds) {}
+        String bucket, String publicBaseUrl, String imagePrefix, int presignedUrlExpirySeconds) {}

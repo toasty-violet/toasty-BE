@@ -4,13 +4,20 @@ import com.toasty.domain.auth.annotation.LoginUser;
 import com.toasty.domain.auth.annotation.SellerOnly;
 import com.toasty.domain.auth.entity.AuthUser;
 import com.toasty.domain.live.controller.dto.request.LiveCreateRequest;
+import com.toasty.domain.live.controller.dto.request.LiveProductUpdateRequest;
 import com.toasty.domain.live.controller.dto.request.LiveUpdateRequest;
 import com.toasty.domain.live.controller.dto.response.BroadcastCredentialResponse;
-import com.toasty.domain.live.controller.dto.response.LiveCreateResponse;
 import com.toasty.domain.live.controller.dto.response.LiveDetailResponse;
 import com.toasty.domain.live.controller.dto.response.LivePlaybackResponse;
 import com.toasty.domain.live.controller.dto.response.LiveStreamStatusResponse;
+import com.toasty.domain.live.controller.dto.response.LiveViewerCountResponse;
+import com.toasty.domain.live.controller.dto.response.LiveViewerResponse;
+import com.toasty.domain.live.controller.dto.response.LiveWithProductsResponse;
+import com.toasty.domain.live.controller.dto.response.SellerLiveTabResponse;
+import com.toasty.domain.live.entity.Live;
 import com.toasty.domain.live.service.LiveService;
+import com.toasty.domain.product.controller.dto.response.LiveProductsResponse;
+import com.toasty.domain.product.entity.LiveProductPinCommand;
 import com.toasty.global.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -39,12 +46,41 @@ public class LiveController {
                     "셀러가 새 라이브를 개설하면서 이번 방송에서 팔 상품을 함께 등록합니다. 라이브 설정 화면에서 방송 저장을 누를 때 한 번"
                             + " 호출하세요. 상품 사진은 먼저 업로드 주소를 발급받아 S3에 올린 뒤 그 objectKey를 넣습니다. 보낸 상품"
                             + " 순서가 그대로 라이브 내 노출 순서가 됩니다. 송출정보는 이 응답에 없습니다 — 송출 직전에 재발급"
-                            + " API로 받으세요.")
+                            + " API로 받으세요. 아직 방송하지 않은 라이브를 "
+                            + Live.MAX_SCHEDULED
+                            + "개까지 가지고 있을 수 있고, 그보다 많으면 409로 거부됩니다.")
     @SellerOnly
     @PostMapping
-    public ApiResponse<LiveCreateResponse> create(
+    public ApiResponse<LiveWithProductsResponse> create(
             @Valid @RequestBody LiveCreateRequest request, @LoginUser AuthUser seller) {
         return ApiResponse.ok(liveService.create(request.toCommand(seller.sellerId())));
+    }
+
+    @Operation(
+            summary = "셀러 라이브탭 조회",
+            description =
+                    "셀러가 라이브탭에 들어올 때 자기 라이브 상황을 한 번에 가져옵니다. 화면 진입 시 한 번 호출하세요. 지금 방송 중인"
+                            + " 라이브(없으면 null), 예정된 라이브 목록(방송 예정 시각 오름차순), 최신 라이브 현황 세 가지를 함께"
+                            + " 내려줍니다. 종료된 라이브는 담기지 않습니다. latestStat은 주문·시청자 집계가 아직 없어 항상"
+                            + " null이니 값이 없는 화면을 그리세요. 방송 중 라이브의 판매율도 같은 이유로 0으로 나갑니다.")
+    @SellerOnly
+    @GetMapping("/me")
+    public ApiResponse<SellerLiveTabResponse> getMyLiveTab(@LoginUser AuthUser seller) {
+        return ApiResponse.ok(liveService.getMyLiveTab(seller.sellerId()));
+    }
+
+    @Operation(
+            summary = "라이브 상세 조회",
+            description =
+                    "셀러가 자기 라이브 하나를 편성 상품까지 가져옵니다. 라이브 수정 화면에 들어갈 때 한 번 호출해 폼을 채우세요."
+                            + " 응답이 라이브 생성 응답과 같은 형태라 생성 폼과 같은 방식으로 다루면 됩니다. 상품은 노출 순서대로"
+                            + " 내려갑니다. 방송 중이거나 종료된 라이브도 조회할 수 있고, 고칠 수 있는지는 수정 API가 판단합니다."
+                            + " 본인의 라이브만 조회할 수 있으며 송출정보는 포함하지 않습니다.")
+    @SellerOnly
+    @GetMapping("/{liveId}")
+    public ApiResponse<LiveWithProductsResponse> getMyLiveDetail(
+            @PathVariable Long liveId, @LoginUser AuthUser seller) {
+        return ApiResponse.ok(liveService.getMyLiveDetail(liveId, seller.sellerId()));
     }
 
     @Operation(
@@ -79,6 +115,51 @@ public class LiveController {
     }
 
     @Operation(
+            summary = "방송 중 전체 상품 조회",
+            description =
+                    "셀러가 방송 화면에서 전체 상품 시트를 열 때 호출합니다. 편성한 순서대로 내려가고,"
+                            + " currentPinnedProductId가 지금 소개 중인 상품입니다. 아직 아무것도 고정하지 않았으면"
+                            + " null입니다. 한 번 고정한 상품은 다른 상품을 고정해도 계속 구매 가능한 상태로 남습니다.")
+    @SellerOnly
+    @GetMapping("/{liveId}/products")
+    public ApiResponse<LiveProductsResponse> getMyLiveProducts(
+            @PathVariable Long liveId, @LoginUser AuthUser seller) {
+        return ApiResponse.ok(liveService.getMyLiveProducts(liveId, seller.sellerId()));
+    }
+
+    @Operation(
+            summary = "방송 중 상품 고정",
+            description =
+                    "셀러가 지금 소개할 상품을 고정합니다. 고정한 상품은 시청자에게 구매 버튼이 열리고, 다른 상품을 고정해도"
+                            + " 계속 구매할 수 있습니다. 옮겨가는 것은 화면에 표시되는 '현재 고정 상품'뿐입니다."
+                            + " 방송 중일 때만 호출할 수 있고, 품절된 상품은 고정할 수 없습니다.")
+    @SellerOnly
+    @PatchMapping("/{liveId}/products/{productId}/pin")
+    public ApiResponse<Void> pinProduct(
+            @PathVariable Long liveId, @PathVariable Long productId, @LoginUser AuthUser seller) {
+        liveService.pinProduct(new LiveProductPinCommand(liveId, productId, seller.sellerId()));
+        return ApiResponse.ok();
+    }
+
+    @Operation(
+            summary = "방송 중 상품 가격·재고 수정",
+            description =
+                    "셀러가 방송 중에 상품의 가격과 재고를 고칩니다. 상품 수정 시트에서 저장을 누를 때 호출하세요."
+                            + " 방송 중에는 상품을 추가하거나 뺄 수 없어 가격과 재고만 바꿉니다. 상품명과 사진은"
+                            + " 방송 전에 정해집니다.")
+    @SellerOnly
+    @PatchMapping("/{liveId}/products/{productId}")
+    public ApiResponse<Void> changeProductPriceAndStock(
+            @PathVariable Long liveId,
+            @PathVariable Long productId,
+            @Valid @RequestBody LiveProductUpdateRequest request,
+            @LoginUser AuthUser seller) {
+        liveService.changeProductPriceAndStock(
+                request.toCommand(liveId, productId, seller.sellerId()));
+        return ApiResponse.ok();
+    }
+
+    @Operation(
             summary = "송출정보 재발급",
             description =
                     "셀러가 방송 송출에 필요한 정보를 새로 발급받습니다. 송출 직전에 호출하세요. 기존 스트림 키는 즉시 폐기되며, 새 송출정보는 이 응답에서만"
@@ -94,7 +175,8 @@ public class LiveController {
             summary = "방송 종료",
             description =
                     "셀러가 진행 중인 라이브를 종료합니다. 송출이 중단되고 스트림 키가 삭제되어 다시 송출할 수 없으며, 채널과 재생 URL은 지난 방송"
-                            + " 페이지를 위해 유지됩니다. 본인의 라이브만 종료할 수 있습니다.")
+                            + " 페이지를 위해 유지됩니다. 편성했던 상품은 일반 판매로 넘어가 방송이 끝난 뒤에도 계속 살 수 있습니다."
+                            + " 본인의 라이브만 종료할 수 있습니다.")
     @SellerOnly
     @PostMapping("/{liveId}/end")
     public ApiResponse<LiveDetailResponse> end(
@@ -128,14 +210,41 @@ public class LiveController {
     }
 
     @Operation(
+            summary = "라이브 시청 - 시청자 수 조회",
+            description =
+                    "시청 화면 상단의 시청자 수를 채웁니다. 값이 계속 바뀌므로 시청 중에 주기적으로 호출하세요."
+                            + " 인증이 필요 없어 비로그인 유저도 호출할 수 있습니다. 송출 전이면 0이고, 끝난 방송도 0입니다."
+                            + " 서버가 라이브당 10초에 한 번만 실제 값을 받아오므로 그보다 자주 불러도 같은 값이 나옵니다.")
+    @GetMapping("/public/{publicId}/viewer-count")
+    public ApiResponse<LiveViewerCountResponse> getViewerCount(@PathVariable String publicId) {
+        return ApiResponse.ok(liveService.getViewerCount(publicId));
+    }
+
+    @Operation(
+            summary = "라이브 시청 - 상품 조회",
+            description =
+                    "시청자가 라이브 화면의 하단 상품 바와 전체 상품 시트를 채울 때 호출합니다. 시청 화면 진입 시 한 번 부르고,"
+                            + " 셀러가 상품을 바꿀 수 있으므로 시트를 열 때마다 다시 부르세요. 인증이 필요 없어 비로그인 유저도"
+                            + " 호출할 수 있습니다. 편성한 순서대로 내려가며 전체 상품 개수는 products의 길이입니다."
+                            + " currentPinnedProductId가 지금 소개 중인 상품이고, 아직 아무것도 고정하지 않았으면 null입니다."
+                            + " 구매 버튼은 status가 ACTIVE인 상품에만 열리고, 그중 stockQuantity가 0이면 품절로 막습니다."
+                            + " status가 SCHEDULED면 아직 소개 전이라 버튼을 띄우지 않습니다. 방송 전이나 종료 뒤에도"
+                            + " 호출할 수 있고, 방송 전에는 모든 상품이 SCHEDULED라 구매 버튼이 열리지 않습니다.")
+    @GetMapping("/public/{publicId}/products")
+    public ApiResponse<LiveProductsResponse> getPublicLiveProducts(@PathVariable String publicId) {
+        return ApiResponse.ok(liveService.getPublicLiveProducts(publicId));
+    }
+
+    @Operation(
             summary = "라이브 시청",
             description =
                     "유저가 라이브 시청 화면에 들어올 때 필요한 정보를 가져옵니다. 시청 화면 진입 시 한 번 호출하세요. 인증이 필요 없어"
                             + " 비로그인 유저도 호출할 수 있습니다. 경로의 publicId는 라이브 생성 응답으로 받은 값이며, 순차 liveId를"
                             + " 시청 화면 URL에 노출하지 않기 위해 공개 조회는 이 값만 받습니다. 재생에 필요한 playbackUrl과 라이브"
-                            + " 정보를 반환하며, 송출정보(streamKey, ingestEndpoint)는 포함하지 않습니다.")
+                            + " 정보, 화면 상단에 띄울 셀러의 스토어 이름과 대표 이미지를 반환합니다. 시청자 수는 계속 바뀌므로 여기 담지"
+                            + " 않고 시청자 수 조회에서 따로 받습니다. 송출정보(streamKey, ingestEndpoint)는 포함하지 않습니다.")
     @GetMapping("/public/{publicId}")
-    public ApiResponse<LiveDetailResponse> getByPublicId(@PathVariable String publicId) {
+    public ApiResponse<LiveViewerResponse> getByPublicId(@PathVariable String publicId) {
         return ApiResponse.ok(liveService.getByPublicId(publicId));
     }
 }

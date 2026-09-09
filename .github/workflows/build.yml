@@ -51,3 +51,4 @@ jobs:
           JWT_SECRET: ci-dummy-secret-key-for-context-loading-only
           # 기본값 없는 필수값이라 비워두면 컨텍스트 로딩이 실패한다. 카카오 API를 호출하진 않는다.
           KAKAO_CLIENT_ID: ci-dummy-client-id
+          KAKAO_ADMIN_KEY: ci-dummy-admin-key

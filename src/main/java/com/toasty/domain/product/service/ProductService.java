@@ -1,18 +1,25 @@
 package com.toasty.domain.product.service;
 
 import com.toasty.domain.product.controller.dto.response.LiveProductResponse;
+import com.toasty.domain.product.controller.dto.response.LiveProductsResponse;
 import com.toasty.domain.product.entity.LiveProduct;
+import com.toasty.domain.product.entity.LiveProductPinCommand;
+import com.toasty.domain.product.entity.LiveProductUpdateCommand;
 import com.toasty.domain.product.entity.Product;
 import com.toasty.domain.product.entity.ProductCreateCommand;
 import com.toasty.domain.product.entity.ProductImage;
 import com.toasty.domain.product.entity.ProductUpsertCommand;
 import com.toasty.domain.product.exception.ProductErrorCode;
+import com.toasty.domain.product.repository.LiveProductCount;
 import com.toasty.domain.product.repository.LiveProductRepository;
 import com.toasty.domain.product.repository.ProductImageRepository;
 import com.toasty.domain.product.repository.ProductRepository;
 import com.toasty.global.config.S3Properties;
 import com.toasty.global.exception.CustomException;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -136,7 +143,7 @@ public class ProductService {
         requireNoDuplicatedProduct(commands);
 
         Map<Long, LiveProduct> scheduled =
-                liveProductRepository.findByLiveId(liveId).stream()
+                liveProductRepository.findByLiveIdOrderByDisplayOrder(liveId).stream()
                         .collect(Collectors.toMap(LiveProduct::getProductId, Function.identity()));
 
         List<String> obsoleteImageObjectKeys = new ArrayList<>();
@@ -166,10 +173,98 @@ public class ProductService {
         return obsoleteImageObjectKeys;
     }
 
+    /** 라이브에 편성된 상품을 노출 순서대로 돌려준다. 상품과 대표 이미지를 각각 한 번에 묶어 읽는다. */
+    @Transactional(readOnly = true)
+    public List<LiveProductResponse> findScheduledProducts(Long liveId) {
+        return toResponses(liveProductRepository.findByLiveIdOrderByDisplayOrder(liveId));
+    }
+
+    /** 방송 화면의 전체 상품 시트를 채운다. */
+    // 현재 고정 상품은 편성 목록에 이미 딸려 온 pinnedAt으로 고른다. 같은 테이블을 두 번 읽지 않는다.
+    @Transactional(readOnly = true)
+    public LiveProductsResponse findLiveProducts(Long liveId) {
+        List<LiveProduct> scheduled = liveProductRepository.findByLiveIdOrderByDisplayOrder(liveId);
+        return new LiveProductsResponse(currentPinnedProductId(scheduled), toResponses(scheduled));
+    }
+
+    private Long currentPinnedProductId(List<LiveProduct> scheduled) {
+        return scheduled.stream()
+                .filter(liveProduct -> liveProduct.getPinnedAt() != null)
+                .max(Comparator.comparing(LiveProduct::getPinnedAt))
+                .map(LiveProduct::getProductId)
+                .orElse(null);
+    }
+
+    private List<LiveProductResponse> toResponses(List<LiveProduct> scheduled) {
+        if (scheduled.isEmpty()) {
+            return List.of();
+        }
+        List<Long> productIds = scheduled.stream().map(LiveProduct::getProductId).toList();
+
+        Map<Long, Product> products =
+                productRepository.findAllById(productIds).stream()
+                        .collect(Collectors.toMap(Product::getId, Function.identity()));
+        // display_order 순으로 받아 상품마다 첫 번째를 대표로 쓴다.
+        Map<Long, String> mainImageUrls =
+                productImageRepository.findByProductIdInOrderByDisplayOrder(productIds).stream()
+                        .collect(
+                                Collectors.toMap(
+                                        ProductImage::getProductId,
+                                        ProductImage::getImageUrl,
+                                        (main, rest) -> main));
+
+        return scheduled.stream()
+                .map(
+                        liveProduct ->
+                                LiveProductResponse.of(
+                                        products.get(liveProduct.getProductId()),
+                                        liveProduct,
+                                        mainImageUrls.get(liveProduct.getProductId())))
+                .toList();
+    }
+
+    /** 셀러가 방송 중에 상품을 고정한다. 이미 고정됐던 상품이면 고정 시각만 새로 찍는다. */
+    // 한 번 고정한 상품은 계속 구매할 수 있다. 다른 상품을 고정해도 되돌리지 않는다.
+    @Transactional
+    public void pinForLive(LiveProductPinCommand command) {
+        LiveProduct liveProduct = requireScheduled(command.liveId(), command.productId());
+        if (requireOwnedProduct(command.productId(), command.sellerId()).isSoldOut()) {
+            throw new CustomException(ProductErrorCode.PRODUCT_OUT_OF_STOCK);
+        }
+        liveProduct.pin(LocalDateTime.now());
+    }
+
+    /** 셀러가 방송 중에 가격과 재고를 고친다. 상품 추가·삭제는 방송 중에 할 수 없다. */
+    @Transactional
+    public void changePriceAndStockDuringLive(LiveProductUpdateCommand command) {
+        requireScheduled(command.liveId(), command.productId());
+        requireOwnedProduct(command.productId(), command.sellerId())
+                .changePriceAndStock(command.price(), command.stockQuantity());
+    }
+
+    // 그 라이브에 편성된 상품인지 본다. 남의 라이브 상품 번호로는 통과할 수 없다.
+    private LiveProduct requireScheduled(Long liveId, Long productId) {
+        return liveProductRepository
+                .findByLiveIdAndProductId(liveId, productId)
+                .orElseThrow(() -> new CustomException(ProductErrorCode.PRODUCT_NOT_IN_LIVE));
+    }
+
+    /** 라이브별 편성 상품 수를 한 번에 센다. 편성이 없는 라이브는 결과에 담기지 않는다. */
+    @Transactional(readOnly = true)
+    public Map<Long, Integer> countScheduledProducts(Collection<Long> liveIds) {
+        if (liveIds.isEmpty()) {
+            return Map.of();
+        }
+        return liveProductRepository.countByLiveIdIn(liveIds).stream()
+                .collect(
+                        Collectors.toMap(
+                                LiveProductCount::getLiveId, LiveProductCount::getProductCount));
+    }
+
     /** 라이브가 지워질 때 그 라이브의 편성과 상품을 정리하고, 더 이상 쓰지 않는 사진의 objectKey를 돌려준다. 돌려받은 키는 커밋된 뒤에 지운다. */
     @Transactional
     public List<String> removeAllForLive(Long liveId) {
-        return unscheduleAll(liveId, liveProductRepository.findByLiveId(liveId));
+        return unscheduleAll(liveId, liveProductRepository.findByLiveIdOrderByDisplayOrder(liveId));
     }
 
     // 편성에 남의 상품이 섞여 있으면 지우지도 고치지도 않는다.
@@ -250,7 +345,8 @@ public class ProductService {
         List<ProductImage> images =
                 deletableProductIds.isEmpty()
                         ? List.of()
-                        : productImageRepository.findByProductIdIn(deletableProductIds);
+                        : productImageRepository.findByProductIdInOrderByDisplayOrder(
+                                deletableProductIds);
         List<String> objectKeys =
                 images.stream()
                         .map(image -> toObjectKey(image.getImageUrl()))

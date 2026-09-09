@@ -26,7 +26,9 @@ import com.toasty.domain.live.entity.LiveStatus;
 import com.toasty.domain.live.entity.LiveUpdateCommand;
 import com.toasty.domain.live.exception.LiveErrorCode;
 import com.toasty.domain.live.repository.LiveRepository;
+import com.toasty.domain.product.controller.dto.response.LiveProductResponse;
 import com.toasty.domain.product.controller.dto.response.LiveProductsResponse;
+import com.toasty.domain.product.entity.LiveProductStatus;
 import com.toasty.domain.seller.controller.dto.response.SellerProfileResponse;
 import com.toasty.global.exception.CustomException;
 import java.util.List;
@@ -115,6 +117,24 @@ class LiveServiceTest {
         Live live = Live.create(command(), "arn:aws:ivs:channel/abc", "https://playback/abc.m3u8");
         given(liveRepository.findByPublicId(publicId)).willReturn(Optional.of(live));
         return live;
+    }
+
+    private void givenLiveByPublicId(String publicId, Long liveId) {
+        org.springframework.test.util.ReflectionTestUtils.setField(
+                givenLiveByPublicId(publicId), "id", liveId);
+    }
+
+    private LiveProductResponse liveProduct(
+            Long productId, String name, int displayOrder, LiveProductStatus status) {
+        return new LiveProductResponse(
+                productId,
+                productId + 10,
+                name,
+                45000,
+                1,
+                "https://cdn.example.com/a.jpg",
+                displayOrder,
+                status);
     }
 
     @Nested
@@ -415,7 +435,8 @@ class LiveServiceTest {
             given(productService.findScheduledProducts(1L))
                     .willReturn(
                             java.util.List.of(
-                                    liveProduct(31L, "가죽 벨트", 0), liveProduct(32L, "도자기 컵", 1)));
+                                    liveProduct(31L, "가죽 벨트", 0, LiveProductStatus.SCHEDULED),
+                                    liveProduct(32L, "도자기 컵", 1, LiveProductStatus.SCHEDULED)));
 
             LiveWithProductsResponse response = liveService.getMyLiveDetail(1L, SELLER_ID);
 
@@ -468,19 +489,6 @@ class LiveServiceTest {
             givenLive(1L);
 
             assertThat(liveService.getMyLiveDetail(1L, SELLER_ID).products()).isEmpty();
-        }
-
-        private com.toasty.domain.product.controller.dto.response.LiveProductResponse liveProduct(
-                Long productId, String name, int displayOrder) {
-            return new com.toasty.domain.product.controller.dto.response.LiveProductResponse(
-                    productId,
-                    productId + 10,
-                    name,
-                    45000,
-                    1,
-                    "https://cdn.example.com/a.jpg",
-                    displayOrder,
-                    com.toasty.domain.product.entity.LiveProductStatus.SCHEDULED);
         }
     }
 
@@ -591,6 +599,38 @@ class LiveServiceTest {
                             eq(SELLER_ID), captor.capture());
             assertThat(captor.getValue())
                     .containsExactlyInAnyOrder(LiveStatus.LIVE, LiveStatus.READY);
+        }
+    }
+
+    @Nested
+    @DisplayName("시청 화면 상품 조회")
+    class PublicLiveProducts {
+
+        @Test
+        @DisplayName("publicId로 현재 고정 상품과 편성 목록을 함께 준다")
+        void 시트를_채운다() {
+            givenLiveByPublicId("abc", 1L);
+            LiveProductsResponse sheet =
+                    new LiveProductsResponse(
+                            31L,
+                            java.util.List.of(
+                                    liveProduct(31L, "가죽 벨트", 0, LiveProductStatus.ACTIVE)));
+            given(productService.findLiveProducts(1L)).willReturn(sheet);
+
+            assertThat(liveService.getPublicLiveProducts("abc")).isSameAs(sheet);
+        }
+
+        @Test
+        @DisplayName("없는 publicId면 LIVE_NOT_FOUND다")
+        void 없으면_LIVE_NOT_FOUND다() {
+            given(liveRepository.findByPublicId("unknown")).willReturn(Optional.empty());
+
+            assertThatThrownBy(() -> liveService.getPublicLiveProducts("unknown"))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(LiveErrorCode.LIVE_NOT_FOUND);
+
+            verify(productService, never()).findLiveProducts(any());
         }
     }
 

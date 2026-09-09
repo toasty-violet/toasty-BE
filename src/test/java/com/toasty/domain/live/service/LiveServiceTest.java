@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
@@ -48,7 +47,6 @@ class LiveServiceTest {
     private static final String CHAT_ROOM_ARN = "arn:aws:ivschat:room/abc";
 
     private LiveRepository liveRepository;
-    private com.toasty.domain.live.repository.LiveViewerCountRepository viewerCountRepository;
     private FakeLiveStreamingClient streamingClient;
     private FakeLiveChatClient chatClient;
     private com.toasty.domain.product.service.ProductService productService;
@@ -59,8 +57,6 @@ class LiveServiceTest {
     @BeforeEach
     void setUp() {
         liveRepository = mock(LiveRepository.class);
-        viewerCountRepository =
-                mock(com.toasty.domain.live.repository.LiveViewerCountRepository.class);
         streamingClient = new FakeLiveStreamingClient();
         chatClient = new FakeLiveChatClient();
         productService = mock(com.toasty.domain.product.service.ProductService.class);
@@ -69,7 +65,6 @@ class LiveServiceTest {
         liveService =
                 new LiveService(
                         liveRepository,
-                        viewerCountRepository,
                         streamingClient,
                         chatClient,
                         productService,
@@ -363,7 +358,6 @@ class LiveServiceTest {
             LiveService service =
                     new LiveService(
                             liveRepository,
-                            viewerCountRepository,
                             failing,
                             chatClient,
                             productService,
@@ -384,67 +378,85 @@ class LiveServiceTest {
     class ViewerCount {
 
         @Test
-        @DisplayName("값이 있고 갱신 주기 전이면 라이브도 IVS도 건드리지 않는다")
-        void 직전_값을_그대로_쓴다() {
-            given(viewerCountRepository.find("abc")).willReturn(Optional.of(132));
-            given(viewerCountRepository.tryStartRefresh("abc")).willReturn(false);
+        @DisplayName("배치가 적어둔 값을 읽고 IVS를 부르지 않는다")
+        void 적어둔_값을_읽는다() {
+            Live live = givenLiveByPublicId("abc");
+            live.updateViewerCount(132);
 
             assertThat(liveService.getViewerCount("abc").viewerCount()).isEqualTo(132);
 
-            verify(liveRepository, never()).findByPublicId(any());
-            verify(viewerCountRepository, never()).save(any(), anyInt());
+            assertThat(streamingClient.streamStatusRequestCount()).isZero();
         }
 
         @Test
-        @DisplayName("갱신을 선점한 요청만 IVS에서 새로 받아 담는다")
-        void 선점한_요청이_갱신한다() {
-            Live live = givenLiveByPublicId("abc");
+        @DisplayName("없는 publicId면 LIVE_NOT_FOUND다")
+        void 없으면_LIVE_NOT_FOUND다() {
+            given(liveRepository.findByPublicId("unknown")).willReturn(Optional.empty());
+
+            assertThatThrownBy(() -> liveService.getViewerCount("unknown"))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(LiveErrorCode.LIVE_NOT_FOUND);
+        }
+    }
+
+    @Nested
+    @DisplayName("방송 시작 시 시청자 수")
+    class ViewerCountOnStart {
+
+        @Test
+        @DisplayName("방송 시작을 기록할 때 그때 받은 시청자 수도 함께 적는다")
+        void 시작할_때_함께_적는다() {
+            Live live = givenLive(1L);
+            streamingClient.broadcasting(StreamState.BROADCASTING);
+            streamingClient.viewerCount(132);
+            givenSaveSucceeds();
+
+            liveService.getStreamStatus(1L, SELLER_ID);
+
+            assertThat(live.getViewerCount()).isEqualTo(132);
+        }
+    }
+
+    @Nested
+    @DisplayName("시청자 수 갱신")
+    class RefreshViewerCounts {
+
+        @Test
+        @DisplayName("방송 중인 라이브의 시청자 수를 IVS에서 받아 적어둔다")
+        void 받아서_적어둔다() {
+            Live live = givenBroadcastingLive();
+            streamingClient.viewerCount(132);
+            givenSaveSucceeds();
+
+            liveService.refreshViewerCounts();
+
+            assertThat(live.getViewerCount()).isEqualTo(132);
+            verify(liveRepository).save(live);
+        }
+
+        @Test
+        @DisplayName("한 라이브가 실패해도 요청은 성공한다")
+        void 실패해도_넘어간다() {
+            givenBroadcastingLive();
+            streamingClient.failOnStreamStatus(
+                    new CustomException(LiveErrorCode.LIVE_STREAM_STATUS_FETCH_FAILED));
+
+            assertThatCode(() -> liveService.refreshViewerCounts()).doesNotThrowAnyException();
+
+            verify(liveRepository, never()).save(any(Live.class));
+        }
+
+        private Live givenBroadcastingLive() {
+            Live live =
+                    Live.create(
+                            command(),
+                            "arn:aws:ivs:channel/abc",
+                            "https://playback/abc.m3u8",
+                            CHAT_ROOM_ARN);
             live.startBroadcast();
-            given(viewerCountRepository.find("abc")).willReturn(Optional.of(100));
-            given(viewerCountRepository.tryStartRefresh("abc")).willReturn(true);
-            streamingClient.viewerCount(132);
-
-            assertThat(liveService.getViewerCount("abc").viewerCount()).isEqualTo(132);
-
-            verify(viewerCountRepository).save("abc", 132);
-        }
-
-        @Test
-        @DisplayName("담아둔 값이 없으면 선점과 무관하게 받아서 담는다")
-        void 값이_없으면_받아온다() {
-            Live live = givenLiveByPublicId("abc");
-            live.startBroadcast();
-            given(viewerCountRepository.find("abc")).willReturn(Optional.empty());
-            streamingClient.viewerCount(132);
-
-            assertThat(liveService.getViewerCount("abc").viewerCount()).isEqualTo(132);
-
-            verify(viewerCountRepository).save("abc", 132);
-        }
-
-        @Test
-        @DisplayName("방송 전이어도 IVS에 물어본다")
-        void 방송_전에도_물어본다() {
-            givenLiveByPublicId("abc");
-            given(viewerCountRepository.find("abc")).willReturn(Optional.empty());
-            streamingClient.broadcasting(
-                    com.toasty.domain.live.client.dto.StreamState.BROADCASTING);
-            streamingClient.viewerCount(132);
-
-            assertThat(liveService.getViewerCount("abc").viewerCount()).isEqualTo(132);
-        }
-
-        @Test
-        @DisplayName("끝난 방송은 IVS를 부르지 않고 0이다")
-        void 끝난_방송은_0이다() {
-            Live live = givenLiveByPublicId("abc");
-            live.end();
-            given(viewerCountRepository.find("abc")).willReturn(Optional.empty());
-            streamingClient.viewerCount(132);
-
-            assertThat(liveService.getViewerCount("abc").viewerCount()).isZero();
-
-            verify(viewerCountRepository).save("abc", 0);
+            given(liveRepository.findByStatus(LiveStatus.LIVE)).willReturn(java.util.List.of(live));
+            return live;
         }
     }
 

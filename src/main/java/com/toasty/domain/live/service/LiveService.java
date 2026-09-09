@@ -22,7 +22,6 @@ import com.toasty.domain.live.entity.LiveStatus;
 import com.toasty.domain.live.entity.LiveUpdateCommand;
 import com.toasty.domain.live.exception.LiveErrorCode;
 import com.toasty.domain.live.repository.LiveRepository;
-import com.toasty.domain.live.repository.LiveViewerCountRepository;
 import com.toasty.domain.product.controller.dto.response.LiveProductResponse;
 import com.toasty.domain.product.controller.dto.response.LiveProductsResponse;
 import com.toasty.domain.product.entity.LiveProductPinCommand;
@@ -35,7 +34,6 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -53,7 +51,6 @@ public class LiveService {
     private static final Duration CHAT_ROOM_RETENTION = Duration.ofMinutes(30);
 
     private final LiveRepository liveRepository;
-    private final LiveViewerCountRepository liveViewerCountRepository;
     private final LiveStreamingClient liveStreamingClient;
     private final LiveChatClient liveChatClient;
     private final ProductService productService;
@@ -285,34 +282,37 @@ public class LiveService {
         Live live = requireOwnLive(liveId, sellerId);
         StreamStatus streamStatus = liveStreamingClient.getStreamStatus(live.getIvsChannelArn());
         if (streamStatus.isBroadcasting() && !live.isEnded()) {
-            live = syncToBroadcasting(live);
+            live = syncToBroadcasting(live, streamStatus.viewerCount());
         }
         return LiveStreamStatusResponse.of(live, streamStatus.state());
     }
 
     /** 시청 화면이 시청자 수를 주기적으로 읽는다. */
-    // 값이 있는데 갱신을 선점하지 못했으면 다른 요청이 최근에 물어본 것이라 직전 값을 그대로 준다.
-    // 그래야 만료 순간에 몰린 요청이 저마다 IVS를 부르지 않는다. IVS를 부르므로 트랜잭션으로 묶지 않는다.
+    // 배치가 적어둔 값을 읽기만 한다. 시청자가 몇 명이든 IVS 호출은 늘지 않는다.
+    @Transactional(readOnly = true)
     public LiveViewerCountResponse getViewerCount(String publicId) {
-        Optional<Integer> cached = liveViewerCountRepository.find(publicId);
-        if (cached.isPresent() && !liveViewerCountRepository.tryStartRefresh(publicId)) {
-            return new LiveViewerCountResponse(cached.get());
-        }
-        return new LiveViewerCountResponse(fetchAndCacheViewerCount(publicId));
+        return new LiveViewerCountResponse(findByPublicId(publicId).getViewerCount());
     }
 
-    // 끝난 방송만 막고 나머지는 IVS에 묻는다. lives.status는 셀러의 송출 상태 조회로만 갱신돼서,
-    // 그걸로 막으면 영상은 나가는데 시청자 수만 0으로 내려가는 구간이 생긴다.
-    private int fetchAndCacheViewerCount(String publicId) {
-        Live live = findByPublicId(publicId);
-        int viewerCount =
-                live.isEnded()
-                        ? 0
-                        : liveStreamingClient
-                                .getStreamStatus(live.getIvsChannelArn())
-                                .viewerCount();
-        liveViewerCountRepository.save(publicId, viewerCount);
-        return viewerCount;
+    /** 방송 중인 라이브의 시청자 수를 IVS에서 읽어 적어둔다. */
+    // IVS를 부르므로 트랜잭션으로 묶지 않는다. 한 라이브가 실패해도 나머지는 갱신한다.
+    public void refreshViewerCounts() {
+        for (Live live : liveRepository.findByStatus(LiveStatus.LIVE)) {
+            refreshViewerCount(live);
+        }
+    }
+
+    private void refreshViewerCount(Live live) {
+        int viewerCount;
+        try {
+            viewerCount =
+                    liveStreamingClient.getStreamStatus(live.getIvsChannelArn()).viewerCount();
+        } catch (RuntimeException e) {
+            log.warn("시청자 수를 읽지 못했습니다 - liveId={}", live.getId(), e);
+            return;
+        }
+        live.updateViewerCount(viewerCount);
+        liveRepository.save(live);
     }
 
     /** 시청자가 라이브 화면에서 상품 바와 전체 상품 시트를 채운다. */
@@ -338,11 +338,14 @@ public class LiveService {
         return LiveDetailResponse.from(liveRepository.save(live));
     }
 
-    private Live syncToBroadcasting(Live live) {
+    // 방송 시작을 기록하면서 시청자 수도 함께 적는다. 여기 값이 없으면 배치가 처음 돌 때까지 0으로 보인다.
+    // 이미 부른 응답에서 꺼내 쓰므로 IVS 호출은 늘지 않는다.
+    private Live syncToBroadcasting(Live live, int viewerCount) {
         if (live.isBroadcasting()) {
             return live;
         }
         live.startBroadcast();
+        live.updateViewerCount(viewerCount);
         try {
             return liveRepository.save(live);
         } catch (DataIntegrityViolationException e) {

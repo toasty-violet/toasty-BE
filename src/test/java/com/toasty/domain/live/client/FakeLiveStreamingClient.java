@@ -22,6 +22,8 @@ public class FakeLiveStreamingClient implements LiveStreamingClient {
     private RuntimeException reissueFailure;
     private StreamState streamState = StreamState.NOT_BROADCASTING;
     private int viewerCount;
+    private int streamStatusRequestCount;
+    private RuntimeException streamStatusFailure;
 
     public static String arnOf(String channelName) {
         return "arn:aws:ivs:ap-northeast-2:123456789012:channel/" + channelName;
@@ -61,6 +63,10 @@ public class FakeLiveStreamingClient implements LiveStreamingClient {
 
     @Override
     public StreamStatus getStreamStatus(String channelArn) {
+        streamStatusRequestCount++;
+        if (streamStatusFailure != null) {
+            throw streamStatusFailure;
+        }
         return new StreamStatus(streamState, viewerCount);
     }
 
@@ -75,6 +81,14 @@ public class FakeLiveStreamingClient implements LiveStreamingClient {
 
     public void failOnReissue(RuntimeException failure) {
         this.reissueFailure = failure;
+    }
+
+    public int streamStatusRequestCount() {
+        return streamStatusRequestCount;
+    }
+
+    public void failOnStreamStatus(RuntimeException failure) {
+        this.streamStatusFailure = failure;
     }
 
     public void viewerCount(int viewerCount) {

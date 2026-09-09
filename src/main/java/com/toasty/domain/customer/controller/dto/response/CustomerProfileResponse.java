@@ -3,7 +3,7 @@ package com.toasty.domain.customer.controller.dto.response;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.toasty.domain.customer.entity.AddressDetail;
 import com.toasty.domain.customer.entity.AddressType;
-import com.toasty.domain.customer.entity.CustomerProfile;
+import com.toasty.domain.customer.entity.Customer;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 // 값이 없는 자리를 프론트가 그려야 해서, null이어도 키를 남긴다.
@@ -16,12 +16,13 @@ public record CustomerProfileResponse(
                 String phoneNumber,
         @Schema(description = "기본 배송지") AddressResponse address) {
 
-    public static CustomerProfileResponse of(String nickname, CustomerProfile profile) {
+    // 구매자와 기본 배송지로 응답 생성
+    public static CustomerProfileResponse of(Customer customer, AddressDetail address) {
         return new CustomerProfileResponse(
-                profile.name(),
-                nickname,
-                profile.phoneNumber(),
-                AddressResponse.from(profile.address()));
+                customer.getName(),
+                customer.getNickname(),
+                customer.getPhoneNumber(),
+                AddressResponse.from(address));
     }
 
     // 중첩 레코드는 바깥 설정을 물려받지 않아 여기에도 붙인다.

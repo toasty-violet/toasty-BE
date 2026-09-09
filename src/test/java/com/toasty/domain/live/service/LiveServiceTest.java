@@ -50,7 +50,7 @@ class LiveServiceTest {
     private FakeLiveStreamingClient streamingClient;
     private FakeLiveChatClient chatClient;
     private com.toasty.domain.product.service.ProductService productService;
-    private com.toasty.domain.user.service.UserService userService;
+    private com.toasty.domain.seller.service.SellerService sellerService;
     private org.springframework.transaction.support.TransactionTemplate transactionTemplate;
     private LiveService liveService;
 
@@ -62,7 +62,7 @@ class LiveServiceTest {
         streamingClient = new FakeLiveStreamingClient();
         chatClient = new FakeLiveChatClient();
         productService = mock(com.toasty.domain.product.service.ProductService.class);
-        userService = mock(com.toasty.domain.user.service.UserService.class);
+        sellerService = mock(com.toasty.domain.seller.service.SellerService.class);
         transactionTemplate = passthroughTransaction();
         liveService =
                 new LiveService(
@@ -71,7 +71,7 @@ class LiveServiceTest {
                         streamingClient,
                         chatClient,
                         productService,
-                        userService,
+                        sellerService,
                         transactionTemplate);
     }
 
@@ -365,7 +365,7 @@ class LiveServiceTest {
                             failing,
                             chatClient,
                             productService,
-                            userService,
+                            sellerService,
                             passthroughTransaction());
 
             assertThatThrownBy(() -> service.create(command()))
@@ -454,7 +454,7 @@ class LiveServiceTest {
         @DisplayName("publicId로 조회해 저장된 값과 셀러 정보를 함께 반환한다")
         void 저장된_값을_반환한다() {
             givenLiveByPublicId("public-id");
-            given(userService.findSellerProfile(SELLER_ID))
+            given(sellerService.findShopProfile(SELLER_ID))
                     .willReturn(
                             new SellerProfileResponse(
                                     SELLER_ID, "토스티샵", "https://cdn.example.com/shop.jpg"));

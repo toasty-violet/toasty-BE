@@ -2,10 +2,11 @@
 -- Flyway 마이그레이션이 아니므로 db/migration 으로 옮기지 않는다.
 --
 -- 사용법: 아래 변수를 채우고 IntelliJ Query Console 에서 파일 전체를 실행한다.
---   select id, kakao_id, role, nickname from users;
+--   select u.id, u.kakao_id, u.role, c.nickname from users u left join customers c on c.user_id = u.id;
 --
 -- 제약
---   - nickname 은 users 전체에서 unique 하다. 다른 유저가 쓰는 값이면 실패한다.
+--   - nickname 은 customers 전체에서 unique 하다. 다른 구매자가 쓰는 값이면 실패한다.
+--     판매자의 상점명과는 이름 공간이 달라 겹쳐도 된다.
 --   - 기존에 배송지(addresses)가 있었다면 cascade 로 함께 삭제된다.
 
 -- 대상 유저. users.id 를 이미 알고 있으면 아래 두 줄 대신 set @user_id = 1; 만 써도 된다.
@@ -30,16 +31,15 @@ delete
 from customers
 where user_id = @user_id;
 
--- 구매자로 확정한다. 상점명이 아닌 닉네임이 users.nickname 에 들어간다.
+-- 구매자로 확정한다. 닉네임은 users 가 아니라 customers 가 가진다.
 update users
-set role     = 'CUSTOMER',
-    nickname = @nickname
+set role = 'CUSTOMER'
 where id = @user_id;
 
-insert into customers (user_id, name, phone_number, payer_id, created_at, updated_at)
-values (@user_id, @name, @phone_number, null, now(6), now(6));
+insert into customers (user_id, nickname, name, phone_number, payer_id, created_at, updated_at)
+values (@user_id, @nickname, @name, @phone_number, null, now(6), now(6));
 
-select u.id, u.kakao_id, u.role, u.nickname, c.name, c.phone_number
+select u.id, u.kakao_id, u.role, c.nickname, c.name, c.phone_number
 from users u
          join customers c on c.user_id = u.id
 where u.id = @user_id;

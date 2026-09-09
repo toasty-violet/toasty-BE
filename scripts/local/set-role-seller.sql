@@ -2,10 +2,11 @@
 -- Flyway 마이그레이션이 아니므로 db/migration 으로 옮기지 않는다.
 --
 -- 사용법: 아래 변수를 채우고 IntelliJ Query Console 에서 파일 전체를 실행한다.
---   select id, kakao_id, role, nickname from users;
+--   select u.id, u.kakao_id, u.role, s.shop_name from users u left join sellers s on s.user_id = u.id;
 --
 -- 제약
---   - nickname 은 users 전체에서 unique 하다. 다른 유저가 쓰는 값이면 실패한다.
+--   - shop_name 은 sellers 전체에서 unique 하다. 다른 판매자가 쓰는 값이면 실패한다.
+--     구매자의 닉네임과는 이름 공간이 달라 겹쳐도 된다.
 --   - 이미 판매자였고 상품(products)이나 라이브(lives)가 남아 있으면 외래키 제약으로 실패한다.
 --     그 경우 해당 상품·라이브를 먼저 지운다.
 
@@ -34,18 +35,17 @@ delete
 from customers
 where user_id = @user_id;
 
--- 판매자로 확정한다. 상점명이 users.nickname 에 들어간다.
+-- 판매자로 확정한다. 상점명은 users 가 아니라 sellers 가 가진다.
 update users
-set role     = 'SELLER',
-    nickname = @shop_name
+set role = 'SELLER'
 where id = @user_id;
 
-insert into sellers (user_id, shop_image_object_key, description, seller_name, phone_number,
-                     business_number, bank, account_number, created_at, updated_at)
-values (@user_id, null, null, @seller_name, @phone_number,
-        @business_number, @bank, @account_number, now(6), now(6));
+insert into sellers (user_id, shop_name, shop_image_object_key, description, seller_name,
+                     phone_number, business_number, bank, account_number, created_at, updated_at)
+values (@user_id, @shop_name, null, null, @seller_name,
+        @phone_number, @business_number, @bank, @account_number, now(6), now(6));
 
-select u.id, u.kakao_id, u.role, u.nickname, s.seller_name, s.phone_number, s.business_number
+select u.id, u.kakao_id, u.role, s.shop_name, s.seller_name, s.phone_number, s.business_number
 from users u
          join sellers s on s.user_id = u.id
 where u.id = @user_id;

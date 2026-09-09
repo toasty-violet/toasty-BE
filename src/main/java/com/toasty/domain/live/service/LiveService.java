@@ -24,7 +24,7 @@ import com.toasty.domain.product.controller.dto.response.LiveProductsResponse;
 import com.toasty.domain.product.entity.LiveProductPinCommand;
 import com.toasty.domain.product.entity.LiveProductUpdateCommand;
 import com.toasty.domain.product.service.ProductService;
-import com.toasty.domain.user.service.UserService;
+import com.toasty.domain.seller.service.SellerService;
 import com.toasty.global.exception.CustomException;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -53,7 +53,7 @@ public class LiveService {
     private final LiveStreamingClient liveStreamingClient;
     private final LiveChatClient liveChatClient;
     private final ProductService productService;
-    private final UserService userService;
+    private final SellerService sellerService;
     private final TransactionTemplate transactionTemplate;
 
     /** 셀러가 라이브를 개설하면서 이번 방송에서 팔 상품을 함께 등록한다. */
@@ -265,7 +265,7 @@ public class LiveService {
     @Transactional(readOnly = true)
     public LiveViewerResponse getByPublicId(String publicId) {
         Live live = findByPublicId(publicId);
-        return LiveViewerResponse.of(live, userService.findSellerProfile(live.getSellerId()));
+        return LiveViewerResponse.of(live, sellerService.findShopProfile(live.getSellerId()));
     }
 
     public BroadcastCredentialResponse reissueCredential(Long liveId, Long sellerId) {

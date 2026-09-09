@@ -7,13 +7,9 @@ import com.toasty.domain.live.client.dto.StreamingChannel;
 import com.toasty.domain.live.exception.LiveErrorCode;
 import com.toasty.global.config.IvsProperties;
 import com.toasty.global.exception.CustomException;
-import java.io.IOException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-import software.amazon.awssdk.core.exception.ApiCallAttemptTimeoutException;
-import software.amazon.awssdk.core.exception.ApiCallTimeoutException;
-import software.amazon.awssdk.core.exception.RetryableException;
 import software.amazon.awssdk.services.ivs.IvsClient;
 import software.amazon.awssdk.services.ivs.model.ChannelNotBroadcastingException;
 import software.amazon.awssdk.services.ivs.model.CreateChannelResponse;
@@ -33,7 +29,10 @@ import software.amazon.awssdk.services.ivs.model.ThrottlingException;
 @RequiredArgsConstructor
 public class AwsIvsStreamingClient implements LiveStreamingClient {
 
-    private static final int MAX_CAUSE_DEPTH = 10;
+    // 이 서비스에서 다시 시도하면 풀릴 수 있는 실패들.
+    private static final Class<?>[] TRANSIENT_TYPES = {
+        ThrottlingException.class, ServiceUnavailableException.class, InternalServerException.class
+    };
 
     // AWS 기본값과 같지만, 기본값이 바뀌어도 흔들리지 않도록 명시한다.
     private static final String LATENCY_MODE = "LOW";
@@ -169,28 +168,7 @@ public class AwsIvsStreamingClient implements LiveStreamingClient {
         }
     }
 
-    /**
-     * 잠시 후 재시도하면 성공할 수 있는 실패인지 판정한다. SdkException.retryable()은 RetryableException 외에는 전부 false를 반환해
-     * 신뢰할 수 없으므로 타입과 원인 사슬로 판정한다.
-     */
     private static boolean isTransient(Throwable e) {
-        if (e instanceof ThrottlingException
-                || e instanceof ServiceUnavailableException
-                || e instanceof InternalServerException
-                || e instanceof ApiCallTimeoutException
-                || e instanceof ApiCallAttemptTimeoutException
-                || e instanceof RetryableException) {
-            return true;
-        }
-        // 네트워크 오류와 자격증명 실패가 둘 다 SdkClientException으로 오므로 타입으로 구분되지 않는다.
-        // 네트워크 쪽만 원인 사슬에 IOException을 달고 온다.
-        Throwable cause = e.getCause();
-        for (int depth = 0; cause != null && depth < MAX_CAUSE_DEPTH; depth++) {
-            if (cause instanceof IOException) {
-                return true;
-            }
-            cause = cause.getCause();
-        }
-        return false;
+        return TransientFailures.isTransient(e, TRANSIENT_TYPES);
     }
 }

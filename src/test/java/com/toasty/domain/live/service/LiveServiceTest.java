@@ -11,6 +11,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+import com.toasty.domain.live.client.FakeLiveChatClient;
 import com.toasty.domain.live.client.FakeLiveStreamingClient;
 import com.toasty.domain.live.client.dto.StreamState;
 import com.toasty.domain.live.controller.dto.response.BroadcastCredentialResponse;
@@ -42,10 +43,12 @@ import org.springframework.dao.DataIntegrityViolationException;
 class LiveServiceTest {
 
     private static final Long SELLER_ID = 7L;
+    private static final String CHAT_ROOM_ARN = "arn:aws:ivschat:room/abc";
 
     private LiveRepository liveRepository;
     private com.toasty.domain.live.repository.LiveViewerCountRepository viewerCountRepository;
     private FakeLiveStreamingClient streamingClient;
+    private FakeLiveChatClient chatClient;
     private com.toasty.domain.product.service.ProductService productService;
     private com.toasty.domain.user.service.UserService userService;
     private org.springframework.transaction.support.TransactionTemplate transactionTemplate;
@@ -57,6 +60,7 @@ class LiveServiceTest {
         viewerCountRepository =
                 mock(com.toasty.domain.live.repository.LiveViewerCountRepository.class);
         streamingClient = new FakeLiveStreamingClient();
+        chatClient = new FakeLiveChatClient();
         productService = mock(com.toasty.domain.product.service.ProductService.class);
         userService = mock(com.toasty.domain.user.service.UserService.class);
         transactionTemplate = passthroughTransaction();
@@ -65,6 +69,7 @@ class LiveServiceTest {
                         liveRepository,
                         viewerCountRepository,
                         streamingClient,
+                        chatClient,
                         productService,
                         userService,
                         transactionTemplate);
@@ -108,13 +113,23 @@ class LiveServiceTest {
     }
 
     private Live givenLive(Long liveId) {
-        Live live = Live.create(command(), "arn:aws:ivs:channel/abc", "https://playback/abc.m3u8");
+        Live live =
+                Live.create(
+                        command(),
+                        "arn:aws:ivs:channel/abc",
+                        "https://playback/abc.m3u8",
+                        CHAT_ROOM_ARN);
         given(liveRepository.findById(liveId)).willReturn(Optional.of(live));
         return live;
     }
 
     private Live givenLiveByPublicId(String publicId) {
-        Live live = Live.create(command(), "arn:aws:ivs:channel/abc", "https://playback/abc.m3u8");
+        Live live =
+                Live.create(
+                        command(),
+                        "arn:aws:ivs:channel/abc",
+                        "https://playback/abc.m3u8",
+                        CHAT_ROOM_ARN);
         given(liveRepository.findByPublicId(publicId)).willReturn(Optional.of(live));
         return live;
     }
@@ -203,6 +218,49 @@ class LiveServiceTest {
 
             assertThat(streamingClient.deletedChannelArns()).hasSize(1);
             verify(productService).deleteImagesQuietly(imageKeys);
+        }
+
+        @Test
+        @DisplayName("채널과 같은 이름으로 채팅방도 함께 만든다")
+        void 채팅방도_함께_만든다() {
+            givenSaveSucceeds();
+
+            liveService.create(command());
+
+            assertThat(chatClient.createdRoomNames()).hasSize(1);
+            assertThat(chatClient.createdRoomNames().get(0))
+                    .isEqualTo(streamingClient.createdChannelNames().get(0));
+        }
+
+        @Test
+        @DisplayName("채팅방 생성이 실패하면 이미 만든 채널과 복사한 사진을 지운다")
+        void 채팅방_생성_실패시_채널과_사진을_지운다() {
+            List<String> imageKeys = List.of("products/images/44/a.jpg");
+            given(productService.copyImagesToPermanent(any(), any())).willReturn(imageKeys);
+            chatClient.failOnCreate(
+                    new CustomException(LiveErrorCode.LIVE_CHAT_ROOM_CREATE_FAILED));
+
+            assertThatThrownBy(() -> liveService.create(command()))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(LiveErrorCode.LIVE_CHAT_ROOM_CREATE_FAILED);
+
+            assertThat(streamingClient.deletedChannelArns()).hasSize(1);
+            verify(productService).deleteImagesQuietly(imageKeys);
+            verify(liveRepository, never()).save(any(Live.class));
+        }
+
+        @Test
+        @DisplayName("저장이 실패하면 방금 만든 채팅방도 함께 지운다")
+        void 저장_실패시_채팅방도_지운다() {
+            given(liveRepository.save(any(Live.class)))
+                    .willThrow(new CustomException(LiveErrorCode.LIVE_NOT_FOUND));
+
+            assertThatThrownBy(() -> liveService.create(command()))
+                    .isInstanceOf(CustomException.class);
+
+            assertThat(chatClient.deletedRoomArns()).hasSize(1);
+            assertThat(streamingClient.deletedChannelArns()).hasSize(1);
         }
 
         @Test
@@ -305,6 +363,7 @@ class LiveServiceTest {
                             liveRepository,
                             viewerCountRepository,
                             failing,
+                            chatClient,
                             productService,
                             userService,
                             passthroughTransaction());
@@ -506,7 +565,8 @@ class LiveServiceTest {
                                     java.time.LocalDateTime.now().plusDays(1),
                                     java.util.List.of()),
                             "arn:aws:ivs:channel/" + liveId,
-                            "https://playback/" + liveId + ".m3u8");
+                            "https://playback/" + liveId + ".m3u8",
+                            CHAT_ROOM_ARN);
             org.springframework.test.util.ReflectionTestUtils.setField(live, "id", liveId);
             return live;
         }
@@ -729,6 +789,52 @@ class LiveServiceTest {
     }
 
     @Nested
+    @DisplayName("종료된 라이브의 채팅방 회수")
+    class CleanUpEndedChatRooms {
+
+        @Test
+        @DisplayName("방을 지우고 라이브의 방 자리를 비운다")
+        void 방을_지우고_자리를_비운다() {
+            Live live = givenEndedLive();
+            givenSaveSucceeds();
+
+            liveService.cleanUpEndedChatRooms();
+
+            assertThat(chatClient.deletedRoomArns()).containsExactly(CHAT_ROOM_ARN);
+            assertThat(live.getIvsChatRoomArn()).isNull();
+            verify(liveRepository).save(live);
+        }
+
+        @Test
+        @DisplayName("삭제가 실패하면 방 자리를 그대로 둬 다음 차례에 다시 시도한다")
+        void 실패하면_자리를_남긴다() {
+            Live live = givenEndedLive();
+            chatClient.failOnDelete(
+                    new CustomException(LiveErrorCode.LIVE_CHAT_ROOM_DELETE_FAILED));
+
+            assertThatCode(() -> liveService.cleanUpEndedChatRooms()).doesNotThrowAnyException();
+
+            assertThat(live.getIvsChatRoomArn()).isEqualTo(CHAT_ROOM_ARN);
+            verify(liveRepository, never()).save(any(Live.class));
+        }
+
+        private Live givenEndedLive() {
+            Live live =
+                    Live.create(
+                            command(),
+                            "arn:aws:ivs:channel/abc",
+                            "https://playback/abc.m3u8",
+                            CHAT_ROOM_ARN);
+            live.end();
+            given(
+                            liveRepository.findByStatusAndEndedAtBeforeAndIvsChatRoomArnIsNotNull(
+                                    any(), any()))
+                    .willReturn(java.util.List.of(live));
+            return live;
+        }
+    }
+
+    @Nested
     @DisplayName("라이브 삭제")
     class Delete {
 
@@ -787,6 +893,40 @@ class LiveServiceTest {
                     .deleteImagesQuietly(java.util.List.of("products/images/7/a.jpg"));
             assertThat(streamingClient.deletedChannelArns())
                     .containsExactly("arn:aws:ivs:channel/abc");
+        }
+
+        @Test
+        @DisplayName("라이브를 지우면 채팅방도 지운다")
+        void 채팅방도_지운다() {
+            givenLive(1L);
+
+            liveService.delete(1L, SELLER_ID);
+
+            assertThat(chatClient.deletedRoomArns()).containsExactly(CHAT_ROOM_ARN);
+        }
+
+        @Test
+        @DisplayName("커밋 뒤 채팅방 삭제가 실패해도 요청은 성공한다")
+        void 채팅방_삭제_실패는_요청을_실패시키지_않는다() {
+            givenLive(1L);
+            chatClient.failOnDelete(
+                    new CustomException(LiveErrorCode.LIVE_CHAT_ROOM_DELETE_FAILED));
+
+            assertThatCode(() -> liveService.delete(1L, SELLER_ID)).doesNotThrowAnyException();
+
+            assertThat(streamingClient.deletedChannelArns()).hasSize(1);
+        }
+
+        @Test
+        @DisplayName("채팅방이 없던 라이브는 삭제를 시도하지 않는다")
+        void 채팅방이_없으면_건너뛴다() {
+            Live live = givenLive(1L);
+            org.springframework.test.util.ReflectionTestUtils.setField(
+                    live, "ivsChatRoomArn", null);
+
+            liveService.delete(1L, SELLER_ID);
+
+            assertThat(chatClient.deletedRoomArns()).isEmpty();
         }
 
         @Test

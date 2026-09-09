@@ -23,7 +23,8 @@ class LiveTest {
                         java.time.LocalDateTime.now().plusDays(1),
                         java.util.List.of()),
                 "arn:aws:ivs:channel/abc",
-                "https://playback/abc.m3u8");
+                "https://playback/abc.m3u8",
+                "arn:aws:ivschat:room/abc");
     }
 
     @Nested

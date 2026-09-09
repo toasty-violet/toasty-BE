@@ -30,6 +30,12 @@ public enum LiveErrorCode implements ErrorCode {
             HttpStatus.BAD_GATEWAY, "LIVE_CHANNEL_CREATE_FAILED", "방송 채널 생성에 실패했습니다."),
     LIVE_CHANNEL_DELETE_FAILED(
             HttpStatus.BAD_GATEWAY, "LIVE_CHANNEL_DELETE_FAILED", "방송 채널 삭제에 실패했습니다."),
+    LIVE_CHAT_ROOM_CREATE_FAILED(
+            HttpStatus.BAD_GATEWAY, "LIVE_CHAT_ROOM_CREATE_FAILED", "채팅방 생성에 실패했습니다."),
+    // 정리는 실패해도 요청을 뒤집지 않아 지금은 응답으로 나가지 않는다. 로그에서 원인을 가르는 데 쓴다.
+    // 아래 LIVE_CHANNEL_DELETE_FAILED도 같은 자리다.
+    LIVE_CHAT_ROOM_DELETE_FAILED(
+            HttpStatus.BAD_GATEWAY, "LIVE_CHAT_ROOM_DELETE_FAILED", "채팅방 삭제에 실패했습니다."),
     LIVE_CREDENTIAL_REISSUE_FAILED(
             HttpStatus.BAD_GATEWAY, "LIVE_CREDENTIAL_REISSUE_FAILED", "송출정보 재발급에 실패했습니다."),
     LIVE_STREAM_KEY_DELETE_FAILED(

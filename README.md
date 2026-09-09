@@ -60,13 +60,6 @@ docker/local/        # 로컬 개발용 docker-compose
 .githooks/           # pre-commit (Spotless 포맷 검사)
 ```
 
-`domain/sample`은 **구조 예시** 새 도메인을 만들 때 이 패키지를 복사해서 시작하면 된다.
-
-- 생성 `POST /api/samples`, 조회 `GET /api/samples/{id}`
-- 확인할 수 있는 것: 3계층 흐름, `Request → Command → Entity → Response` 변환, `ApiResponse` 응답 형태, `CustomException` + `SampleErrorCode`, 한글 Validation 메시지, Flyway 마이그레이션(`V1__create_samples.sql`)
-
-실제 기능 개발을 시작하면 `domain/sample` 패키지와 `samples` 테이블(새 마이그레이션으로 `drop table`)을 지운다.
-
 패키지 구조·레이어 규칙·네이밍·Flyway·Git 컨벤션은 **[CLAUDE.md](./CLAUDE.md)**
 
 커밋 시 `.githooks/pre-commit`이 스테이징된 Java 파일을 자동 포맷한다. 훅은 `./gradlew build` 한 번 돌리면 자동으로 걸린다.

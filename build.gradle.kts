@@ -19,6 +19,9 @@ repositories {
     mavenCentral()
 }
 
+// bootJar 하나만 만든다. plain jar가 같이 나오면 Dockerfile의 COPY가 대상이 둘이라 실패한다.
+tasks.named<Jar>("jar") { enabled = false }
+
 dependencies {
     // web / api
     implementation("org.springframework.boot:spring-boot-starter-web")
@@ -31,8 +34,22 @@ dependencies {
     implementation("org.flywaydb:flyway-mysql")
     runtimeOnly("com.mysql:mysql-connector-j")
 
+    // aws
+    implementation(platform("software.amazon.awssdk:bom:2.46.7"))
+    implementation("software.amazon.awssdk:ivs")
+    implementation("software.amazon.awssdk:ivschat")
+    implementation("software.amazon.awssdk:s3")
+
+    // auth
+    implementation("org.springframework.boot:spring-boot-starter-security")
+    implementation("org.springframework.boot:spring-boot-starter-data-redis")
+    implementation("io.jsonwebtoken:jjwt-api:0.12.6")
+    runtimeOnly("io.jsonwebtoken:jjwt-impl:0.12.6")
+    runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.12.6")
+
     // ops
     implementation("org.springframework.boot:spring-boot-starter-actuator")
+    developmentOnly("org.springframework.boot:spring-boot-docker-compose")
 
     // lombok
     compileOnly("org.projectlombok:lombok")
@@ -55,6 +72,7 @@ tasks.withType<JavaCompile> {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+    jvmArgs("-XX:+EnableDynamicAgentLoading")
 }
 
 spotless {

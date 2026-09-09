@@ -1,0 +1,171 @@
+package com.toasty.domain.live.entity;
+
+import com.toasty.domain.live.exception.LiveErrorCode;
+import com.toasty.global.entity.BaseTimeEntity;
+import com.toasty.global.exception.CustomException;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import java.time.LocalDateTime;
+import java.util.UUID;
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+
+/** Stream Key 값은 민감정보이므로 필드로 두지 않는다. 발급 시 응답으로만 전달한다. */
+@Entity
+@Getter
+@Table(name = "lives")
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+public class Live extends BaseTimeEntity {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = "seller_id", nullable = false)
+    private Long sellerId;
+
+    @Column(nullable = false, length = 100)
+    private String title;
+
+    @Column(length = 1000)
+    private String description;
+
+    @Column(name = "scheduled_at", nullable = false)
+    private LocalDateTime scheduledAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private LiveStatus status;
+
+    // 외부 공유용 식별자. id를 그대로 노출하지 않는다.
+    @Column(name = "public_id", nullable = false, length = 36)
+    private String publicId;
+
+    @Column(name = "ivs_channel_arn", nullable = false, length = 200)
+    private String ivsChannelArn;
+
+    @Column(name = "playback_url", nullable = false, length = 500)
+    private String playbackUrl;
+
+    // LIVE일 때만 sellerId가 들어간다. unique 제약이 셀러당 동시 LIVE 1개를 강제한다.
+    @Column(name = "active_seller_id")
+    private Long activeSellerId;
+
+    // 라이브마다 IVS Chat 방을 하나 둔다. 이 기능 이전에 만들어진 라이브에는 없어 null이다.
+    @Column(name = "ivs_chat_room_arn", length = 200)
+    private String ivsChatRoomArn;
+
+    @Column(name = "started_at")
+    private LocalDateTime startedAt;
+
+    @Column(name = "ended_at")
+    private LocalDateTime endedAt;
+
+    private Live(
+            Long sellerId,
+            String title,
+            String description,
+            LocalDateTime scheduledAt,
+            String publicId,
+            String ivsChannelArn,
+            String playbackUrl,
+            String ivsChatRoomArn) {
+        this.sellerId = sellerId;
+        this.title = title;
+        this.description = description;
+        this.scheduledAt = scheduledAt;
+        this.status = LiveStatus.READY;
+        this.publicId = publicId;
+        this.ivsChannelArn = ivsChannelArn;
+        this.playbackUrl = playbackUrl;
+        this.ivsChatRoomArn = ivsChatRoomArn;
+    }
+
+    public static Live create(
+            LiveCreateCommand command,
+            String ivsChannelArn,
+            String playbackUrl,
+            String ivsChatRoomArn) {
+        return new Live(
+                command.sellerId(),
+                command.title(),
+                command.description(),
+                command.scheduledAt(),
+                UUID.randomUUID().toString(),
+                ivsChannelArn,
+                playbackUrl,
+                ivsChatRoomArn);
+    }
+
+    /** 셀러가 동시에 들고 있을 수 있는 예정 라이브 수. 늘리면 라이브탭이 한 번에 읽는 양도 함께 늘어난다. */
+    public static final int MAX_SCHEDULED = 10;
+
+    public boolean isOwnedBy(Long sellerId) {
+        return this.sellerId.equals(sellerId);
+    }
+
+    public boolean isBroadcasting() {
+        return status == LiveStatus.LIVE;
+    }
+
+    public boolean isEnded() {
+        return status == LiveStatus.ENDED;
+    }
+
+    // 방송이 시작되면 시청자가 보고 있는 정보라 바꿀 수 없다.
+    public boolean isEditable() {
+        return status == LiveStatus.READY;
+    }
+
+    // 방송이 시작되면 지난 방송 페이지가 채널과 재생 URL을 쓰므로 지울 수 없다.
+    public boolean isDeletable() {
+        return status == LiveStatus.READY;
+    }
+
+    /** 셀러가 방송 전에 라이브 내용을 고친다. 보내지 않은 값은 그대로 둔다. */
+    public void update(String title, String description, LocalDateTime scheduledAt) {
+        if (title != null) {
+            this.title = title;
+        }
+        if (description != null) {
+            this.description = description;
+        }
+        if (scheduledAt != null) {
+            this.scheduledAt = scheduledAt;
+        }
+    }
+
+    // activeSellerId의 unique 제약이 셀러당 동시 LIVE 1개를 막는다.
+    public void startBroadcast() {
+        if (isEnded()) {
+            throw new CustomException(LiveErrorCode.LIVE_ALREADY_ENDED);
+        }
+        if (status == LiveStatus.LIVE) {
+            return;
+        }
+        this.status = LiveStatus.LIVE;
+        this.startedAt = LocalDateTime.now();
+        this.activeSellerId = sellerId;
+    }
+
+    /** 채팅방을 회수한 뒤 자리를 비운다. */
+    public void clearChatRoom() {
+        this.ivsChatRoomArn = null;
+    }
+
+    public void end() {
+        if (isEnded()) {
+            return;
+        }
+        this.status = LiveStatus.ENDED;
+        this.endedAt = LocalDateTime.now();
+        this.activeSellerId = null;
+    }
+}

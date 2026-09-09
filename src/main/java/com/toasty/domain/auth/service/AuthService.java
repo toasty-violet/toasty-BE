@@ -1,0 +1,113 @@
+package com.toasty.domain.auth.service;
+
+import com.toasty.domain.auth.client.KakaoAuthClient;
+import com.toasty.domain.auth.client.dto.KakaoTokenResponse;
+import com.toasty.domain.auth.client.dto.KakaoUserResponse;
+import com.toasty.domain.auth.entity.RefreshTokenConsumeResult;
+import com.toasty.domain.auth.exception.AuthErrorCode;
+import com.toasty.domain.auth.repository.RefreshTokenRepository;
+import com.toasty.domain.auth.token.JwtTokenProvider;
+import com.toasty.domain.auth.token.RefreshTokenGenerator;
+import com.toasty.domain.live.service.LiveService;
+import com.toasty.domain.user.entity.User;
+import com.toasty.domain.user.entity.UserWithdrawCommand;
+import com.toasty.domain.user.service.UserService;
+import com.toasty.global.config.RefreshTokenProperties;
+import com.toasty.global.exception.CustomException;
+import java.time.Duration;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class AuthService {
+
+    private final KakaoAuthClient kakaoAuthClient;
+    private final UserService userService;
+    private final LiveService liveService;
+    private final JwtTokenProvider jwtTokenProvider;
+    private final RefreshTokenGenerator refreshTokenGenerator;
+    private final RefreshTokenRepository refreshTokenRepository;
+    private final RefreshTokenProperties refreshTokenProperties;
+
+    // 카카오 로그인 처리 후 JWT 발급 및 리프레시 토큰 저장
+    public LoginResult loginWithKakao(String code) {
+        KakaoTokenResponse token = kakaoAuthClient.requestToken(code);
+        KakaoUserResponse kakaoUser = kakaoAuthClient.requestUserInfo(token.accessToken());
+
+        User user = userService.loginWithKakao(String.valueOf(kakaoUser.id()));
+
+        String accessToken = jwtTokenProvider.generateAccessToken(user.getId());
+        String refreshToken = issueRefreshToken(user.getId());
+
+        return new LoginResult(accessToken, refreshToken, refreshTokenProperties.expiration());
+    }
+
+    // 액세스 토큰을 재발급하고 리프레시 토큰도 새것으로 교체한다.
+    // 넘어온 토큰이 없거나 저장소에 없으면 401, 이미 소비된 토큰이면 그 사용자의 모든 토큰을 지우고 401을 던진다.
+    public ReissueResult reissueAccessToken(String refreshToken) {
+        if (refreshToken == null) {
+            throw new CustomException(AuthErrorCode.REFRESH_TOKEN_NOT_FOUND);
+        }
+
+        RefreshTokenConsumeResult consumed = refreshTokenRepository.consume(refreshToken);
+        if (consumed.status() == RefreshTokenConsumeResult.Status.NOT_FOUND) {
+            throw new CustomException(AuthErrorCode.REFRESH_TOKEN_NOT_FOUND);
+        }
+
+        // 소비된 토큰의 재사용은 유출로 간주하고 이 사용자의 모든 기기를 로그아웃시킨다
+        if (consumed.status() == RefreshTokenConsumeResult.Status.REUSED) {
+            refreshTokenRepository.deleteAllByUserId(consumed.userId());
+            throw new CustomException(AuthErrorCode.REFRESH_TOKEN_REUSE_DETECTED);
+        }
+
+        Long userId = consumed.userId();
+
+        return new ReissueResult(
+                jwtTokenProvider.generateAccessToken(userId),
+                issueRefreshToken(userId),
+                refreshTokenProperties.expiration());
+    }
+
+    // 판매자라면 아직 끝나지 않은 라이브를 정리한 뒤, 유저를 탈퇴 처리하고 모든 기기를 로그아웃시킨 뒤 카카오 연결까지 끊는다.
+    // 라이브 정리는 IVS와 S3를 부르느라 수 초가 걸려, DB 커넥션을 잡지 않도록 탈퇴 트랜잭션 밖에 둔다.
+    // 라이브만 정리되고 탈퇴가 실패하면 유저는 그대로 남으므로 다시 요청하면 된다.
+    // 토큰을 먼저 지우면 탈퇴가 실패했을 때 멀쩡한 유저만 로그아웃되므로 탈퇴가 끝난 뒤에 지운다.
+    public void withdraw(UserWithdrawCommand command) {
+        if (command.sellerId() != null) {
+            liveService.cleanUpForSellerWithdrawal(command.sellerId());
+        }
+
+        String kakaoId = userService.withdraw(command);
+        refreshTokenRepository.deleteAllByUserId(command.userId());
+        unlinkKakaoQuietly(kakaoId);
+    }
+
+    // 연결 끊기가 실패해도 탈퇴를 되돌리지 않는다. 카카오가 응답하지 않는다고 탈퇴를 막을 수는 없다.
+    // 남은 연결은 로그로 추적한다. 이 회원은 다시 로그인할 때 동의 화면 없이 새 유저로 가입된다.
+    private void unlinkKakaoQuietly(String kakaoId) {
+        try {
+            kakaoAuthClient.unlink(kakaoId);
+        } catch (RuntimeException e) {
+            log.error("카카오 연결 끊기 실패. 앱 연결이 남았다 - kakaoId={}", kakaoId, e);
+        }
+    }
+
+    // 이 기기의 리프레시 토큰만 지운다. 토큰이 없거나 저장소에 없어도 예외 없이 통과시킨다
+    public void logout(String refreshToken) {
+        if (refreshToken == null) {
+            return;
+        }
+        refreshTokenRepository.findByToken(refreshToken).ifPresent(refreshTokenRepository::delete);
+    }
+
+    // 새 리프레시 토큰을 만들어 TTL과 함께 저장하고 그 값을 돌려준다
+    private String issueRefreshToken(Long userId) {
+        Duration ttl = refreshTokenProperties.expiration();
+        String refreshToken = refreshTokenGenerator.generate();
+        refreshTokenRepository.save(refreshToken, userId, ttl);
+        return refreshToken;
+    }
+}

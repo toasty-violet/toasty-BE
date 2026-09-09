@@ -1,0 +1,54 @@
+name: Build
+
+on:
+  pull_request:
+    branches: [develop, main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: toasty
+          MYSQL_USER: toasty
+          MYSQL_PASSWORD: toasty
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -utoasty -ptoasty"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - run: ./gradlew build
+        env:
+          # 서비스 컨테이너가 이미 떠 있으므로 Spring Boot의 compose 자동 기동은 끈다.
+          SPRING_DOCKER_COMPOSE_ENABLED: false
+          # JwtTokenProvider가 생성자에서 서명키를 만든다. HS256이라 32바이트 이상이어야 한다.
+          JWT_SECRET: ci-dummy-secret-key-for-context-loading-only
+          # 기본값 없는 필수값이라 비워두면 컨텍스트 로딩이 실패한다. 카카오 API를 호출하진 않는다.
+          KAKAO_CLIENT_ID: ci-dummy-client-id
+          KAKAO_ADMIN_KEY: ci-dummy-admin-key

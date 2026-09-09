@@ -13,10 +13,10 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Override
     public void addCorsMappings(CorsRegistry registry) {
+        // 허용 헤더는 지정하지 않으면 Spring 기본값이 이미 전체 허용(*)이다.
         registry.addMapping("/**")
                 .allowedOrigins(corsProperties.allowedOrigins().toArray(String[]::new))
-                .allowedMethods(corsProperties.allowedMethods().toArray(String[]::new))
-                .allowedHeaders(corsProperties.allowedHeaders().toArray(String[]::new))
+                .allowedMethods("GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS")
                 .allowCredentials(true);
     }
 }

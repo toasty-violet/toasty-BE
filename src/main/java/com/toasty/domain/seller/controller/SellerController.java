@@ -6,6 +6,7 @@ import com.toasty.domain.auth.entity.AuthUser;
 import com.toasty.domain.seller.controller.dto.request.ShopImageUploadUrlRequest;
 import com.toasty.domain.seller.controller.dto.response.ShopImageUploadUrlResponse;
 import com.toasty.domain.seller.controller.dto.response.ShopNameSearchResponse;
+import com.toasty.domain.seller.controller.dto.response.ShopNameSuggestionResponse;
 import com.toasty.domain.seller.service.SellerService;
 import com.toasty.domain.seller.service.SellerShopImageService;
 import com.toasty.global.response.ApiResponse;
@@ -49,6 +50,21 @@ public class SellerController {
             @LoginUser AuthUser user) {
         return ApiResponse.ok(
                 sellerService.searchShopName(shopName, user == null ? null : user.sellerId()));
+    }
+
+    @Operation(
+            summary = "추천 스토어 이름 발급",
+            description =
+                    """
+                    온보딩 화면의 스토어 이름 입력창에 채워 둘 값을 받습니다. 유저가 그대로 써도 되고 지우고 새로 입력해도 됩니다.
+                    스토어 이름은 구매자에게 그대로 노출되는 간판이라, 유저가 직접 정하도록 유도하고 이 값은 예시로만 쓰세요.
+                    발급만 하고 자리를 잡아두지는 않아, 제출 전에 다른 판매자가 먼저 쓸 수 있습니다.
+                    그 경우 온보딩 제출이 SELLER_SHOP_NAME_DUPLICATED로 실패하므로 다시 발급받게 하세요.
+                    """)
+    @LoginRequired
+    @GetMapping("/shop-name/suggestion")
+    public ApiResponse<ShopNameSuggestionResponse> suggestShopName() {
+        return ApiResponse.ok(sellerService.suggestShopName());
     }
 
     @Operation(

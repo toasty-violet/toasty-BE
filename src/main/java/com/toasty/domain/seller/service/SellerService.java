@@ -2,12 +2,16 @@ package com.toasty.domain.seller.service;
 
 import com.toasty.domain.seller.controller.dto.response.SellerProfileResponse;
 import com.toasty.domain.seller.controller.dto.response.ShopNameSearchResponse;
+import com.toasty.domain.seller.controller.dto.response.ShopNameSuggestionResponse;
 import com.toasty.domain.seller.entity.Seller;
 import com.toasty.domain.seller.entity.SellerOnboardingCommand;
 import com.toasty.domain.seller.exception.SellerErrorCode;
 import com.toasty.domain.seller.repository.SellerRepository;
 import com.toasty.global.config.SellerS3Properties;
 import com.toasty.global.exception.CustomException;
+import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -19,6 +23,18 @@ public class SellerService {
 
     // 저장이 실패했을 때 어느 값이 겹쳤는지 가르는 데 쓴다
     private static final String BUSINESS_NUMBER_CONSTRAINT = "uk_sellers_business_number";
+
+    // 추천 스토어 이름은 이 셋을 이어 붙여 만든다. 가장 긴 조합도 스토어 이름 한도인 20자를 넘지 않는다
+    private static final List<String> SHOP_NAME_MODIFIERS =
+            List.of("골목", "새벽", "언덕", "구름", "동네", "햇살", "오후", "모퉁이");
+    private static final List<String> SHOP_NAME_NOUNS =
+            List.of("빵집", "제과", "베이커리", "제빵소", "공방", "오븐", "상회", "브레드");
+    private static final int SHOP_NAME_SUFFIX_ORIGIN = 100;
+    private static final int SHOP_NAME_SUFFIX_BOUND = 1000;
+
+    // 이만큼 뽑아도 다 겹치면 조합을 포기하고 겹치지 않을 값으로 내려준다
+    private static final int SHOP_NAME_SUGGESTION_ATTEMPTS = 10;
+    private static final String FALLBACK_SHOP_NAME_PREFIX = "shop_";
 
     private final SellerRepository sellerRepository;
     private final SellerS3Properties s3Properties;
@@ -45,6 +61,19 @@ public class SellerService {
     @Transactional(readOnly = true)
     public ShopNameSearchResponse searchShopName(String shopName, Long sellerId) {
         return new ShopNameSearchResponse(isShopNameTaken(shopName, sellerId));
+    }
+
+    /** 온보딩 화면의 스토어 이름 입력창에 채워 둘 값을 만들어 준다. */
+    // 저장하지 않으므로 유저가 제출하기 전에 다른 판매자가 먼저 쓸 수 있다. 그 경우는 온보딩 제출에서 중복으로 걸린다.
+    @Transactional(readOnly = true)
+    public ShopNameSuggestionResponse suggestShopName() {
+        for (int attempt = 0; attempt < SHOP_NAME_SUGGESTION_ATTEMPTS; attempt++) {
+            String candidate = randomShopName();
+            if (!sellerRepository.existsByShopName(candidate)) {
+                return new ShopNameSuggestionResponse(candidate);
+            }
+        }
+        return new ShopNameSuggestionResponse(randomFallbackShopName());
     }
 
     /** 판매자가 탈퇴할 때 스토어 이름을 놓아준다. 판매자 정보 자체는 거래 상대방 식별에 쓰여 남긴다. */
@@ -110,5 +139,17 @@ public class SellerService {
             return SellerErrorCode.SELLER_BUSINESS_NUMBER_DUPLICATED;
         }
         return SellerErrorCode.SELLER_SHOP_NAME_DUPLICATED;
+    }
+
+    private String randomShopName() {
+        ThreadLocalRandom random = ThreadLocalRandom.current();
+        return SHOP_NAME_MODIFIERS.get(random.nextInt(SHOP_NAME_MODIFIERS.size()))
+                + SHOP_NAME_NOUNS.get(random.nextInt(SHOP_NAME_NOUNS.size()))
+                + random.nextInt(SHOP_NAME_SUFFIX_ORIGIN, SHOP_NAME_SUFFIX_BOUND);
+    }
+
+    private String randomFallbackShopName() {
+        return FALLBACK_SHOP_NAME_PREFIX
+                + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
     }
 }

@@ -24,6 +24,7 @@ import com.toasty.domain.live.entity.LiveStatus;
 import com.toasty.domain.live.entity.LiveUpdateCommand;
 import com.toasty.domain.live.exception.LiveErrorCode;
 import com.toasty.domain.live.repository.LiveRepository;
+import com.toasty.domain.product.controller.dto.response.LiveProductsResponse;
 import com.toasty.global.exception.CustomException;
 import java.util.List;
 import java.util.Optional;
@@ -496,6 +497,100 @@ class LiveServiceTest {
                             eq(SELLER_ID), captor.capture());
             assertThat(captor.getValue())
                     .containsExactlyInAnyOrder(LiveStatus.LIVE, LiveStatus.READY);
+        }
+    }
+
+    @Nested
+    @DisplayName("방송 중 상품 관리")
+    class LiveProducts {
+
+        @Test
+        @DisplayName("전체 상품 시트를 상품 쪽에서 받아 그대로 준다")
+        void 시트를_채운다() {
+            givenLive(1L);
+            LiveProductsResponse sheet = new LiveProductsResponse(31L, java.util.List.of());
+            given(productService.findLiveProducts(1L)).willReturn(sheet);
+
+            assertThat(liveService.getMyLiveProducts(1L, SELLER_ID)).isSameAs(sheet);
+        }
+
+        @Test
+        @DisplayName("소유자가 아니면 시트를 볼 수 없다")
+        void 소유자가_아니면_거부한다() {
+            givenLive(1L);
+
+            assertThatThrownBy(() -> liveService.getMyLiveProducts(1L, 99L))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(LiveErrorCode.LIVE_FORBIDDEN);
+
+            verify(productService, never()).findLiveProducts(any());
+        }
+
+        @Test
+        @DisplayName("방송 중일 때만 고정할 수 있다")
+        void 방송_전에는_고정할_수_없다() {
+            givenLive(1L);
+
+            assertThatThrownBy(
+                            () ->
+                                    liveService.pinProduct(
+                                            new com.toasty.domain.product.entity
+                                                    .LiveProductPinCommand(1L, 31L, SELLER_ID)))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(LiveErrorCode.LIVE_NOT_BROADCASTING);
+
+            verify(productService, never()).pinForLive(any());
+        }
+
+        @Test
+        @DisplayName("방송 중이면 고정을 상품 쪽에 넘긴다")
+        void 방송_중이면_고정한다() {
+            Live live = givenLive(1L);
+            live.startBroadcast();
+
+            liveService.pinProduct(
+                    new com.toasty.domain.product.entity.LiveProductPinCommand(1L, 31L, SELLER_ID));
+
+            verify(productService)
+                    .pinForLive(
+                            new com.toasty.domain.product.entity.LiveProductPinCommand(
+                                    1L, 31L, SELLER_ID));
+        }
+
+        @Test
+        @DisplayName("소유자가 아니면 고정할 수 없다")
+        void 남의_라이브는_고정할_수_없다() {
+            Live live = givenLive(1L);
+            live.startBroadcast();
+
+            assertThatThrownBy(
+                            () ->
+                                    liveService.pinProduct(
+                                            new com.toasty.domain.product.entity
+                                                    .LiveProductPinCommand(1L, 31L, 99L)))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(LiveErrorCode.LIVE_FORBIDDEN);
+        }
+
+        @Test
+        @DisplayName("방송 중일 때만 가격·재고를 고칠 수 있다")
+        void 방송_전에는_수정할_수_없다() {
+            givenLive(1L);
+
+            assertThatThrownBy(
+                            () ->
+                                    liveService.changeProductPriceAndStock(
+                                            new com.toasty.domain.product.entity
+                                                    .LiveProductUpdateCommand(
+                                                    1L, 31L, SELLER_ID, 39000, 5)))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(LiveErrorCode.LIVE_NOT_BROADCASTING);
+
+            verify(productService, never()).changePriceAndStockDuringLive(any());
         }
     }
 

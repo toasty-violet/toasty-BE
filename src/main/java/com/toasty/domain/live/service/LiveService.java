@@ -16,6 +16,9 @@ import com.toasty.domain.live.entity.LiveUpdateCommand;
 import com.toasty.domain.live.exception.LiveErrorCode;
 import com.toasty.domain.live.repository.LiveRepository;
 import com.toasty.domain.product.controller.dto.response.LiveProductResponse;
+import com.toasty.domain.product.controller.dto.response.LiveProductsResponse;
+import com.toasty.domain.product.entity.LiveProductPinCommand;
+import com.toasty.domain.product.entity.LiveProductUpdateCommand;
 import com.toasty.domain.product.service.ProductService;
 import com.toasty.global.exception.CustomException;
 import java.util.ArrayList;
@@ -154,11 +157,44 @@ public class LiveService {
     // 상태로 막지 않는다. 방송 중에도 편성 상품을 읽어야 하고, 고칠 수 있는지는 update가 판단한다.
     @Transactional(readOnly = true)
     public LiveWithProductsResponse getMyLiveDetail(Long liveId, Long sellerId) {
+        Live live = requireOwnLive(liveId, sellerId);
+        return LiveWithProductsResponse.of(live, productService.findScheduledProducts(liveId));
+    }
+
+    /** 셀러가 방송 화면에서 전체 상품 시트를 연다. */
+    @Transactional(readOnly = true)
+    public LiveProductsResponse getMyLiveProducts(Long liveId, Long sellerId) {
+        requireOwnLive(liveId, sellerId);
+        return productService.findLiveProducts(liveId);
+    }
+
+    /** 셀러가 방송 중에 소개할 상품을 고정한다. */
+    @Transactional
+    public void pinProduct(LiveProductPinCommand command) {
+        requireBroadcastingOwnLive(command.liveId(), command.sellerId());
+        productService.pinForLive(command);
+    }
+
+    /** 셀러가 방송 중에 상품의 가격과 재고를 고친다. */
+    @Transactional
+    public void changeProductPriceAndStock(LiveProductUpdateCommand command) {
+        requireBroadcastingOwnLive(command.liveId(), command.sellerId());
+        productService.changePriceAndStockDuringLive(command);
+    }
+
+    private Live requireOwnLive(Long liveId, Long sellerId) {
         Live live = findById(liveId);
         if (!live.isOwnedBy(sellerId)) {
             throw new CustomException(LiveErrorCode.LIVE_FORBIDDEN);
         }
-        return LiveWithProductsResponse.of(live, productService.findScheduledProducts(liveId));
+        return live;
+    }
+
+    // lives.status는 스트림 상태 조회가 LIVE로 옮긴다. 방송 화면이 그 조회를 하고 있어야 고정과 수정이 열린다.
+    private void requireBroadcastingOwnLive(Long liveId, Long sellerId) {
+        if (!requireOwnLive(liveId, sellerId).isBroadcasting()) {
+            throw new CustomException(LiveErrorCode.LIVE_NOT_BROADCASTING);
+        }
     }
 
     /** 셀러가 라이브탭에서 자기 라이브 상황을 한 번에 본다. */
@@ -191,10 +227,7 @@ public class LiveService {
     }
 
     public BroadcastCredentialResponse reissueCredential(Long liveId, Long sellerId) {
-        Live live = findById(liveId);
-        if (!live.isOwnedBy(sellerId)) {
-            throw new CustomException(LiveErrorCode.LIVE_FORBIDDEN);
-        }
+        Live live = requireOwnLive(liveId, sellerId);
         if (live.isEnded()) {
             throw new CustomException(LiveErrorCode.LIVE_ALREADY_ENDED);
         }
@@ -203,10 +236,7 @@ public class LiveService {
     }
 
     public LiveStreamStatusResponse getStreamStatus(Long liveId, Long sellerId) {
-        Live live = findById(liveId);
-        if (!live.isOwnedBy(sellerId)) {
-            throw new CustomException(LiveErrorCode.LIVE_FORBIDDEN);
-        }
+        Live live = requireOwnLive(liveId, sellerId);
         StreamState streamState = liveStreamingClient.getStreamState(live.getIvsChannelArn());
         if (streamState == StreamState.BROADCASTING && !live.isEnded()) {
             live = syncToBroadcasting(live);
@@ -220,10 +250,7 @@ public class LiveService {
     }
 
     public LiveDetailResponse end(Long liveId, Long sellerId) {
-        Live live = findById(liveId);
-        if (!live.isOwnedBy(sellerId)) {
-            throw new CustomException(LiveErrorCode.LIVE_FORBIDDEN);
-        }
+        Live live = requireOwnLive(liveId, sellerId);
         if (live.isEnded()) {
             return LiveDetailResponse.from(live);
         }

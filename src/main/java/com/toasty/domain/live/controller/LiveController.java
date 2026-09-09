@@ -4,6 +4,7 @@ import com.toasty.domain.auth.annotation.LoginUser;
 import com.toasty.domain.auth.annotation.SellerOnly;
 import com.toasty.domain.auth.entity.AuthUser;
 import com.toasty.domain.live.controller.dto.request.LiveCreateRequest;
+import com.toasty.domain.live.controller.dto.request.LiveProductUpdateRequest;
 import com.toasty.domain.live.controller.dto.request.LiveUpdateRequest;
 import com.toasty.domain.live.controller.dto.response.BroadcastCredentialResponse;
 import com.toasty.domain.live.controller.dto.response.LiveDetailResponse;
@@ -13,6 +14,8 @@ import com.toasty.domain.live.controller.dto.response.LiveWithProductsResponse;
 import com.toasty.domain.live.controller.dto.response.SellerLiveTabResponse;
 import com.toasty.domain.live.entity.Live;
 import com.toasty.domain.live.service.LiveService;
+import com.toasty.domain.product.controller.dto.response.LiveProductsResponse;
+import com.toasty.domain.product.entity.LiveProductPinCommand;
 import com.toasty.global.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -110,6 +113,51 @@ public class LiveController {
     }
 
     @Operation(
+            summary = "방송 중 전체 상품 조회",
+            description =
+                    "셀러가 방송 화면에서 전체 상품 시트를 열 때 호출합니다. 편성한 순서대로 내려가고,"
+                            + " currentPinnedProductId가 지금 소개 중인 상품입니다. 아직 아무것도 고정하지 않았으면"
+                            + " null입니다. 한 번 고정한 상품은 다른 상품을 고정해도 계속 구매 가능한 상태로 남습니다.")
+    @SellerOnly
+    @GetMapping("/{liveId}/products")
+    public ApiResponse<LiveProductsResponse> getMyLiveProducts(
+            @PathVariable Long liveId, @LoginUser AuthUser seller) {
+        return ApiResponse.ok(liveService.getMyLiveProducts(liveId, seller.sellerId()));
+    }
+
+    @Operation(
+            summary = "방송 중 상품 고정",
+            description =
+                    "셀러가 지금 소개할 상품을 고정합니다. 고정한 상품은 시청자에게 구매 버튼이 열리고, 다른 상품을 고정해도"
+                            + " 계속 구매할 수 있습니다. 옮겨가는 것은 화면에 표시되는 '현재 고정 상품'뿐입니다."
+                            + " 방송 중일 때만 호출할 수 있고, 품절된 상품은 고정할 수 없습니다.")
+    @SellerOnly
+    @PatchMapping("/{liveId}/products/{productId}/pin")
+    public ApiResponse<Void> pinProduct(
+            @PathVariable Long liveId, @PathVariable Long productId, @LoginUser AuthUser seller) {
+        liveService.pinProduct(new LiveProductPinCommand(liveId, productId, seller.sellerId()));
+        return ApiResponse.ok();
+    }
+
+    @Operation(
+            summary = "방송 중 상품 가격·재고 수정",
+            description =
+                    "셀러가 방송 중에 상품의 가격과 재고를 고칩니다. 상품 수정 시트에서 저장을 누를 때 호출하세요."
+                            + " 방송 중에는 상품을 추가하거나 뺄 수 없어 가격과 재고만 바꿉니다. 상품명과 사진은"
+                            + " 방송 전에 정해집니다.")
+    @SellerOnly
+    @PatchMapping("/{liveId}/products/{productId}")
+    public ApiResponse<Void> changeProductPriceAndStock(
+            @PathVariable Long liveId,
+            @PathVariable Long productId,
+            @Valid @RequestBody LiveProductUpdateRequest request,
+            @LoginUser AuthUser seller) {
+        liveService.changeProductPriceAndStock(
+                request.toCommand(liveId, productId, seller.sellerId()));
+        return ApiResponse.ok();
+    }
+
+    @Operation(
             summary = "송출정보 재발급",
             description =
                     "셀러가 방송 송출에 필요한 정보를 새로 발급받습니다. 송출 직전에 호출하세요. 기존 스트림 키는 즉시 폐기되며, 새 송출정보는 이 응답에서만"
@@ -125,7 +173,8 @@ public class LiveController {
             summary = "방송 종료",
             description =
                     "셀러가 진행 중인 라이브를 종료합니다. 송출이 중단되고 스트림 키가 삭제되어 다시 송출할 수 없으며, 채널과 재생 URL은 지난 방송"
-                            + " 페이지를 위해 유지됩니다. 본인의 라이브만 종료할 수 있습니다.")
+                            + " 페이지를 위해 유지됩니다. 편성했던 상품은 일반 판매로 넘어가 방송이 끝난 뒤에도 계속 살 수 있습니다."
+                            + " 본인의 라이브만 종료할 수 있습니다.")
     @SellerOnly
     @PostMapping("/{liveId}/end")
     public ApiResponse<LiveDetailResponse> end(

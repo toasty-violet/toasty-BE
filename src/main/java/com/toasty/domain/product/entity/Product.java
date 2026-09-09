@@ -60,6 +60,16 @@ public class Product extends BaseTimeEntity {
         this.description = description;
     }
 
+    /** 방송 중에는 가격과 재고만 고칠 수 있다. 상품명·사진은 라이브 시작 전에 정해진다. */
+    public void changePriceAndStock(int price, int stockQuantity) {
+        this.price = price;
+        this.stockQuantity = stockQuantity;
+    }
+
+    public boolean isSoldOut() {
+        return stockQuantity <= 0;
+    }
+
     public static Product createForLive(Long sellerId, ProductCreateCommand command) {
         return new Product(
                 sellerId,

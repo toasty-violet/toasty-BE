@@ -18,6 +18,8 @@ public enum LiveErrorCode implements ErrorCode {
             HttpStatus.CONFLICT,
             "LIVE_SCHEDULE_LIMIT_EXCEEDED",
             "예정된 라이브는 " + Live.MAX_SCHEDULED + "개까지 만들 수 있습니다. 기존 라이브를 방송하거나 삭제한 뒤 다시 시도해주세요."),
+    LIVE_NOT_BROADCASTING(
+            HttpStatus.CONFLICT, "LIVE_NOT_BROADCASTING", "방송 중일 때만 상품을 고정하거나 수정할 수 있습니다."),
     LIVE_ALREADY_BROADCASTING(
             HttpStatus.CONFLICT, "LIVE_ALREADY_BROADCASTING", "이미 진행 중인 라이브가 있습니다."),
     LIVE_CREDENTIAL_REISSUE_CONFLICT(

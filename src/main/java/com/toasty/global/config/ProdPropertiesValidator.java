@@ -25,6 +25,7 @@ public class ProdPropertiesValidator {
         requireInjected("CORS_ALLOWED_ORIGINS", corsProperties.allowedOrigins());
         requireInjected("KAKAO_REDIRECT_URI", kakaoProperties.redirectUri());
         requireInjected("KAKAO_CLIENT_ID", kakaoProperties.clientId());
+        requireInjected("KAKAO_ADMIN_KEY", kakaoProperties.adminKey());
         requireInjected("AWS_S3_BUCKET", s3Properties.bucket());
         requireInjected("AWS_S3_PUBLIC_BASE_URL", s3Properties.publicBaseUrl());
         requireInjected("JWT_SECRET", accessTokenProperties.secret());

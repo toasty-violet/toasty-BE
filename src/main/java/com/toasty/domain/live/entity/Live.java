@@ -58,6 +58,10 @@ public class Live extends BaseTimeEntity {
     @Column(name = "active_seller_id")
     private Long activeSellerId;
 
+    // 라이브마다 IVS Chat 방을 하나 둔다. 이 기능 이전에 만들어진 라이브에는 없어 null이다.
+    @Column(name = "ivs_chat_room_arn", length = 200)
+    private String ivsChatRoomArn;
+
     @Column(name = "started_at")
     private LocalDateTime startedAt;
 
@@ -71,7 +75,8 @@ public class Live extends BaseTimeEntity {
             LocalDateTime scheduledAt,
             String publicId,
             String ivsChannelArn,
-            String playbackUrl) {
+            String playbackUrl,
+            String ivsChatRoomArn) {
         this.sellerId = sellerId;
         this.title = title;
         this.description = description;
@@ -80,9 +85,14 @@ public class Live extends BaseTimeEntity {
         this.publicId = publicId;
         this.ivsChannelArn = ivsChannelArn;
         this.playbackUrl = playbackUrl;
+        this.ivsChatRoomArn = ivsChatRoomArn;
     }
 
-    public static Live create(LiveCreateCommand command, String ivsChannelArn, String playbackUrl) {
+    public static Live create(
+            LiveCreateCommand command,
+            String ivsChannelArn,
+            String playbackUrl,
+            String ivsChatRoomArn) {
         return new Live(
                 command.sellerId(),
                 command.title(),
@@ -90,7 +100,8 @@ public class Live extends BaseTimeEntity {
                 command.scheduledAt(),
                 UUID.randomUUID().toString(),
                 ivsChannelArn,
-                playbackUrl);
+                playbackUrl,
+                ivsChatRoomArn);
     }
 
     /** 셀러가 동시에 들고 있을 수 있는 예정 라이브 수. 늘리면 라이브탭이 한 번에 읽는 양도 함께 늘어난다. */

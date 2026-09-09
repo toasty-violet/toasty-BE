@@ -1,5 +1,6 @@
 package com.toasty.domain.live.service;
 
+import com.toasty.domain.live.client.LiveChatClient;
 import com.toasty.domain.live.client.LiveStreamingClient;
 import com.toasty.domain.live.client.dto.StreamStatus;
 import com.toasty.domain.live.client.dto.StreamingChannel;
@@ -45,6 +46,7 @@ public class LiveService {
     private final LiveRepository liveRepository;
     private final LiveViewerCountRepository liveViewerCountRepository;
     private final LiveStreamingClient liveStreamingClient;
+    private final LiveChatClient liveChatClient;
     private final ProductService productService;
     private final UserService userService;
     private final TransactionTemplate transactionTemplate;
@@ -61,9 +63,14 @@ public class LiveService {
                 productService.copyImagesToPermanent(command.sellerId(), command.products());
 
         StreamingChannel channel = null;
+        String chatRoomArn = null;
         try {
-            channel = liveStreamingClient.createChannel(generateChannelName(command.sellerId()));
+            // 채널과 채팅방에 같은 이름을 준다. 콘솔에서 어느 라이브의 것인지 짝지어 보기 위해서다.
+            String resourceName = generateResourceName(command.sellerId());
+            channel = liveStreamingClient.createChannel(resourceName);
+            chatRoomArn = liveChatClient.createRoom(resourceName);
             StreamingChannel created = channel;
+            String createdChatRoomArn = chatRoomArn;
             return transactionTemplate.execute(
                     status -> {
                         Live live =
@@ -71,7 +78,8 @@ public class LiveService {
                                         Live.create(
                                                 command,
                                                 created.channelArn(),
-                                                created.playbackUrl()));
+                                                created.playbackUrl(),
+                                                createdChatRoomArn));
                         List<LiveProductResponse> products =
                                 productService.registerForLive(
                                         live.getId(),
@@ -81,6 +89,7 @@ public class LiveService {
                         return LiveWithProductsResponse.of(live, products);
                     });
         } catch (RuntimeException e) {
+            deleteChatRoomQuietly(chatRoomArn);
             if (channel != null) {
                 deleteChannelQuietly(channel.channelArn());
             }
@@ -140,7 +149,7 @@ public class LiveService {
     // IVS 채널과 S3 객체는 커밋된 뒤에 지운다. 먼저 지우면 트랜잭션이 깨졌을 때 되살릴 수 없다.
     public void delete(Long liveId, Long sellerId) {
         List<String> obsoleteImageKeys = new ArrayList<>();
-        String channelArn =
+        DeletedResources resources =
                 transactionTemplate.execute(
                         status -> {
                             Live live = findById(liveId);
@@ -152,11 +161,13 @@ public class LiveService {
                             }
                             obsoleteImageKeys.addAll(productService.removeAllForLive(liveId));
                             liveRepository.delete(live);
-                            return live.getIvsChannelArn();
+                            return new DeletedResources(
+                                    live.getIvsChannelArn(), live.getIvsChatRoomArn());
                         });
 
         // 여기서 실패해도 되돌리지 않는다. 라이브는 이미 지워졌고 남은 자원은 로그로 추적한다.
-        deleteChannelQuietly(channelArn);
+        deleteChatRoomQuietly(resources.chatRoomArn());
+        deleteChannelQuietly(resources.channelArn());
         productService.deleteImagesQuietly(obsoleteImageKeys);
     }
 
@@ -174,6 +185,9 @@ public class LiveService {
             }
         }
     }
+
+    // 커밋된 뒤에 지울 외부 자원. 라이브 행이 사라진 뒤에도 ARN을 들고 있어야 한다.
+    private record DeletedResources(String channelArn, String chatRoomArn) {}
 
     /** 셀러가 라이브 하나를 편성 상품까지 가져온다. 수정 화면을 채우는 데 쓴다. */
     // 상태로 막지 않는다. 방송 중에도 편성 상품을 읽어야 하고, 고칠 수 있는지는 update가 판단한다.
@@ -357,9 +371,22 @@ public class LiveService {
                 .orElseThrow(() -> new CustomException(LiveErrorCode.LIVE_NOT_FOUND));
     }
 
-    // IVS 채널명은 [a-zA-Z0-9-_]만 허용하고 128자를 넘을 수 없다.
-    private String generateChannelName(Long sellerId) {
+    // 채널과 채팅방이 같이 쓴다. 둘 중 빡빡한 IVS 채널명 규칙([a-zA-Z0-9-_], 128자)에 맞춘다.
+    private String generateResourceName(Long sellerId) {
         return "toasty-live-" + sellerId + "-" + UUID.randomUUID().toString().substring(0, 8);
+    }
+
+    // 생성 보상에서도 삭제 뒤 정리에서도 부른다. 정리가 실패해도 요청을 뒤집지 않고 로그만 남긴다.
+    private void deleteChatRoomQuietly(String chatRoomArn) {
+        // 이 기능 이전에 만들어진 라이브에는 방이 없다.
+        if (chatRoomArn == null) {
+            return;
+        }
+        try {
+            liveChatClient.deleteRoom(chatRoomArn);
+        } catch (RuntimeException e) {
+            log.error("채팅방이 정리되지 않았습니다 - chatRoomArn={}", chatRoomArn, e);
+        }
     }
 
     // 보상 삭제가 실패해도 원래 예외를 가리지 않는다. 고아 채널은 로그로 추적한다.

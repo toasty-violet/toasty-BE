@@ -28,6 +28,7 @@ import com.toasty.global.exception.CustomException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -252,13 +253,14 @@ public class LiveService {
     }
 
     /** 시청 화면이 시청자 수를 주기적으로 읽는다. */
-    // 시청자마다 IVS를 부르면 호출이 시청자 수에 비례한다. 캐시가 살아 있는 동안은 라이브 조회도 하지 않는다.
-    // IVS를 부르므로 트랜잭션으로 묶지 않는다.
+    // 값이 있는데 갱신을 선점하지 못했으면 다른 요청이 최근에 물어본 것이라 직전 값을 그대로 준다.
+    // 그래야 만료 순간에 몰린 요청이 저마다 IVS를 부르지 않는다. IVS를 부르므로 트랜잭션으로 묶지 않는다.
     public LiveViewerCountResponse getViewerCount(String publicId) {
-        return liveViewerCountRepository
-                .find(publicId)
-                .map(LiveViewerCountResponse::new)
-                .orElseGet(() -> new LiveViewerCountResponse(fetchAndCacheViewerCount(publicId)));
+        Optional<Integer> cached = liveViewerCountRepository.find(publicId);
+        if (cached.isPresent() && !liveViewerCountRepository.tryStartRefresh(publicId)) {
+            return new LiveViewerCountResponse(cached.get());
+        }
+        return new LiveViewerCountResponse(fetchAndCacheViewerCount(publicId));
     }
 
     // 끝난 방송만 막고 나머지는 IVS에 묻는다. lives.status는 셀러의 송출 상태 조회로만 갱신돼서,

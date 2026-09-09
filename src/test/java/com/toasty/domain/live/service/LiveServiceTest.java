@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
@@ -302,18 +303,34 @@ class LiveServiceTest {
     class ViewerCount {
 
         @Test
-        @DisplayName("캐시에 값이 있으면 라이브도 IVS도 건드리지 않는다")
-        void 캐시를_먼저_쓴다() {
+        @DisplayName("값이 있고 갱신 주기 전이면 라이브도 IVS도 건드리지 않는다")
+        void 직전_값을_그대로_쓴다() {
             given(viewerCountRepository.find("abc")).willReturn(Optional.of(132));
+            given(viewerCountRepository.tryStartRefresh("abc")).willReturn(false);
 
             assertThat(liveService.getViewerCount("abc").viewerCount()).isEqualTo(132);
 
             verify(liveRepository, never()).findByPublicId(any());
+            verify(viewerCountRepository, never()).save(any(), anyInt());
         }
 
         @Test
-        @DisplayName("캐시가 비었으면 IVS에서 받아 담아둔다")
-        void 받아서_담아둔다() {
+        @DisplayName("갱신을 선점한 요청만 IVS에서 새로 받아 담는다")
+        void 선점한_요청이_갱신한다() {
+            Live live = givenLiveByPublicId("abc");
+            live.startBroadcast();
+            given(viewerCountRepository.find("abc")).willReturn(Optional.of(100));
+            given(viewerCountRepository.tryStartRefresh("abc")).willReturn(true);
+            streamingClient.viewerCount(132);
+
+            assertThat(liveService.getViewerCount("abc").viewerCount()).isEqualTo(132);
+
+            verify(viewerCountRepository).save("abc", 132);
+        }
+
+        @Test
+        @DisplayName("담아둔 값이 없으면 선점과 무관하게 받아서 담는다")
+        void 값이_없으면_받아온다() {
             Live live = givenLiveByPublicId("abc");
             live.startBroadcast();
             given(viewerCountRepository.find("abc")).willReturn(Optional.empty());

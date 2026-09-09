@@ -242,7 +242,8 @@ public class LiveController {
                     "시청 화면이 채팅에 붙을 때 호출합니다. 받은 token을 IVS Chat SDK에 넘기세요."
                             + " 인증이 필요 없어 비로그인 유저도 호출할 수 있고, 그때는 writable이 false로 내려가"
                             + " 읽기만 됩니다. 로그인 뒤 다시 호출하면 메시지를 보낼 수 있는 토큰을 받습니다."
-                            + " expiresAt이 지나기 전에 다시 호출해 새 토큰을 받으세요."
+                            + " 끝난 방송도 방이 남아 있는 동안은 읽을 수 있지만 writable은 false입니다."
+                            + " expiresAt은 접속한 세션이 유지되는 시각입니다. 그 전에 다시 호출해 새 토큰을 받으세요."
                             + " 메시지에 실려 오는 role이 SELLER면 방송을 진행하는 셀러가 보낸 것이고,"
                             + " displayName이 화면에 띄울 이름입니다. 채팅방이 없는 라이브면 404가 납니다.")
     @PostMapping("/public/{publicId}/chat-token")

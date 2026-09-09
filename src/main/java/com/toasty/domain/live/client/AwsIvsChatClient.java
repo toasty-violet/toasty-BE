@@ -23,12 +23,12 @@ import software.amazon.awssdk.services.ivschat.model.ThrottlingException;
 public class AwsIvsChatClient implements LiveChatClient {
 
     // 이 서비스에서 다시 시도하면 풀릴 수 있는 실패들. 방 한도 초과는 다시 불러도 풀리지 않아 넣지 않는다.
-    // IVS 기본값과 같지만, 기본값이 바뀌어도 흔들리지 않도록 명시한다. 만료되면 화면이 다시 발급받는다.
-    private static final int SESSION_MINUTES = 60;
-
     private static final Class<?>[] TRANSIENT_TYPES = {
         ThrottlingException.class, InternalServerException.class
     };
+
+    // 접속한 세션이 유지되는 시간. IVS 기본값과 같지만 기본값이 바뀌어도 흔들리지 않도록 명시한다.
+    private static final int SESSION_MINUTES = 60;
 
     private final IvschatClient ivschatClient;
 
@@ -57,7 +57,9 @@ public class AwsIvsChatClient implements LiveChatClient {
                                             .capabilities(capabilitiesOf(command))
                                             .sessionDurationInMinutes(SESSION_MINUTES)
                                             .attributes(attributesOf(command)));
-            return new ChatToken(response.token(), response.tokenExpirationTime());
+            // tokenExpirationTime은 접속을 시도할 수 있는 마감이라 세션 길이와 무관하게 1시간이다.
+            // 세션이 유지되는 마감은 sessionExpirationTime이고, 재발급 시점을 정하는 건 이쪽이다.
+            return new ChatToken(response.token(), response.sessionExpirationTime());
         } catch (Exception e) {
             if (isTransient(e)) {
                 log.warn("채팅 토큰 발급 일시 실패 - chatRoomArn={}", command.chatRoomArn(), e);

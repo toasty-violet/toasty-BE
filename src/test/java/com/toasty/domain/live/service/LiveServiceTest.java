@@ -859,6 +859,36 @@ class LiveServiceTest {
         }
 
         @Test
+        @DisplayName("끝난 방송은 로그인해도 읽기 전용이다")
+        void 끝난_방송은_읽기_전용이다() {
+            Live live = givenLiveByPublicId("abc");
+            live.end();
+            given(userService.findNickname(9L)).willReturn("토스티러버");
+
+            LiveChatTokenResponse response =
+                    liveService.issueChatToken(
+                            "abc",
+                            new AuthUser(
+                                    9L, com.toasty.domain.user.entity.Role.CUSTOMER, 3L, null));
+
+            assertThat(response.writable()).isFalse();
+            assertThat(chatClient.issuedTokenCommands().get(0).writable()).isFalse();
+        }
+
+        @Test
+        @DisplayName("토큰 발급이 일시적으로 실패하면 다시 시도하도록 알린다")
+        void 일시_실패는_그대로_올라온다() {
+            givenLiveByPublicId("abc");
+            chatClient.failOnCreateToken(
+                    new CustomException(LiveErrorCode.LIVE_STREAMING_TEMPORARILY_UNAVAILABLE));
+
+            assertThatThrownBy(() -> liveService.issueChatToken("abc", null))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(LiveErrorCode.LIVE_STREAMING_TEMPORARILY_UNAVAILABLE);
+        }
+
+        @Test
         @DisplayName("채팅방이 없는 라이브면 LIVE_CHAT_ROOM_NOT_FOUND다")
         void 방이_없으면_거부한다() {
             Live live = givenLiveByPublicId("abc");

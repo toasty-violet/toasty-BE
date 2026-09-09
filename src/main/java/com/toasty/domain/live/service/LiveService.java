@@ -398,6 +398,7 @@ public class LiveService {
     }
 
     // 채팅 참여자 번호는 방 안에서만 겹치지 않으면 된다. 비로그인은 매번 새로 만든다.
+    // 끝난 방송에는 쓰기를 열지 않는다. 방을 회수하기 전까지 남은 시청자가 읽을 수 있어야 해서 막지는 않는다.
     private ChatTokenCommand toChatTokenCommand(Live live, AuthUser viewer) {
         if (viewer == null) {
             return new ChatTokenCommand(
@@ -413,7 +414,7 @@ public class LiveService {
                 "user-" + viewer.userId(),
                 userService.findNickname(viewer.userId()),
                 owner ? ChatRole.SELLER : ChatRole.CUSTOMER,
-                true);
+                !live.isEnded());
     }
 
     /** 종료된 지 오래된 라이브의 채팅방을 회수한다. */

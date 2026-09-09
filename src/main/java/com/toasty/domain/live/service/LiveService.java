@@ -26,6 +26,8 @@ import com.toasty.domain.product.entity.LiveProductUpdateCommand;
 import com.toasty.domain.product.service.ProductService;
 import com.toasty.domain.user.service.UserService;
 import com.toasty.global.exception.CustomException;
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -42,6 +44,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 @Service
 @RequiredArgsConstructor
 public class LiveService {
+
+    // 방송이 끝나도 결제 시트에 남아 있는 시청자가 있어, 이만큼 지난 뒤에 채팅방을 회수한다.
+    private static final Duration CHAT_ROOM_RETENTION = Duration.ofMinutes(30);
 
     private final LiveRepository liveRepository;
     private final LiveViewerCountRepository liveViewerCountRepository;
@@ -374,6 +379,33 @@ public class LiveService {
     // 채널과 채팅방이 같이 쓴다. 둘 중 빡빡한 IVS 채널명 규칙([a-zA-Z0-9-_], 128자)에 맞춘다.
     private String generateResourceName(Long sellerId) {
         return "toasty-live-" + sellerId + "-" + UUID.randomUUID().toString().substring(0, 8);
+    }
+
+    /** 종료된 지 오래된 라이브의 채팅방을 회수한다. */
+    // 라이브 삭제는 방송 전에만 되므로, 한 번이라도 방송된 라이브의 방은 이 배치로만 지워진다.
+    // IVS를 부르므로 트랜잭션으로 묶지 않는다. 지우지 못한 방은 ARN을 남겨 다음 차례에 다시 시도한다.
+    public void cleanUpEndedChatRooms() {
+        List<Live> targets =
+                liveRepository.findByStatusAndEndedAtBeforeAndIvsChatRoomArnIsNotNull(
+                        LiveStatus.ENDED, LocalDateTime.now().minus(CHAT_ROOM_RETENTION));
+        for (Live live : targets) {
+            reclaimChatRoom(live);
+        }
+    }
+
+    private void reclaimChatRoom(Live live) {
+        try {
+            liveChatClient.deleteRoom(live.getIvsChatRoomArn());
+        } catch (RuntimeException e) {
+            log.error(
+                    "채팅방이 회수되지 않았습니다 - liveId={}, chatRoomArn={}",
+                    live.getId(),
+                    live.getIvsChatRoomArn(),
+                    e);
+            return;
+        }
+        live.clearChatRoom();
+        liveRepository.save(live);
     }
 
     // 생성 보상에서도 삭제 뒤 정리에서도 부른다. 정리가 실패해도 요청을 뒤집지 않고 로그만 남긴다.

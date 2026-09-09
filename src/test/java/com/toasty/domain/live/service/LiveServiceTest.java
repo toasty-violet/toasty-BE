@@ -789,6 +789,52 @@ class LiveServiceTest {
     }
 
     @Nested
+    @DisplayName("종료된 라이브의 채팅방 회수")
+    class CleanUpEndedChatRooms {
+
+        @Test
+        @DisplayName("방을 지우고 라이브의 방 자리를 비운다")
+        void 방을_지우고_자리를_비운다() {
+            Live live = givenEndedLive();
+            givenSaveSucceeds();
+
+            liveService.cleanUpEndedChatRooms();
+
+            assertThat(chatClient.deletedRoomArns()).containsExactly(CHAT_ROOM_ARN);
+            assertThat(live.getIvsChatRoomArn()).isNull();
+            verify(liveRepository).save(live);
+        }
+
+        @Test
+        @DisplayName("삭제가 실패하면 방 자리를 그대로 둬 다음 차례에 다시 시도한다")
+        void 실패하면_자리를_남긴다() {
+            Live live = givenEndedLive();
+            chatClient.failOnDelete(
+                    new CustomException(LiveErrorCode.LIVE_CHAT_ROOM_DELETE_FAILED));
+
+            assertThatCode(() -> liveService.cleanUpEndedChatRooms()).doesNotThrowAnyException();
+
+            assertThat(live.getIvsChatRoomArn()).isEqualTo(CHAT_ROOM_ARN);
+            verify(liveRepository, never()).save(any(Live.class));
+        }
+
+        private Live givenEndedLive() {
+            Live live =
+                    Live.create(
+                            command(),
+                            "arn:aws:ivs:channel/abc",
+                            "https://playback/abc.m3u8",
+                            CHAT_ROOM_ARN);
+            live.end();
+            given(
+                            liveRepository.findByStatusAndEndedAtBeforeAndIvsChatRoomArnIsNotNull(
+                                    any(), any()))
+                    .willReturn(java.util.List.of(live));
+            return live;
+        }
+    }
+
+    @Nested
     @DisplayName("라이브 삭제")
     class Delete {
 

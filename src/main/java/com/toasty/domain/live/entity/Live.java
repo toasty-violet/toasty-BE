@@ -155,6 +155,11 @@ public class Live extends BaseTimeEntity {
         this.activeSellerId = sellerId;
     }
 
+    /** 채팅방을 회수한 뒤 자리를 비운다. */
+    public void clearChatRoom() {
+        this.ivsChatRoomArn = null;
+    }
+
     public void end() {
         if (isEnded()) {
             return;

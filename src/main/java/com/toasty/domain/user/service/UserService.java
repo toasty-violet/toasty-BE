@@ -5,6 +5,7 @@ import com.toasty.domain.customer.controller.dto.response.CustomerProfileRespons
 import com.toasty.domain.customer.entity.CustomerOnboardingCommand;
 import com.toasty.domain.customer.entity.CustomerProfileUpdateCommand;
 import com.toasty.domain.customer.service.CustomerService;
+import com.toasty.domain.follow.service.FollowService;
 import com.toasty.domain.seller.controller.dto.response.SellerProfileResponse;
 import com.toasty.domain.seller.entity.SellerOnboardingCommand;
 import com.toasty.domain.seller.entity.SellerShop;
@@ -32,6 +33,7 @@ public class UserService {
     private final UserRepository userRepository;
     private final CustomerService customerService;
     private final SellerService sellerService;
+    private final FollowService followService;
     private final TransactionTemplate transactionTemplate;
 
     /** 인증 필터가 액세스 토큰의 userId로 호출한다. 토큰은 유효해도 그 사이 탈퇴했을 수 있어, 판단은 호출한 쪽에 맡기고 Optional로 돌려준다. */
@@ -167,7 +169,9 @@ public class UserService {
     /**
      * 유저를 탈퇴 처리하고, 카카오 연결을 끊는 데 쓰도록 지워지기 전의 카카오 회원번호를 돌려준다.
      *
-     * <p>유저 행은 남고, 판매자·구매자 정보도 거래 상대방 식별을 위해 남는다. 배송지는 지운다.
+     * <p>유저 행은 남고, 판매자·구매자 정보도 거래 상대방 식별을 위해 남는다. 배송지와 팔로우 관계는 지운다.
+     *
+     * <p>판매자로 탈퇴해도 유저 하나가 지워지는 것이라, 그가 팔로우한 관계와 그를 팔로우한 관계를 함께 정리한다.
      */
     public String withdraw(UserWithdrawCommand command) {
         return transactionTemplate.execute(
@@ -182,6 +186,10 @@ public class UserService {
                                                             UserErrorCode.USER_NOT_FOUND));
                     if (command.customerId() != null) {
                         customerService.deleteAddresses(command.customerId());
+                        followService.deleteByCustomerId(command.customerId());
+                    }
+                    if (command.sellerId() != null) {
+                        followService.deleteBySellerId(command.sellerId());
                     }
                     // 탈퇴 처리가 회원번호를 지우므로 먼저 빼둔다.
                     String kakaoId = user.getKakaoId();

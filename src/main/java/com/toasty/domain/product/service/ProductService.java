@@ -3,6 +3,8 @@ package com.toasty.domain.product.service;
 import com.toasty.domain.product.controller.dto.response.LiveProductResponse;
 import com.toasty.domain.product.controller.dto.response.LiveProductsResponse;
 import com.toasty.domain.product.entity.LiveProduct;
+import com.toasty.domain.product.entity.LiveProductPinCommand;
+import com.toasty.domain.product.entity.LiveProductUpdateCommand;
 import com.toasty.domain.product.entity.Product;
 import com.toasty.domain.product.entity.ProductCreateCommand;
 import com.toasty.domain.product.entity.ProductImage;
@@ -224,9 +226,9 @@ public class ProductService {
     /** 셀러가 방송 중에 상품을 고정한다. 이미 고정됐던 상품이면 고정 시각만 새로 찍는다. */
     // 한 번 고정한 상품은 계속 구매할 수 있다. 다른 상품을 고정해도 되돌리지 않는다.
     @Transactional
-    public void pinForLive(Long liveId, Long productId, Long sellerId) {
-        LiveProduct liveProduct = requireScheduled(liveId, productId);
-        if (requireOwnedProduct(productId, sellerId).isSoldOut()) {
+    public void pinForLive(LiveProductPinCommand command) {
+        LiveProduct liveProduct = requireScheduled(command.liveId(), command.productId());
+        if (requireOwnedProduct(command.productId(), command.sellerId()).isSoldOut()) {
             throw new CustomException(ProductErrorCode.PRODUCT_OUT_OF_STOCK);
         }
         liveProduct.pin(LocalDateTime.now());
@@ -234,10 +236,10 @@ public class ProductService {
 
     /** 셀러가 방송 중에 가격과 재고를 고친다. 상품 추가·삭제는 방송 중에 할 수 없다. */
     @Transactional
-    public void changePriceAndStockDuringLive(
-            Long liveId, Long productId, Long sellerId, int price, int stockQuantity) {
-        requireScheduled(liveId, productId);
-        requireOwnedProduct(productId, sellerId).changePriceAndStock(price, stockQuantity);
+    public void changePriceAndStockDuringLive(LiveProductUpdateCommand command) {
+        requireScheduled(command.liveId(), command.productId());
+        requireOwnedProduct(command.productId(), command.sellerId())
+                .changePriceAndStock(command.price(), command.stockQuantity());
     }
 
     // 그 라이브에 편성된 상품인지 본다. 남의 라이브 상품 번호로는 통과할 수 없다.

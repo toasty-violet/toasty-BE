@@ -15,6 +15,7 @@ import com.toasty.domain.live.controller.dto.response.SellerLiveTabResponse;
 import com.toasty.domain.live.entity.Live;
 import com.toasty.domain.live.service.LiveService;
 import com.toasty.domain.product.controller.dto.response.LiveProductsResponse;
+import com.toasty.domain.product.entity.LiveProductPinCommand;
 import com.toasty.global.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -134,7 +135,7 @@ public class LiveController {
     @PatchMapping("/{liveId}/products/{productId}/pin")
     public ApiResponse<Void> pinProduct(
             @PathVariable Long liveId, @PathVariable Long productId, @LoginUser AuthUser seller) {
-        liveService.pinProduct(liveId, productId, seller.sellerId());
+        liveService.pinProduct(new LiveProductPinCommand(liveId, productId, seller.sellerId()));
         return ApiResponse.ok();
     }
 
@@ -152,7 +153,7 @@ public class LiveController {
             @Valid @RequestBody LiveProductUpdateRequest request,
             @LoginUser AuthUser seller) {
         liveService.changeProductPriceAndStock(
-                liveId, productId, seller.sellerId(), request.price(), request.stockQuantity());
+                request.toCommand(liveId, productId, seller.sellerId()));
         return ApiResponse.ok();
     }
 

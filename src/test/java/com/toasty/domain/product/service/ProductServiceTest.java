@@ -14,7 +14,9 @@ import static org.mockito.Mockito.verify;
 import com.toasty.domain.product.controller.dto.response.LiveProductResponse;
 import com.toasty.domain.product.controller.dto.response.LiveProductsResponse;
 import com.toasty.domain.product.entity.LiveProduct;
+import com.toasty.domain.product.entity.LiveProductPinCommand;
 import com.toasty.domain.product.entity.LiveProductStatus;
+import com.toasty.domain.product.entity.LiveProductUpdateCommand;
 import com.toasty.domain.product.entity.Product;
 import com.toasty.domain.product.entity.ProductCreateCommand;
 import com.toasty.domain.product.entity.ProductImage;
@@ -445,7 +447,7 @@ class ProductServiceTest {
         void 고정하면_구매_가능해진다() {
             LiveProduct liveProduct = givenScheduledWithStock(31L, 1);
 
-            productService.pinForLive(LIVE_ID, 31L, SELLER_ID);
+            productService.pinForLive(new LiveProductPinCommand(LIVE_ID, 31L, SELLER_ID));
 
             assertThat(liveProduct.getStatus()).isEqualTo(LiveProductStatus.ACTIVE);
             assertThat(liveProduct.getPinnedAt()).isNotNull();
@@ -455,10 +457,10 @@ class ProductServiceTest {
         @DisplayName("이미 고정했던 상품을 다시 고정하면 구매 가능 상태는 그대로고 시각만 갱신된다")
         void 다시_고정해도_구매_가능은_유지된다() {
             LiveProduct liveProduct = givenScheduledWithStock(31L, 1);
-            productService.pinForLive(LIVE_ID, 31L, SELLER_ID);
+            productService.pinForLive(new LiveProductPinCommand(LIVE_ID, 31L, SELLER_ID));
             java.time.LocalDateTime first = liveProduct.getPinnedAt();
 
-            productService.pinForLive(LIVE_ID, 31L, SELLER_ID);
+            productService.pinForLive(new LiveProductPinCommand(LIVE_ID, 31L, SELLER_ID));
 
             assertThat(liveProduct.getStatus()).isEqualTo(LiveProductStatus.ACTIVE);
             assertThat(liveProduct.getPinnedAt()).isAfterOrEqualTo(first);
@@ -469,7 +471,10 @@ class ProductServiceTest {
         void 품절된_상품은_고정할_수_없다() {
             LiveProduct liveProduct = givenScheduledWithStock(31L, 0);
 
-            assertThatThrownBy(() -> productService.pinForLive(LIVE_ID, 31L, SELLER_ID))
+            assertThatThrownBy(
+                            () ->
+                                    productService.pinForLive(
+                                            new LiveProductPinCommand(LIVE_ID, 31L, SELLER_ID)))
                     .isInstanceOf(CustomException.class)
                     .extracting(e -> ((CustomException) e).getErrorCode())
                     .isEqualTo(ProductErrorCode.PRODUCT_OUT_OF_STOCK);
@@ -482,7 +487,10 @@ class ProductServiceTest {
             given(liveProductRepository.findByLiveIdAndProductId(LIVE_ID, 99L))
                     .willReturn(java.util.Optional.empty());
 
-            assertThatThrownBy(() -> productService.pinForLive(LIVE_ID, 99L, SELLER_ID))
+            assertThatThrownBy(
+                            () ->
+                                    productService.pinForLive(
+                                            new LiveProductPinCommand(LIVE_ID, 99L, SELLER_ID)))
                     .isInstanceOf(CustomException.class)
                     .extracting(e -> ((CustomException) e).getErrorCode())
                     .isEqualTo(ProductErrorCode.PRODUCT_NOT_IN_LIVE);
@@ -529,7 +537,9 @@ class ProductServiceTest {
             given(productRepository.findAllById(any()))
                     .willReturn(
                             scheduled.stream()
-                                    .map(lp -> product(lp.getProductId(), "가죽 벨트"))
+                                    .map(
+                                            liveProduct ->
+                                                    product(liveProduct.getProductId(), "가죽 벨트"))
                                     .toList());
             given(productImageRepository.findByProductIdInOrderByDisplayOrder(any()))
                     .willReturn(List.of());
@@ -548,7 +558,8 @@ class ProductServiceTest {
         void 가격과_재고를_고친다() {
             givenScheduledWithStock(31L, 1);
 
-            productService.changePriceAndStockDuringLive(LIVE_ID, 31L, SELLER_ID, 39000, 5);
+            productService.changePriceAndStockDuringLive(
+                    new LiveProductUpdateCommand(LIVE_ID, 31L, SELLER_ID, 39000, 5));
 
             Product product = productRepository.findById(31L).orElseThrow();
             assertThat(product.getPrice()).isEqualTo(39000);
@@ -565,7 +576,8 @@ class ProductServiceTest {
             assertThatThrownBy(
                             () ->
                                     productService.changePriceAndStockDuringLive(
-                                            LIVE_ID, 99L, SELLER_ID, 32000, 3))
+                                            new LiveProductUpdateCommand(
+                                                    LIVE_ID, 99L, SELLER_ID, 32000, 3)))
                     .isInstanceOf(CustomException.class)
                     .extracting(e -> ((CustomException) e).getErrorCode())
                     .isEqualTo(ProductErrorCode.PRODUCT_NOT_IN_LIVE);

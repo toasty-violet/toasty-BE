@@ -17,6 +17,8 @@ import com.toasty.domain.live.exception.LiveErrorCode;
 import com.toasty.domain.live.repository.LiveRepository;
 import com.toasty.domain.product.controller.dto.response.LiveProductResponse;
 import com.toasty.domain.product.controller.dto.response.LiveProductsResponse;
+import com.toasty.domain.product.entity.LiveProductPinCommand;
+import com.toasty.domain.product.entity.LiveProductUpdateCommand;
 import com.toasty.domain.product.service.ProductService;
 import com.toasty.global.exception.CustomException;
 import java.util.ArrayList;
@@ -171,18 +173,16 @@ public class LiveService {
 
     /** 셀러가 방송 중에 소개할 상품을 고정한다. */
     @Transactional
-    public void pinProduct(Long liveId, Long productId, Long sellerId) {
-        requireBroadcastingOwnLive(liveId, sellerId);
-        productService.pinForLive(liveId, productId, sellerId);
+    public void pinProduct(LiveProductPinCommand command) {
+        requireBroadcastingOwnLive(command.liveId(), command.sellerId());
+        productService.pinForLive(command);
     }
 
     /** 셀러가 방송 중에 상품의 가격과 재고를 고친다. */
     @Transactional
-    public void changeProductPriceAndStock(
-            Long liveId, Long productId, Long sellerId, int price, int stockQuantity) {
-        requireBroadcastingOwnLive(liveId, sellerId);
-        productService.changePriceAndStockDuringLive(
-                liveId, productId, sellerId, price, stockQuantity);
+    public void changeProductPriceAndStock(LiveProductUpdateCommand command) {
+        requireBroadcastingOwnLive(command.liveId(), command.sellerId());
+        productService.changePriceAndStockDuringLive(command);
     }
 
     private Live requireOwnLive(Long liveId, Long sellerId) {

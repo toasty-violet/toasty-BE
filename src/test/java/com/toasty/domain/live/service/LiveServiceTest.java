@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
@@ -533,12 +532,16 @@ class LiveServiceTest {
         void 방송_전에는_고정할_수_없다() {
             givenLive(1L);
 
-            assertThatThrownBy(() -> liveService.pinProduct(1L, 31L, SELLER_ID))
+            assertThatThrownBy(
+                            () ->
+                                    liveService.pinProduct(
+                                            new com.toasty.domain.product.entity
+                                                    .LiveProductPinCommand(1L, 31L, SELLER_ID)))
                     .isInstanceOf(CustomException.class)
                     .extracting(e -> ((CustomException) e).getErrorCode())
                     .isEqualTo(LiveErrorCode.LIVE_NOT_BROADCASTING);
 
-            verify(productService, never()).pinForLive(any(), any(), any());
+            verify(productService, never()).pinForLive(any());
         }
 
         @Test
@@ -547,9 +550,13 @@ class LiveServiceTest {
             Live live = givenLive(1L);
             live.startBroadcast();
 
-            liveService.pinProduct(1L, 31L, SELLER_ID);
+            liveService.pinProduct(
+                    new com.toasty.domain.product.entity.LiveProductPinCommand(1L, 31L, SELLER_ID));
 
-            verify(productService).pinForLive(1L, 31L, SELLER_ID);
+            verify(productService)
+                    .pinForLive(
+                            new com.toasty.domain.product.entity.LiveProductPinCommand(
+                                    1L, 31L, SELLER_ID));
         }
 
         @Test
@@ -558,7 +565,11 @@ class LiveServiceTest {
             Live live = givenLive(1L);
             live.startBroadcast();
 
-            assertThatThrownBy(() -> liveService.pinProduct(1L, 31L, 99L))
+            assertThatThrownBy(
+                            () ->
+                                    liveService.pinProduct(
+                                            new com.toasty.domain.product.entity
+                                                    .LiveProductPinCommand(1L, 31L, 99L)))
                     .isInstanceOf(CustomException.class)
                     .extracting(e -> ((CustomException) e).getErrorCode())
                     .isEqualTo(LiveErrorCode.LIVE_FORBIDDEN);
@@ -572,13 +583,14 @@ class LiveServiceTest {
             assertThatThrownBy(
                             () ->
                                     liveService.changeProductPriceAndStock(
-                                            1L, 31L, SELLER_ID, 39000, 5))
+                                            new com.toasty.domain.product.entity
+                                                    .LiveProductUpdateCommand(
+                                                    1L, 31L, SELLER_ID, 39000, 5)))
                     .isInstanceOf(CustomException.class)
                     .extracting(e -> ((CustomException) e).getErrorCode())
                     .isEqualTo(LiveErrorCode.LIVE_NOT_BROADCASTING);
 
-            verify(productService, never())
-                    .changePriceAndStockDuringLive(any(), any(), any(), anyInt(), anyInt());
+            verify(productService, never()).changePriceAndStockDuringLive(any());
         }
     }
 

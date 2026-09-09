@@ -311,7 +311,30 @@ class AwsIvsStreamingClientTest {
         given(ivsClient.getStream(any(Consumer.class)))
                 .willReturn(GetStreamResponse.builder().build());
 
-        assertThat(client.getStreamState(CHANNEL_ARN)).isEqualTo(StreamState.BROADCASTING);
+        assertThat(client.getStreamStatus(CHANNEL_ARN).state()).isEqualTo(StreamState.BROADCASTING);
+    }
+
+    @Test
+    @DisplayName("송출 중이면 IVS가 준 시청자 수를 그대로 준다")
+    void 시청자_수를_그대로_준다() {
+        given(ivsClient.getStream(any(Consumer.class)))
+                .willReturn(
+                        GetStreamResponse.builder().stream(
+                                        software.amazon.awssdk.services.ivs.model.Stream.builder()
+                                                .viewerCount(132L)
+                                                .build())
+                                .build());
+
+        assertThat(client.getStreamStatus(CHANNEL_ARN).viewerCount()).isEqualTo(132);
+    }
+
+    @Test
+    @DisplayName("시청자 수가 비어 와도 상태 조회는 성공하고 0으로 준다")
+    void 시청자_수가_없으면_0이다() {
+        given(ivsClient.getStream(any(Consumer.class)))
+                .willReturn(GetStreamResponse.builder().build());
+
+        assertThat(client.getStreamStatus(CHANNEL_ARN).viewerCount()).isZero();
     }
 
     @Test
@@ -320,7 +343,8 @@ class AwsIvsStreamingClientTest {
         given(ivsClient.getStream(any(Consumer.class)))
                 .willThrow(ChannelNotBroadcastingException.builder().build());
 
-        assertThat(client.getStreamState(CHANNEL_ARN)).isEqualTo(StreamState.NOT_BROADCASTING);
+        assertThat(client.getStreamStatus(CHANNEL_ARN).state())
+                .isEqualTo(StreamState.NOT_BROADCASTING);
     }
 
     @ParameterizedTest(name = "{0}")
@@ -329,7 +353,7 @@ class AwsIvsStreamingClientTest {
     void 상태_조회_영구_실패(String 상황, Throwable 원인) {
         given(ivsClient.getStream(any(Consumer.class))).willThrow(원인);
 
-        assertThatThrownBy(() -> client.getStreamState(CHANNEL_ARN))
+        assertThatThrownBy(() -> client.getStreamStatus(CHANNEL_ARN))
                 .isInstanceOf(CustomException.class)
                 .extracting(e -> ((CustomException) e).getErrorCode())
                 .isEqualTo(LiveErrorCode.LIVE_STREAM_STATUS_FETCH_FAILED);

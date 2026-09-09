@@ -1,12 +1,14 @@
 package com.toasty.domain.live.service;
 
 import com.toasty.domain.live.client.LiveStreamingClient;
-import com.toasty.domain.live.client.dto.StreamState;
+import com.toasty.domain.live.client.dto.StreamStatus;
 import com.toasty.domain.live.client.dto.StreamingChannel;
 import com.toasty.domain.live.controller.dto.response.BroadcastCredentialResponse;
 import com.toasty.domain.live.controller.dto.response.LiveDetailResponse;
 import com.toasty.domain.live.controller.dto.response.LivePlaybackResponse;
 import com.toasty.domain.live.controller.dto.response.LiveStreamStatusResponse;
+import com.toasty.domain.live.controller.dto.response.LiveViewerCountResponse;
+import com.toasty.domain.live.controller.dto.response.LiveViewerResponse;
 import com.toasty.domain.live.controller.dto.response.LiveWithProductsResponse;
 import com.toasty.domain.live.controller.dto.response.SellerLiveTabResponse;
 import com.toasty.domain.live.entity.Live;
@@ -15,15 +17,18 @@ import com.toasty.domain.live.entity.LiveStatus;
 import com.toasty.domain.live.entity.LiveUpdateCommand;
 import com.toasty.domain.live.exception.LiveErrorCode;
 import com.toasty.domain.live.repository.LiveRepository;
+import com.toasty.domain.live.repository.LiveViewerCountRepository;
 import com.toasty.domain.product.controller.dto.response.LiveProductResponse;
 import com.toasty.domain.product.controller.dto.response.LiveProductsResponse;
 import com.toasty.domain.product.entity.LiveProductPinCommand;
 import com.toasty.domain.product.entity.LiveProductUpdateCommand;
 import com.toasty.domain.product.service.ProductService;
+import com.toasty.domain.user.service.UserService;
 import com.toasty.global.exception.CustomException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -38,8 +43,10 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class LiveService {
 
     private final LiveRepository liveRepository;
+    private final LiveViewerCountRepository liveViewerCountRepository;
     private final LiveStreamingClient liveStreamingClient;
     private final ProductService productService;
+    private final UserService userService;
     private final TransactionTemplate transactionTemplate;
 
     /** 셀러가 라이브를 개설하면서 이번 방송에서 팔 상품을 함께 등록한다. */
@@ -222,8 +229,9 @@ public class LiveService {
     }
 
     @Transactional(readOnly = true)
-    public LiveDetailResponse getByPublicId(String publicId) {
-        return LiveDetailResponse.from(findByPublicId(publicId));
+    public LiveViewerResponse getByPublicId(String publicId) {
+        Live live = findByPublicId(publicId);
+        return LiveViewerResponse.of(live, userService.findSellerProfile(live.getSellerId()));
     }
 
     public BroadcastCredentialResponse reissueCredential(Long liveId, Long sellerId) {
@@ -237,11 +245,36 @@ public class LiveService {
 
     public LiveStreamStatusResponse getStreamStatus(Long liveId, Long sellerId) {
         Live live = requireOwnLive(liveId, sellerId);
-        StreamState streamState = liveStreamingClient.getStreamState(live.getIvsChannelArn());
-        if (streamState == StreamState.BROADCASTING && !live.isEnded()) {
+        StreamStatus streamStatus = liveStreamingClient.getStreamStatus(live.getIvsChannelArn());
+        if (streamStatus.isBroadcasting() && !live.isEnded()) {
             live = syncToBroadcasting(live);
         }
-        return LiveStreamStatusResponse.of(live, streamState);
+        return LiveStreamStatusResponse.of(live, streamStatus.state());
+    }
+
+    /** 시청 화면이 시청자 수를 주기적으로 읽는다. */
+    // 값이 있는데 갱신을 선점하지 못했으면 다른 요청이 최근에 물어본 것이라 직전 값을 그대로 준다.
+    // 그래야 만료 순간에 몰린 요청이 저마다 IVS를 부르지 않는다. IVS를 부르므로 트랜잭션으로 묶지 않는다.
+    public LiveViewerCountResponse getViewerCount(String publicId) {
+        Optional<Integer> cached = liveViewerCountRepository.find(publicId);
+        if (cached.isPresent() && !liveViewerCountRepository.tryStartRefresh(publicId)) {
+            return new LiveViewerCountResponse(cached.get());
+        }
+        return new LiveViewerCountResponse(fetchAndCacheViewerCount(publicId));
+    }
+
+    // 끝난 방송만 막고 나머지는 IVS에 묻는다. lives.status는 셀러의 송출 상태 조회로만 갱신돼서,
+    // 그걸로 막으면 영상은 나가는데 시청자 수만 0으로 내려가는 구간이 생긴다.
+    private int fetchAndCacheViewerCount(String publicId) {
+        Live live = findByPublicId(publicId);
+        int viewerCount =
+                live.isEnded()
+                        ? 0
+                        : liveStreamingClient
+                                .getStreamStatus(live.getIvsChannelArn())
+                                .viewerCount();
+        liveViewerCountRepository.save(publicId, viewerCount);
+        return viewerCount;
     }
 
     @Transactional(readOnly = true)

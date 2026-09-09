@@ -18,6 +18,7 @@ public class KakaoAuthClient {
 
     private static final String TOKEN_URI = "https://kauth.kakao.com/oauth/token";
     private static final String USER_INFO_URI = "https://kapi.kakao.com/v2/user/me";
+    private static final String UNLINK_URI = "https://kapi.kakao.com/v1/user/unlink";
 
     private final KakaoProperties kakaoProperties;
     private final RestClient restClient = RestClient.create();
@@ -42,6 +43,27 @@ public class KakaoAuthClient {
                     .body(KakaoTokenResponse.class);
         } catch (Exception e) {
             throw new CustomException(AuthErrorCode.KAKAO_TOKEN_REQUEST_FAILED, e);
+        }
+    }
+
+    /** 탈퇴한 회원과 우리 앱의 카카오 연결을 끊는다. 다시 로그인하면 동의 화면부터 시작한다. */
+    // 유저의 카카오 액세스 토큰은 로그인 직후 버려서 탈퇴 시점에는 없다. 회원번호만으로 부를 수 있는 어드민 키를 쓴다.
+    public void unlink(String kakaoId) {
+        MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+        body.add("target_id_type", "user_id");
+        body.add("target_id", kakaoId);
+
+        try {
+            restClient
+                    .post()
+                    .uri(UNLINK_URI)
+                    .header("Authorization", "KakaoAK " + kakaoProperties.adminKey())
+                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                    .body(body)
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (Exception e) {
+            throw new CustomException(AuthErrorCode.KAKAO_UNLINK_FAILED, e);
         }
     }
 

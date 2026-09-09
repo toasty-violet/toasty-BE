@@ -1,9 +1,13 @@
 package com.toasty.domain.auth.controller;
 
+import com.toasty.domain.auth.annotation.LoginRequired;
+import com.toasty.domain.auth.annotation.LoginUser;
 import com.toasty.domain.auth.controller.dto.response.AccessTokenResponse;
+import com.toasty.domain.auth.entity.AuthUser;
 import com.toasty.domain.auth.service.AuthService;
 import com.toasty.domain.auth.service.LoginResult;
 import com.toasty.domain.auth.service.ReissueResult;
+import com.toasty.domain.user.entity.UserWithdrawCommand;
 import com.toasty.global.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -17,6 +21,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
 import org.springframework.web.bind.annotation.CookieValue;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -141,6 +146,55 @@ public class AuthController {
             @CookieValue(value = REFRESH_TOKEN_COOKIE_NAME, required = false) String refreshToken,
             HttpServletResponse httpResponse) {
         authService.logout(refreshToken);
+        httpResponse.addHeader(HttpHeaders.SET_COOKIE, buildExpiredRefreshTokenCookie().toString());
+        return ApiResponse.ok();
+    }
+
+    @Operation(
+            summary = "회원 탈퇴",
+            description =
+                    """
+                    로그인한 유저를 탈퇴 처리하고 모든 기기에서 로그아웃시킵니다. 리프레시 토큰 쿠키도 함께 만료됩니다.
+                    같은 카카오 계정으로 다시 로그인하면 이전 이력과 분리된 새 유저로 가입됩니다.
+                    판매자라면 방송 중인 라이브는 종료되고 예정 라이브는 삭제되며, 지난 방송과 상품은 남습니다.
+                    응답을 받으면 저장해둔 액세스 토큰을 지우고 첫 화면으로 보내세요.
+                    """)
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "200",
+                description = "탈퇴 완료"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "401",
+                description = "액세스 토큰이 없거나 유효하지 않은 경우",
+                content =
+                        @Content(
+                                mediaType = "application/json",
+                                examples =
+                                        @ExampleObject(
+                                                name = "COMMON_UNAUTHORIZED",
+                                                value =
+                                                        """
+                                                        {"success": false, "error": {"code": "COMMON_UNAUTHORIZED", "message": "인증이 필요합니다."}}
+                                                        """))),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "404",
+                description = "토큰은 유효하지만 그 사이 탈퇴한 유저인 경우 — 로그인 화면으로 보내세요",
+                content =
+                        @Content(
+                                mediaType = "application/json",
+                                examples =
+                                        @ExampleObject(
+                                                name = "USER_NOT_FOUND",
+                                                value =
+                                                        """
+                                                        {"success": false, "error": {"code": "USER_NOT_FOUND", "message": "존재하지 않는 유저입니다."}}
+                                                        """)))
+    })
+    // 회원 탈퇴 — 탈퇴 처리 후 모든 기기를 로그아웃시키고 브라우저 쪽 쿠키도 만료시킨다
+    @LoginRequired
+    @DeleteMapping("/delete-user")
+    public ApiResponse<Void> withdraw(@LoginUser AuthUser user, HttpServletResponse httpResponse) {
+        authService.withdraw(UserWithdrawCommand.from(user));
         httpResponse.addHeader(HttpHeaders.SET_COOKIE, buildExpiredRefreshTokenCookie().toString());
         return ApiResponse.ok();
     }

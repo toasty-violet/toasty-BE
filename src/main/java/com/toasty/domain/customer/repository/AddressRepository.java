@@ -7,4 +7,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface AddressRepository extends JpaRepository<Address, Long> {
 
     Optional<Address> findByCustomerIdAndIsDefaultTrue(Long customerId);
+
+    void deleteAllByCustomerId(Long customerId);
 }

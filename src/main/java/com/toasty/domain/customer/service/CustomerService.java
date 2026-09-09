@@ -23,4 +23,10 @@ public class CustomerService {
         addressRepository.save(Address.createDefault(customer.getId(), command.address()));
         return customer;
     }
+
+    /** 구매자가 탈퇴할 때 배송지를 지운다. 구매자 정보 자체는 거래 상대방 식별에 쓰여 남긴다. */
+    @Transactional
+    public void deleteAddresses(Long customerId) {
+        addressRepository.deleteAllByCustomerId(customerId);
+    }
 }

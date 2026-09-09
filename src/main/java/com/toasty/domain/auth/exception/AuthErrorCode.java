@@ -19,6 +19,9 @@ public enum AuthErrorCode implements ErrorCode {
             "AUTH_KAKAO_USER_INFO_REQUEST_FAILED",
             "카카오 사용자 정보 조회에 실패했습니다."),
 
+    // 탈퇴 시 카카오 연결 끊기 실패
+    KAKAO_UNLINK_FAILED(HttpStatus.BAD_GATEWAY, "AUTH_KAKAO_UNLINK_FAILED", "카카오 연결 끊기에 실패했습니다."),
+
     // 액세스 토큰 만료
     ACCESS_TOKEN_EXPIRED(
             HttpStatus.UNAUTHORIZED, "AUTH_ACCESS_TOKEN_EXPIRED", "만료된 액세스 토큰입니다. 토큰을 재발급받아 주세요."),

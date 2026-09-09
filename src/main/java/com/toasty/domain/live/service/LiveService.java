@@ -160,6 +160,21 @@ public class LiveService {
         productService.deleteImagesQuietly(obsoleteImageKeys);
     }
 
+    /** 셀러가 탈퇴할 때 아직 끝나지 않은 라이브를 정리한다. 방송 중이면 끝내고, 예정 라이브는 지운다. */
+    // 지난 방송은 시청자와 주문 이력이 참조하므로 건드리지 않는다.
+    public void cleanUpForSellerWithdrawal(Long sellerId) {
+        List<Live> lives =
+                liveRepository.findBySellerIdAndStatusInOrderByScheduledAtAsc(
+                        sellerId, List.of(LiveStatus.LIVE, LiveStatus.READY));
+        for (Live live : lives) {
+            if (live.isBroadcasting()) {
+                end(live.getId(), sellerId);
+            } else {
+                delete(live.getId(), sellerId);
+            }
+        }
+    }
+
     /** 셀러가 라이브 하나를 편성 상품까지 가져온다. 수정 화면을 채우는 데 쓴다. */
     // 상태로 막지 않는다. 방송 중에도 편성 상품을 읽어야 하고, 고칠 수 있는지는 update가 판단한다.
     @Transactional(readOnly = true)

@@ -47,7 +47,8 @@ class UserServiceTest {
     void loginWithKakao_existingUser() {
         String kakaoId = "12345";
         User existingUser = User.createFromKakao(kakaoId);
-        given(userRepository.findByKakaoId(kakaoId)).willReturn(Optional.of(existingUser));
+        given(userRepository.findByKakaoIdAndDeletedAtIsNull(kakaoId))
+                .willReturn(Optional.of(existingUser));
 
         User result = userService.loginWithKakao(kakaoId);
 
@@ -59,7 +60,7 @@ class UserServiceTest {
     void loginWithKakao_newUser() {
         String kakaoId = "99999";
         User savedUser = User.createFromKakao(kakaoId);
-        given(userRepository.findByKakaoId(kakaoId)).willReturn(Optional.empty());
+        given(userRepository.findByKakaoIdAndDeletedAtIsNull(kakaoId)).willReturn(Optional.empty());
         given(userRepository.save(any(User.class))).willReturn(savedUser);
 
         User result = userService.loginWithKakao(kakaoId);

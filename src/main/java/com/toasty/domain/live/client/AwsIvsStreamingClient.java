@@ -29,6 +29,11 @@ import software.amazon.awssdk.services.ivs.model.ThrottlingException;
 @RequiredArgsConstructor
 public class AwsIvsStreamingClient implements LiveStreamingClient {
 
+    // 이 서비스에서 다시 시도하면 풀릴 수 있는 실패들.
+    private static final Class<?>[] TRANSIENT_TYPES = {
+        ThrottlingException.class, ServiceUnavailableException.class, InternalServerException.class
+    };
+
     // AWS 기본값과 같지만, 기본값이 바뀌어도 흔들리지 않도록 명시한다.
     private static final String LATENCY_MODE = "LOW";
 
@@ -51,11 +56,7 @@ public class AwsIvsStreamingClient implements LiveStreamingClient {
                     new BroadcastCredential(
                             response.channel().ingestEndpoint(), response.streamKey().value()));
         } catch (Exception e) {
-            if (TransientFailures.isTransient(
-                    e,
-                    ThrottlingException.class,
-                    ServiceUnavailableException.class,
-                    InternalServerException.class)) {
+            if (isTransient(e)) {
                 log.warn("IVS 채널 생성 일시 실패 - channelName={}", channelName, e);
                 throw new CustomException(LiveErrorCode.LIVE_STREAMING_TEMPORARILY_UNAVAILABLE, e);
             }
@@ -69,11 +70,7 @@ public class AwsIvsStreamingClient implements LiveStreamingClient {
         try {
             ivsClient.deleteChannel(request -> request.arn(channelArn));
         } catch (Exception e) {
-            if (TransientFailures.isTransient(
-                    e,
-                    ThrottlingException.class,
-                    ServiceUnavailableException.class,
-                    InternalServerException.class)) {
+            if (isTransient(e)) {
                 log.warn("IVS 채널 삭제 일시 실패 - channelArn={}", channelArn, e);
                 throw new CustomException(LiveErrorCode.LIVE_STREAMING_TEMPORARILY_UNAVAILABLE, e);
             }
@@ -96,11 +93,7 @@ public class AwsIvsStreamingClient implements LiveStreamingClient {
             log.warn("송출정보 재발급 경쟁 - channelArn={}", channelArn, e);
             throw new CustomException(LiveErrorCode.LIVE_CREDENTIAL_REISSUE_CONFLICT, e);
         } catch (Exception e) {
-            if (TransientFailures.isTransient(
-                    e,
-                    ThrottlingException.class,
-                    ServiceUnavailableException.class,
-                    InternalServerException.class)) {
+            if (isTransient(e)) {
                 log.warn("송출정보 재발급 일시 실패 - channelArn={}", channelArn, e);
                 throw new CustomException(LiveErrorCode.LIVE_STREAMING_TEMPORARILY_UNAVAILABLE, e);
             }
@@ -114,11 +107,7 @@ public class AwsIvsStreamingClient implements LiveStreamingClient {
         try {
             deleteAllStreamKeys(channelArn);
         } catch (Exception e) {
-            if (TransientFailures.isTransient(
-                    e,
-                    ThrottlingException.class,
-                    ServiceUnavailableException.class,
-                    InternalServerException.class)) {
+            if (isTransient(e)) {
                 log.warn("송출 키 삭제 일시 실패 - channelArn={}", channelArn, e);
                 throw new CustomException(LiveErrorCode.LIVE_STREAMING_TEMPORARILY_UNAVAILABLE, e);
             }
@@ -135,11 +124,7 @@ public class AwsIvsStreamingClient implements LiveStreamingClient {
         } catch (ChannelNotBroadcastingException e) {
             return StreamStatus.notBroadcasting();
         } catch (Exception e) {
-            if (TransientFailures.isTransient(
-                    e,
-                    ThrottlingException.class,
-                    ServiceUnavailableException.class,
-                    InternalServerException.class)) {
+            if (isTransient(e)) {
                 log.warn("송출 상태 조회 일시 실패 - channelArn={}", channelArn, e);
                 throw new CustomException(LiveErrorCode.LIVE_STREAMING_TEMPORARILY_UNAVAILABLE, e);
             }
@@ -163,11 +148,7 @@ public class AwsIvsStreamingClient implements LiveStreamingClient {
         } catch (ChannelNotBroadcastingException e) {
             log.debug("송출 중이 아니라 중단을 건너뛴다 - channelArn={}", channelArn);
         } catch (Exception e) {
-            if (TransientFailures.isTransient(
-                    e,
-                    ThrottlingException.class,
-                    ServiceUnavailableException.class,
-                    InternalServerException.class)) {
+            if (isTransient(e)) {
                 log.warn("방송 중단 일시 실패 - channelArn={}", channelArn, e);
                 throw new CustomException(LiveErrorCode.LIVE_STREAMING_TEMPORARILY_UNAVAILABLE, e);
             }
@@ -185,5 +166,9 @@ public class AwsIvsStreamingClient implements LiveStreamingClient {
             } catch (ResourceNotFoundException alreadyDeleted) {
             }
         }
+    }
+
+    private static boolean isTransient(Throwable e) {
+        return TransientFailures.isTransient(e, TRANSIENT_TYPES);
     }
 }

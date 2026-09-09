@@ -15,6 +15,11 @@ import software.amazon.awssdk.services.ivschat.model.ThrottlingException;
 @RequiredArgsConstructor
 public class AwsIvsChatClient implements LiveChatClient {
 
+    // 이 서비스에서 다시 시도하면 풀릴 수 있는 실패들. 방 한도 초과는 다시 불러도 풀리지 않아 넣지 않는다.
+    private static final Class<?>[] TRANSIENT_TYPES = {
+        ThrottlingException.class, InternalServerException.class
+    };
+
     private final IvschatClient ivschatClient;
 
     @Override
@@ -22,8 +27,7 @@ public class AwsIvsChatClient implements LiveChatClient {
         try {
             return ivschatClient.createRoom(request -> request.name(roomName)).arn();
         } catch (Exception e) {
-            if (TransientFailures.isTransient(
-                    e, ThrottlingException.class, InternalServerException.class)) {
+            if (isTransient(e)) {
                 log.warn("채팅방 생성 일시 실패 - roomName={}", roomName, e);
                 throw new CustomException(LiveErrorCode.LIVE_STREAMING_TEMPORARILY_UNAVAILABLE, e);
             }
@@ -40,13 +44,16 @@ public class AwsIvsChatClient implements LiveChatClient {
         } catch (ResourceNotFoundException e) {
             log.debug("이미 없는 채팅방이라 삭제를 건너뛴다 - roomArn={}", roomArn);
         } catch (Exception e) {
-            if (TransientFailures.isTransient(
-                    e, ThrottlingException.class, InternalServerException.class)) {
+            if (isTransient(e)) {
                 log.warn("채팅방 삭제 일시 실패 - roomArn={}", roomArn, e);
                 throw new CustomException(LiveErrorCode.LIVE_STREAMING_TEMPORARILY_UNAVAILABLE, e);
             }
             log.error("채팅방 삭제 실패 - roomArn={}", roomArn, e);
             throw new CustomException(LiveErrorCode.LIVE_CHAT_ROOM_DELETE_FAILED, e);
         }
+    }
+
+    private static boolean isTransient(Throwable e) {
+        return TransientFailures.isTransient(e, TRANSIENT_TYPES);
     }
 }

@@ -130,7 +130,7 @@ public class UserService {
                     }
                     user.completeOnboarding(Role.CUSTOMER, command.nickname());
                     flushNicknameOrThrow();
-                    customerService.createForOnboarding(command, payerId);
+                    createCustomerOrThrowAlreadyCompleted(command, payerId);
                 });
     }
 
@@ -150,6 +150,21 @@ public class UserService {
         user.completeOnboarding(Role.SELLER, command.shopName());
         flushNicknameOrThrow();
         sellerService.createForOnboarding(command);
+    }
+
+    /**
+     * 온보딩이 동시에 두 번 들어와도 온보딩 중복(409)으로 돌려준다.
+     *
+     * <p>역할을 읽는 시점과 구매자를 만드는 시점이 떨어져 있어, 두 요청이 나란히 역할 검사를 통과할 수 있다. 그 경우 uk_customers_user_id가 뒤늦게
+     * 막는데, 그대로 두면 500으로 나간다.
+     */
+    private void createCustomerOrThrowAlreadyCompleted(
+            CustomerOnboardingCommand command, String payerId) {
+        try {
+            customerService.createForOnboarding(command, payerId);
+        } catch (DataIntegrityViolationException e) {
+            throw new CustomException(UserErrorCode.USER_ONBOARDING_ALREADY_COMPLETED, e);
+        }
     }
 
     /**

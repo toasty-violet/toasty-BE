@@ -1,6 +1,7 @@
 package com.toasty.domain.user.service;
 
 import com.toasty.domain.auth.entity.AuthUser;
+import com.toasty.domain.customer.controller.dto.response.CustomerProfileResponse;
 import com.toasty.domain.customer.entity.CustomerOnboardingCommand;
 import com.toasty.domain.customer.service.CustomerService;
 import com.toasty.domain.seller.controller.dto.response.SellerProfileResponse;
@@ -54,6 +55,17 @@ public class UserService {
                 .findById(userId)
                 .map(UserMeResponse::from)
                 .orElseThrow(() -> new CustomException(UserErrorCode.USER_NOT_FOUND));
+    }
+
+    /** 구매자 내 정보 화면에 쓸 정보를 모은다. 닉네임은 유저 쪽에, 이름·연락처·배송지는 구매자 쪽에 있다. */
+    @Transactional(readOnly = true)
+    public CustomerProfileResponse getCustomerProfile(Long userId, Long customerId) {
+        User user =
+                userRepository
+                        .findById(userId)
+                        .orElseThrow(() -> new CustomException(UserErrorCode.USER_NOT_FOUND));
+        return CustomerProfileResponse.of(
+                user.getNickname(), customerService.getProfile(customerId));
     }
 
     /** 다른 도메인이 화면에 셀러를 표시할 때 쓴다. */

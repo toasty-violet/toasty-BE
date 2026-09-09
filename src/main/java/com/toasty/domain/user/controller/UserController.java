@@ -71,6 +71,7 @@ public class UserController {
             description =
                     """
                     유저의 역할을 CUSTOMER로 확정하고 닉네임, 전화번호, 배송지를 입력합니다.
+                    계좌 등록 결제를 마치고 받은 sessionId를 함께 보내면 서버가 point3에서 payerId를 받아 저장합니다.
                     """)
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
@@ -103,22 +104,45 @@ public class UserController {
                                                         {"success": false, "error": {"code": "COMMON_UNAUTHORIZED", "message": "인증이 필요합니다."}}
                                                         """))),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                responseCode = "404",
-                description = "토큰은 유효하지만 그 사이 탈퇴한 유저인 경우 — 로그인 화면으로 보내세요",
+                responseCode = "403",
+                description = "다른 유저가 만든 결제 세션을 보낸 경우 — 계좌 등록부터 다시 시키세요",
                 content =
                         @Content(
                                 mediaType = "application/json",
                                 examples =
                                         @ExampleObject(
-                                                name = "USER_NOT_FOUND",
+                                                name = "PAYMENT_SESSION_OWNER_MISMATCH",
                                                 value =
                                                         """
-                                                        {"success": false, "error": {"code": "USER_NOT_FOUND", "message": "존재하지 않는 유저입니다."}}
+                                                        {"success": false, "error": {"code": "PAYMENT_SESSION_OWNER_MISMATCH", "message": "본인이 만든 결제 세션이 아닙니다."}}
                                                         """))),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "404",
+                description = "error.code로 갈라 처리하세요. 탈퇴한 유저면 로그인 화면으로, 없는 세션이면 계좌 등록부터 다시 시키세요",
+                content =
+                        @Content(
+                                mediaType = "application/json",
+                                examples = {
+                                    @ExampleObject(
+                                            name = "USER_NOT_FOUND",
+                                            description = "토큰은 유효하지만 그 사이 탈퇴한 유저",
+                                            value =
+                                                    """
+                                                    {"success": false, "error": {"code": "USER_NOT_FOUND", "message": "존재하지 않는 유저입니다."}}
+                                                    """),
+                                    @ExampleObject(
+                                            name = "PAYMENT_SESSION_NOT_FOUND",
+                                            description = "서버가 만든 적 없는 sessionId",
+                                            value =
+                                                    """
+                                                    {"success": false, "error": {"code": "PAYMENT_SESSION_NOT_FOUND", "message": "결제 세션을 찾을 수 없습니다."}}
+                                                    """)
+                                })),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "409",
                 description =
-                        "error.code로 갈라 처리하세요. 닉네임 중복은 입력창에, 온보딩 중복은 내 정보 조회로 되돌려 화면을 다시 분기하세요",
+                        "error.code로 갈라 처리하세요. 닉네임 중복은 입력창에, 온보딩 중복은 내 정보 조회로 되돌려 화면을 다시 분기하세요. 계좌"
+                                + " 등록이 안 끝났으면 결제창으로 되돌리세요",
                 content =
                         @Content(
                                 mediaType = "application/json",
@@ -136,6 +160,13 @@ public class UserController {
                                             value =
                                                     """
                                                     {"success": false, "error": {"code": "USER_ONBOARDING_ALREADY_COMPLETED", "message": "이미 온보딩을 마친 유저입니다."}}
+                                                    """),
+                                    @ExampleObject(
+                                            name = "PAYMENT_PAYER_ID_NOT_READY",
+                                            description = "결제창을 통과하지 않아 payerId가 아직 없는 세션",
+                                            value =
+                                                    """
+                                                    {"success": false, "error": {"code": "PAYMENT_PAYER_ID_NOT_READY", "message": "계좌 등록이 끝나지 않았습니다. 결제를 완료한 뒤 다시 시도해주세요."}}
                                                     """)
                                 }))
     })

@@ -22,8 +22,8 @@ public class CustomerService {
 
     /** 온보딩 제출로 구매자 정보와 기본 배송지를 만든다. 유저의 역할 확정과 같은 트랜잭션에서 일어난다. */
     @Transactional
-    public Customer createForOnboarding(CustomerOnboardingCommand command) {
-        Customer customer = customerRepository.save(Customer.createForOnboarding(command));
+    public Customer createForOnboarding(CustomerOnboardingCommand command, String payerId) {
+        Customer customer = customerRepository.save(Customer.createForOnboarding(command, payerId));
         addressRepository.save(Address.createDefault(customer.getId(), command.address()));
         return customer;
     }

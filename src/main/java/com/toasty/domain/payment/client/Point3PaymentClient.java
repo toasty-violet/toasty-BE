@@ -44,4 +44,22 @@ public class Point3PaymentClient {
             throw new CustomException(PaymentErrorCode.PAYMENT_SESSION_CREATE_FAILED, e);
         }
     }
+
+    /** 결제창을 통과한 세션의 상태와 payerId를 확인한다. */
+    public PaymentSessionResponse getSession(String sessionId) {
+        try {
+            return restClient
+                    .get()
+                    .uri(point3Properties.baseUrl() + SESSION_PATH + "/" + sessionId)
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + point3Properties.apiToken())
+                    .retrieve()
+                    .body(PaymentSessionResponse.class);
+        } catch (HttpServerErrorException | ResourceAccessException e) {
+            log.warn("point3 결제 세션 조회 일시 실패 - sessionId={}", sessionId, e);
+            throw new CustomException(PaymentErrorCode.PAYMENT_TEMPORARILY_UNAVAILABLE, e);
+        } catch (Exception e) {
+            log.error("point3 결제 세션 조회 실패 - sessionId={}", sessionId, e);
+            throw new CustomException(PaymentErrorCode.PAYMENT_SESSION_QUERY_FAILED, e);
+        }
+    }
 }

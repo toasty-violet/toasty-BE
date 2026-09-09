@@ -43,4 +43,9 @@ public class Payment extends BaseTimeEntity {
     public static Payment createForPayerId(Long userId, String sessionId) {
         return new Payment(userId, sessionId, PaymentPurpose.PAYER_ID_REGISTRATION);
     }
+
+    /** 이 유저가 payerId를 받으려고 만든 세션인지 판단한다. */
+    public boolean isPayerIdSessionOf(Long userId) {
+        return this.userId.equals(userId) && purpose == PaymentPurpose.PAYER_ID_REGISTRATION;
+    }
 }

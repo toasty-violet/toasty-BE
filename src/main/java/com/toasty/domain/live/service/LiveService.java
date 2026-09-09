@@ -261,13 +261,16 @@ public class LiveService {
                 .orElseGet(() -> new LiveViewerCountResponse(fetchAndCacheViewerCount(publicId)));
     }
 
-    // 방송 중이 아니면 IVS를 부를 이유가 없다. 대기 화면과 지난 방송은 0으로 그린다.
+    // 끝난 방송만 막고 나머지는 IVS에 묻는다. lives.status는 셀러의 송출 상태 조회로만 갱신돼서,
+    // 그걸로 막으면 영상은 나가는데 시청자 수만 0으로 내려가는 구간이 생긴다.
     private int fetchAndCacheViewerCount(String publicId) {
         Live live = findByPublicId(publicId);
         int viewerCount =
-                live.isBroadcasting()
-                        ? liveStreamingClient.getStreamStatus(live.getIvsChannelArn()).viewerCount()
-                        : 0;
+                live.isEnded()
+                        ? 0
+                        : liveStreamingClient
+                                .getStreamStatus(live.getIvsChannelArn())
+                                .viewerCount();
         liveViewerCountRepository.save(publicId, viewerCount);
         return viewerCount;
     }

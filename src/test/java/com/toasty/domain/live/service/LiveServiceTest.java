@@ -317,8 +317,6 @@ class LiveServiceTest {
             Live live = givenLiveByPublicId("abc");
             live.startBroadcast();
             given(viewerCountRepository.find("abc")).willReturn(Optional.empty());
-            streamingClient.broadcasting(
-                    com.toasty.domain.live.client.dto.StreamState.BROADCASTING);
             streamingClient.viewerCount(132);
 
             assertThat(liveService.getViewerCount("abc").viewerCount()).isEqualTo(132);
@@ -327,9 +325,22 @@ class LiveServiceTest {
         }
 
         @Test
-        @DisplayName("방송 중이 아니면 IVS를 부르지 않고 0이다")
-        void 방송_전에는_0이다() {
+        @DisplayName("방송 전이어도 IVS에 물어본다")
+        void 방송_전에도_물어본다() {
             givenLiveByPublicId("abc");
+            given(viewerCountRepository.find("abc")).willReturn(Optional.empty());
+            streamingClient.broadcasting(
+                    com.toasty.domain.live.client.dto.StreamState.BROADCASTING);
+            streamingClient.viewerCount(132);
+
+            assertThat(liveService.getViewerCount("abc").viewerCount()).isEqualTo(132);
+        }
+
+        @Test
+        @DisplayName("끝난 방송은 IVS를 부르지 않고 0이다")
+        void 끝난_방송은_0이다() {
+            Live live = givenLiveByPublicId("abc");
+            live.end();
             given(viewerCountRepository.find("abc")).willReturn(Optional.empty());
             streamingClient.viewerCount(132);
 

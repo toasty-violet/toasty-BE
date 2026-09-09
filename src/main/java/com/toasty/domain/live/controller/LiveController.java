@@ -215,7 +215,7 @@ public class LiveController {
             description =
                     "시청 화면 상단의 시청자 수를 채웁니다. 값이 계속 바뀌므로 시청 중에 주기적으로 호출하세요."
                             + " 인증이 필요 없어 비로그인 유저도 호출할 수 있습니다. 송출 전이면 0이고, 끝난 방송도 0입니다."
-                            + " 서버가 라이브당 10초에 한 번만 실제 값을 받아오므로 그보다 자주 불러도 같은 값이 나옵니다.")
+                            + " 서버가 30초마다 갱신해 둔 값을 읽어 주므로 그보다 자주 불러도 같은 값이 나옵니다.")
     @GetMapping("/public/{publicId}/viewer-count")
     public ApiResponse<LiveViewerCountResponse> getViewerCount(@PathVariable String publicId) {
         return ApiResponse.ok(liveService.getViewerCount(publicId));

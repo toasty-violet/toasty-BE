@@ -1,0 +1,64 @@
+# 배포는 수동으로만 돈다. main에 뭐가 들어가든 누를 때까지 서버는 그대로다.
+# 안정되면 push 트리거로 바꾼다.
+#
+# 서버는 GitHub를 보지 않는다. Actions가 코드를 받아 서버로 밀어 넣어서,
+# 서버에 저장소 자격증명을 두지 않는다.
+name: deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        # Actions 화면 위쪽의 브랜치 선택은 "이 워크플로 파일을 어디서 읽을지"이고,
+        # 여기 값이 "무엇을 배포할지"다. 둘은 달라도 된다.
+        description: 배포할 브랜치나 태그
+        required: true
+        default: main
+
+concurrency:
+  # 배포가 겹치면 서버에서 두 빌드가 같은 컨테이너를 건드린다.
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 배포할 코드를 받는다
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: SSH 키 준비
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: 어느 커밋을 올리는지 남긴다
+        run: git rev-parse HEAD > DEPLOYED_COMMIT
+
+      # --delete로 서버를 이 커밋 상태에 정확히 맞춘다. 지운 파일이 서버에 남지 않는다.
+      # 비밀값(docker/prod/.env)과 저장소에 없는 것은 지우지 않는다.
+      - name: 서버로 코드를 밀어 넣는다
+        run: |
+          rsync -az --delete \
+            --exclude '.git' \
+            --exclude 'docker/prod/.env' \
+            -e "ssh -i ~/.ssh/deploy_key" \
+            ./ "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/opt/toasty/"
+
+      - name: 서버에서 다시 띄운다
+        run: |
+          ssh -i ~/.ssh/deploy_key \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            'bash -s' <<'REMOTE'
+          set -euo pipefail
+          cd /opt/toasty
+          bash scripts/deploy.sh
+          REMOTE
+
+      - name: 실패하면 키를 지운다
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

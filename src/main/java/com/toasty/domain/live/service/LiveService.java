@@ -157,10 +157,7 @@ public class LiveService {
     // 상태로 막지 않는다. 방송 중에도 편성 상품을 읽어야 하고, 고칠 수 있는지는 update가 판단한다.
     @Transactional(readOnly = true)
     public LiveWithProductsResponse getMyLiveDetail(Long liveId, Long sellerId) {
-        Live live = findById(liveId);
-        if (!live.isOwnedBy(sellerId)) {
-            throw new CustomException(LiveErrorCode.LIVE_FORBIDDEN);
-        }
+        Live live = requireOwnLive(liveId, sellerId);
         return LiveWithProductsResponse.of(live, productService.findScheduledProducts(liveId));
     }
 
@@ -230,10 +227,7 @@ public class LiveService {
     }
 
     public BroadcastCredentialResponse reissueCredential(Long liveId, Long sellerId) {
-        Live live = findById(liveId);
-        if (!live.isOwnedBy(sellerId)) {
-            throw new CustomException(LiveErrorCode.LIVE_FORBIDDEN);
-        }
+        Live live = requireOwnLive(liveId, sellerId);
         if (live.isEnded()) {
             throw new CustomException(LiveErrorCode.LIVE_ALREADY_ENDED);
         }
@@ -242,10 +236,7 @@ public class LiveService {
     }
 
     public LiveStreamStatusResponse getStreamStatus(Long liveId, Long sellerId) {
-        Live live = findById(liveId);
-        if (!live.isOwnedBy(sellerId)) {
-            throw new CustomException(LiveErrorCode.LIVE_FORBIDDEN);
-        }
+        Live live = requireOwnLive(liveId, sellerId);
         StreamState streamState = liveStreamingClient.getStreamState(live.getIvsChannelArn());
         if (streamState == StreamState.BROADCASTING && !live.isEnded()) {
             live = syncToBroadcasting(live);
@@ -259,10 +250,7 @@ public class LiveService {
     }
 
     public LiveDetailResponse end(Long liveId, Long sellerId) {
-        Live live = findById(liveId);
-        if (!live.isOwnedBy(sellerId)) {
-            throw new CustomException(LiveErrorCode.LIVE_FORBIDDEN);
-        }
+        Live live = requireOwnLive(liveId, sellerId);
         if (live.isEnded()) {
             return LiveDetailResponse.from(live);
         }

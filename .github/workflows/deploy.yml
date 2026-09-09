@@ -1,11 +1,13 @@
-# 배포는 수동으로만 돈다. main에 뭐가 들어가든 누를 때까지 서버는 그대로다.
-# 안정되면 push 트리거로 바꾼다.
+# main에 머지되면 그 코드가 서버로 나간다. develop -> main PR을 올리는 것이 곧 배포 결정이다.
+# 수동 실행도 남겨둔다. 실패한 배포를 다시 돌리거나 이전 커밋으로 되돌릴 때 쓴다.
 #
 # 서버는 GitHub를 보지 않는다. Actions가 코드를 받아 서버로 밀어 넣어서,
 # 서버에 저장소 자격증명을 두지 않는다.
 name: deploy
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       ref:
@@ -24,10 +26,11 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+      # push로 돌면 inputs.ref가 비어 있어 밀려 들어온 브랜치(main)를 그대로 쓴다.
       - name: 배포할 코드를 받는다
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ inputs.ref || github.ref_name }}
 
       - name: SSH 키 준비
         run: |

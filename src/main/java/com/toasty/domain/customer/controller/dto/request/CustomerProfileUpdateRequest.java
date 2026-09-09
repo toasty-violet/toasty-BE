@@ -1,7 +1,6 @@
-package com.toasty.domain.user.controller.dto.request;
+package com.toasty.domain.customer.controller.dto.request;
 
-import com.toasty.domain.customer.controller.dto.request.AddressRequest;
-import com.toasty.domain.customer.entity.CustomerOnboardingCommand;
+import com.toasty.domain.customer.entity.CustomerProfileUpdateCommand;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -9,8 +8,8 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
-public record CustomerOnboardingRequest(
-        @Schema(description = "이름", example = "김토스티")
+public record CustomerProfileUpdateRequest(
+        @Schema(description = "이름", example = "홍길동")
                 @NotBlank(message = "이름은 필수입니다.") @Size(max = 50, message = "이름은 50자를 넘을 수 없습니다.") String name,
         @Schema(description = "닉네임", example = "토스티")
                 @NotBlank(message = "닉네임은 필수입니다.") @Size(max = 20, message = "닉네임은 20자를 넘을 수 없습니다.") String nickname,
@@ -18,8 +17,8 @@ public record CustomerOnboardingRequest(
                 @NotBlank(message = "휴대폰 번호는 필수입니다.") @Pattern(regexp = "^01[016-9]\\d{7,8}$", message = "휴대폰 번호 형식이 올바르지 않습니다.") String phoneNumber,
         @Schema(description = "기본 배송지") @NotNull(message = "주소는 필수입니다.") @Valid AddressRequest address) {
 
-    public CustomerOnboardingCommand toCommand(Long userId) {
-        return new CustomerOnboardingCommand(
-                userId, name, nickname, phoneNumber, address.toCommand());
+    public CustomerProfileUpdateCommand toCommand(Long userId, Long customerId) {
+        return new CustomerProfileUpdateCommand(
+                userId, customerId, name, nickname, phoneNumber, address.toCommand());
     }
 }

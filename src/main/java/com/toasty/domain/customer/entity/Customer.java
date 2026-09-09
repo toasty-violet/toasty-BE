@@ -51,4 +51,10 @@ public class Customer extends BaseTimeEntity {
     public static Customer createForOnboarding(CustomerOnboardingCommand command) {
         return new Customer(command.userId(), command.name(), command.phoneNumber());
     }
+
+    /** 내 정보 수정으로 이름과 연락처를 바꾼다. */
+    public void updateProfile(String name, String phoneNumber) {
+        this.name = name;
+        this.phoneNumber = phoneNumber;
+    }
 }

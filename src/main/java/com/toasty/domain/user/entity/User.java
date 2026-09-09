@@ -79,6 +79,11 @@ public class User extends BaseTimeEntity {
         this.nickname = nickname;
     }
 
+    /** 내 정보 수정으로 닉네임을 바꾼다. */
+    public void updateNickname(String nickname) {
+        this.nickname = nickname;
+    }
+
     public boolean isWithdrawn() {
         return deletedAt != null;
     }

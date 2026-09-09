@@ -7,9 +7,13 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 
+import com.toasty.domain.live.client.dto.ChatRole;
+import com.toasty.domain.live.client.dto.ChatToken;
+import com.toasty.domain.live.client.dto.ChatTokenCommand;
 import com.toasty.domain.live.exception.LiveErrorCode;
 import com.toasty.global.exception.CustomException;
 import java.io.IOException;
+import java.time.Instant;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,6 +27,7 @@ import software.amazon.awssdk.core.exception.RetryableException;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.services.ivschat.IvschatClient;
 import software.amazon.awssdk.services.ivschat.model.AccessDeniedException;
+import software.amazon.awssdk.services.ivschat.model.CreateChatTokenResponse;
 import software.amazon.awssdk.services.ivschat.model.CreateRoomResponse;
 import software.amazon.awssdk.services.ivschat.model.InternalServerException;
 import software.amazon.awssdk.services.ivschat.model.ResourceNotFoundException;
@@ -63,6 +68,61 @@ class AwsIvsChatClientTest {
                 .willThrow(ResourceNotFoundException.builder().build());
 
         assertThatCode(() -> client.deleteRoom(ROOM_ARN)).doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("토큰과 만료 시각을 그대로 옮겨 담는다")
+    @SuppressWarnings("unchecked")
+    void 토큰을_옮겨_담는다() {
+        Instant expiresAt = Instant.parse("2026-09-09T10:00:00Z");
+        given(ivschatClient.createChatToken(any(Consumer.class)))
+                .willReturn(
+                        CreateChatTokenResponse.builder()
+                                .token("chat-token")
+                                .tokenExpirationTime(expiresAt)
+                                .sessionExpirationTime(expiresAt)
+                                .build());
+
+        ChatToken chatToken =
+                client.createToken(
+                        new ChatTokenCommand(ROOM_ARN, "user-9", "토스티샵", ChatRole.SELLER, true));
+
+        assertThat(chatToken.token()).isEqualTo("chat-token");
+        assertThat(chatToken.expiresAt()).isEqualTo(expiresAt);
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("일시_실패")
+    @DisplayName("토큰 발급의 일시 실패도 다시 시도하도록 알린다")
+    @SuppressWarnings("unchecked")
+    void 토큰_일시_실패(String 상황, Throwable 원인) {
+        given(ivschatClient.createChatToken(any(Consumer.class))).willThrow(원인);
+
+        assertThatThrownBy(
+                        () ->
+                                client.createToken(
+                                        new ChatTokenCommand(
+                                                ROOM_ARN, "user-9", null, ChatRole.CUSTOMER, true)))
+                .isInstanceOf(CustomException.class)
+                .extracting(e -> ((CustomException) e).getErrorCode())
+                .isEqualTo(LiveErrorCode.LIVE_STREAMING_TEMPORARILY_UNAVAILABLE);
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("영구_실패")
+    @DisplayName("토큰 발급의 영구 실패는 발급 실패로 바꾼다")
+    @SuppressWarnings("unchecked")
+    void 토큰_영구_실패(String 상황, Throwable 원인) {
+        given(ivschatClient.createChatToken(any(Consumer.class))).willThrow(원인);
+
+        assertThatThrownBy(
+                        () ->
+                                client.createToken(
+                                        new ChatTokenCommand(
+                                                ROOM_ARN, "user-9", null, ChatRole.CUSTOMER, true)))
+                .isInstanceOf(CustomException.class)
+                .extracting(e -> ((CustomException) e).getErrorCode())
+                .isEqualTo(LiveErrorCode.LIVE_CHAT_TOKEN_ISSUE_FAILED);
     }
 
     @ParameterizedTest(name = "{0}")

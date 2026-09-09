@@ -11,10 +11,12 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+import com.toasty.domain.auth.entity.AuthUser;
 import com.toasty.domain.live.client.FakeLiveChatClient;
 import com.toasty.domain.live.client.FakeLiveStreamingClient;
 import com.toasty.domain.live.client.dto.StreamState;
 import com.toasty.domain.live.controller.dto.response.BroadcastCredentialResponse;
+import com.toasty.domain.live.controller.dto.response.LiveChatTokenResponse;
 import com.toasty.domain.live.controller.dto.response.LiveDetailResponse;
 import com.toasty.domain.live.controller.dto.response.LivePlaybackResponse;
 import com.toasty.domain.live.controller.dto.response.LiveStreamStatusResponse;
@@ -785,6 +787,90 @@ class LiveServiceTest {
                     .isEqualTo(LiveErrorCode.LIVE_NOT_BROADCASTING);
 
             verify(productService, never()).changePriceAndStockDuringLive(any());
+        }
+    }
+
+    @Nested
+    @DisplayName("채팅 입장 토큰 발급")
+    class IssueChatToken {
+
+        @Test
+        @DisplayName("비로그인 시청자는 읽기 전용으로 받는다")
+        void 비로그인은_읽기_전용이다() {
+            givenLiveByPublicId("abc");
+
+            LiveChatTokenResponse response = liveService.issueChatToken("abc", null);
+
+            assertThat(response.writable()).isFalse();
+            com.toasty.domain.live.client.dto.ChatTokenCommand issued =
+                    chatClient.issuedTokenCommands().get(0);
+            assertThat(issued.writable()).isFalse();
+            assertThat(issued.role()).isEqualTo(com.toasty.domain.live.client.dto.ChatRole.GUEST);
+            assertThat(issued.chatUserId()).startsWith("guest-");
+            assertThat(issued.displayName()).isNull();
+        }
+
+        @Test
+        @DisplayName("로그인 구매자는 쓰기 권한과 닉네임을 받는다")
+        void 구매자는_쓸_수_있다() {
+            givenLiveByPublicId("abc");
+            given(userService.findNickname(9L)).willReturn("토스티러버");
+
+            LiveChatTokenResponse response =
+                    liveService.issueChatToken(
+                            "abc",
+                            new AuthUser(
+                                    9L, com.toasty.domain.user.entity.Role.CUSTOMER, 3L, null));
+
+            assertThat(response.writable()).isTrue();
+            com.toasty.domain.live.client.dto.ChatTokenCommand issued =
+                    chatClient.issuedTokenCommands().get(0);
+            assertThat(issued.role())
+                    .isEqualTo(com.toasty.domain.live.client.dto.ChatRole.CUSTOMER);
+            assertThat(issued.chatUserId()).isEqualTo("user-9");
+            assertThat(issued.displayName()).isEqualTo("토스티러버");
+        }
+
+        @Test
+        @DisplayName("방송을 진행하는 셀러는 SELLER로 받는다")
+        void 셀러는_SELLER다() {
+            givenLiveByPublicId("abc");
+            given(userService.findNickname(9L)).willReturn("토스티샵");
+
+            liveService.issueChatToken(
+                    "abc",
+                    new AuthUser(9L, com.toasty.domain.user.entity.Role.SELLER, null, SELLER_ID));
+
+            assertThat(chatClient.issuedTokenCommands().get(0).role())
+                    .isEqualTo(com.toasty.domain.live.client.dto.ChatRole.SELLER);
+        }
+
+        @Test
+        @DisplayName("다른 셀러가 보면 CUSTOMER로 받는다")
+        void 남의_방송을_보는_셀러는_CUSTOMER다() {
+            givenLiveByPublicId("abc");
+            given(userService.findNickname(9L)).willReturn("다른샵");
+
+            liveService.issueChatToken(
+                    "abc", new AuthUser(9L, com.toasty.domain.user.entity.Role.SELLER, null, 99L));
+
+            assertThat(chatClient.issuedTokenCommands().get(0).role())
+                    .isEqualTo(com.toasty.domain.live.client.dto.ChatRole.CUSTOMER);
+        }
+
+        @Test
+        @DisplayName("채팅방이 없는 라이브면 LIVE_CHAT_ROOM_NOT_FOUND다")
+        void 방이_없으면_거부한다() {
+            Live live = givenLiveByPublicId("abc");
+            org.springframework.test.util.ReflectionTestUtils.setField(
+                    live, "ivsChatRoomArn", null);
+
+            assertThatThrownBy(() -> liveService.issueChatToken("abc", null))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(LiveErrorCode.LIVE_CHAT_ROOM_NOT_FOUND);
+
+            assertThat(chatClient.issuedTokenCommands()).isEmpty();
         }
     }
 

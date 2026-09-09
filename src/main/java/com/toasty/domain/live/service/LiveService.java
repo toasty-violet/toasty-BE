@@ -1,10 +1,14 @@
 package com.toasty.domain.live.service;
 
+import com.toasty.domain.auth.entity.AuthUser;
 import com.toasty.domain.live.client.LiveChatClient;
 import com.toasty.domain.live.client.LiveStreamingClient;
+import com.toasty.domain.live.client.dto.ChatRole;
+import com.toasty.domain.live.client.dto.ChatTokenCommand;
 import com.toasty.domain.live.client.dto.StreamStatus;
 import com.toasty.domain.live.client.dto.StreamingChannel;
 import com.toasty.domain.live.controller.dto.response.BroadcastCredentialResponse;
+import com.toasty.domain.live.controller.dto.response.LiveChatTokenResponse;
 import com.toasty.domain.live.controller.dto.response.LiveDetailResponse;
 import com.toasty.domain.live.controller.dto.response.LivePlaybackResponse;
 import com.toasty.domain.live.controller.dto.response.LiveStreamStatusResponse;
@@ -379,6 +383,37 @@ public class LiveService {
     // 채널과 채팅방이 같이 쓴다. 둘 중 빡빡한 IVS 채널명 규칙([a-zA-Z0-9-_], 128자)에 맞춘다.
     private String generateResourceName(Long sellerId) {
         return "toasty-live-" + sellerId + "-" + UUID.randomUUID().toString().substring(0, 8);
+    }
+
+    /** 시청자가 채팅방에 붙을 때 쓸 토큰을 발급한다. */
+    // 비로그인 시청자도 읽을 수 있어야 해서 viewer가 null로 들어온다. 그때는 쓰기 권한 없이 발급한다.
+    // IVS를 부르므로 트랜잭션으로 묶지 않는다.
+    public LiveChatTokenResponse issueChatToken(String publicId, AuthUser viewer) {
+        Live live = findByPublicId(publicId);
+        if (live.getIvsChatRoomArn() == null) {
+            throw new CustomException(LiveErrorCode.LIVE_CHAT_ROOM_NOT_FOUND);
+        }
+        ChatTokenCommand command = toChatTokenCommand(live, viewer);
+        return LiveChatTokenResponse.of(liveChatClient.createToken(command), command.writable());
+    }
+
+    // 채팅 참여자 번호는 방 안에서만 겹치지 않으면 된다. 비로그인은 매번 새로 만든다.
+    private ChatTokenCommand toChatTokenCommand(Live live, AuthUser viewer) {
+        if (viewer == null) {
+            return new ChatTokenCommand(
+                    live.getIvsChatRoomArn(),
+                    "guest-" + UUID.randomUUID(),
+                    null,
+                    ChatRole.GUEST,
+                    false);
+        }
+        boolean owner = live.isOwnedBy(viewer.sellerId());
+        return new ChatTokenCommand(
+                live.getIvsChatRoomArn(),
+                "user-" + viewer.userId(),
+                userService.findNickname(viewer.userId()),
+                owner ? ChatRole.SELLER : ChatRole.CUSTOMER,
+                true);
     }
 
     /** 종료된 지 오래된 라이브의 채팅방을 회수한다. */

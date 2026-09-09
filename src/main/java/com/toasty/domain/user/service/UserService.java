@@ -5,6 +5,7 @@ import com.toasty.domain.customer.controller.dto.response.CustomerProfileRespons
 import com.toasty.domain.customer.entity.CustomerOnboardingCommand;
 import com.toasty.domain.customer.entity.CustomerProfileUpdateCommand;
 import com.toasty.domain.customer.service.CustomerService;
+import com.toasty.domain.payment.service.PaymentService;
 import com.toasty.domain.seller.controller.dto.response.SellerProfileResponse;
 import com.toasty.domain.seller.entity.SellerOnboardingCommand;
 import com.toasty.domain.seller.entity.SellerShop;
@@ -32,6 +33,7 @@ public class UserService {
     private final UserRepository userRepository;
     private final CustomerService customerService;
     private final SellerService sellerService;
+    private final PaymentService paymentService;
     private final TransactionTemplate transactionTemplate;
 
     /** 인증 필터가 액세스 토큰의 userId로 호출한다. 토큰은 유효해도 그 사이 탈퇴했을 수 있어, 판단은 호출한 쪽에 맡기고 Optional로 돌려준다. */
@@ -107,22 +109,29 @@ public class UserService {
         return new NicknameSearchResponse(duplicated);
     }
 
-    /** 구매자 온보딩 제출을 받아 역할을 구매자로 설정하고 닉네임을 확정한다. */
-    @Transactional
+    /** 구매자 온보딩 제출을 받아 역할을 구매자로 설정하고 닉네임과 payerId를 확정한다. */
+    // point3 호출이 DB 커넥션을 잡고 있지 않도록 payerId를 트랜잭션 밖에서 먼저 받아둔다.
     public void completeCustomerOnboarding(CustomerOnboardingCommand command) {
-        User user =
-                userRepository
-                        .findById(command.userId())
-                        .orElseThrow(() -> new CustomException(UserErrorCode.USER_NOT_FOUND));
-        if (user.isOnboardingCompleted()) {
-            throw new CustomException(UserErrorCode.USER_ONBOARDING_ALREADY_COMPLETED);
-        }
-        if (userRepository.existsByNicknameAndIdNot(command.nickname(), user.getId())) {
-            throw new CustomException(UserErrorCode.USER_NICKNAME_DUPLICATED);
-        }
-        user.completeOnboarding(Role.CUSTOMER, command.nickname());
-        flushNicknameOrThrow();
-        customerService.createForOnboarding(command);
+        String payerId = paymentService.getVerifiedPayerId(command.userId(), command.sessionId());
+        transactionTemplate.executeWithoutResult(
+                status -> {
+                    User user =
+                            userRepository
+                                    .findById(command.userId())
+                                    .orElseThrow(
+                                            () ->
+                                                    new CustomException(
+                                                            UserErrorCode.USER_NOT_FOUND));
+                    if (user.isOnboardingCompleted()) {
+                        throw new CustomException(UserErrorCode.USER_ONBOARDING_ALREADY_COMPLETED);
+                    }
+                    if (userRepository.existsByNicknameAndIdNot(command.nickname(), user.getId())) {
+                        throw new CustomException(UserErrorCode.USER_NICKNAME_DUPLICATED);
+                    }
+                    user.completeOnboarding(Role.CUSTOMER, command.nickname());
+                    flushNicknameOrThrow();
+                    createCustomerOrThrowAlreadyCompleted(command, payerId);
+                });
     }
 
     /** 판매자 온보딩 제출을 받아 역할을 판매자로 설정하고 스토어 이름을 닉네임으로 확정한다. */
@@ -141,6 +150,21 @@ public class UserService {
         user.completeOnboarding(Role.SELLER, command.shopName());
         flushNicknameOrThrow();
         sellerService.createForOnboarding(command);
+    }
+
+    /**
+     * 온보딩이 동시에 두 번 들어와도 온보딩 중복(409)으로 돌려준다.
+     *
+     * <p>역할을 읽는 시점과 구매자를 만드는 시점이 떨어져 있어, 두 요청이 나란히 역할 검사를 통과할 수 있다. 그 경우 uk_customers_user_id가 뒤늦게
+     * 막는데, 그대로 두면 500으로 나간다.
+     */
+    private void createCustomerOrThrowAlreadyCompleted(
+            CustomerOnboardingCommand command, String payerId) {
+        try {
+            customerService.createForOnboarding(command, payerId);
+        } catch (DataIntegrityViolationException e) {
+            throw new CustomException(UserErrorCode.USER_ONBOARDING_ALREADY_COMPLETED, e);
+        }
     }
 
     /**

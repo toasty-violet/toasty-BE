@@ -82,6 +82,11 @@ kakao:
   # 탈퇴 시 카카오 연결을 끊는 데 쓴다. 모든 회원에 대해 동작하는 키라 프론트로 내보내면 안 된다.
   admin-key: ${KAKAO_ADMIN_KEY}
 
+point3:
+  base-url: https://api.point3.io
+  # 프론트가 쓰는 client_id와 다른 값이다. 대시보드 개발정보 관리에서 발급받아 .env에 채운다.
+  api-token: ${POINT3_API_TOKEN}
+
 auth:
   # 만료시간은 30m, 14d 처럼 단위를 붙여 쓴다.
   access-token:

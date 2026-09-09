@@ -16,6 +16,7 @@ import com.toasty.domain.live.client.FakeLiveChatClient;
 import com.toasty.domain.live.client.FakeLiveStreamingClient;
 import com.toasty.domain.live.client.dto.StreamState;
 import com.toasty.domain.live.controller.dto.response.BroadcastCredentialResponse;
+import com.toasty.domain.live.controller.dto.response.HomeLiveResponse;
 import com.toasty.domain.live.controller.dto.response.LiveChatTokenResponse;
 import com.toasty.domain.live.controller.dto.response.LiveDetailResponse;
 import com.toasty.domain.live.controller.dto.response.LivePlaybackResponse;
@@ -41,6 +42,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Pageable;
 
 class LiveServiceTest {
 
@@ -389,6 +391,99 @@ class LiveServiceTest {
                     .isEqualTo(LiveErrorCode.LIVE_CHANNEL_CREATE_FAILED);
 
             assertThat(failing.deletedChannelArns()).isEmpty();
+        }
+    }
+
+    @Nested
+    @DisplayName("홈 라이브 목록")
+    class HomeLives {
+
+        private Live homeLive(Long liveId, String title) {
+            Live live =
+                    Live.create(
+                            new LiveCreateCommand(
+                                    SELLER_ID,
+                                    title,
+                                    "설명",
+                                    java.time.LocalDateTime.now().plusDays(1),
+                                    java.util.List.of()),
+                            "arn:aws:ivs:channel/" + liveId,
+                            "https://playback/" + liveId + ".m3u8",
+                            CHAT_ROOM_ARN);
+            org.springframework.test.util.ReflectionTestUtils.setField(live, "id", liveId);
+            return live;
+        }
+
+        @Test
+        @DisplayName("리포지토리가 준 순서를 그대로 두고 셀러 정보를 붙인다")
+        void 셀러_정보를_붙인다() {
+            Live broadcasting = homeLive(1L, "방송 중");
+            broadcasting.startBroadcast();
+            broadcasting.updateViewerCount(132);
+            Live scheduled = homeLive(2L, "방송 예정");
+            given(liveRepository.findByStatus(any(), any(Pageable.class)))
+                    .willReturn(java.util.List.of(broadcasting));
+            given(liveRepository.findByStatusAndScheduledAtGreaterThanEqual(any(), any(), any()))
+                    .willReturn(java.util.List.of(scheduled));
+            given(sellerService.findShopProfiles(java.util.List.of(SELLER_ID)))
+                    .willReturn(
+                            java.util.Map.of(
+                                    SELLER_ID,
+                                    new SellerProfileResponse(
+                                            SELLER_ID, "토스티샵", "https://cdn.example.com/s.jpg")));
+
+            java.util.List<HomeLiveResponse> home = liveService.findHomeLives();
+
+            assertThat(home).extracting(HomeLiveResponse::title).containsExactly("방송 중", "방송 예정");
+            assertThat(home.get(0).viewerCount()).isEqualTo(132);
+            assertThat(home.get(0).seller().shopName()).isEqualTo("토스티샵");
+            assertThat(home.get(1).seller().shopName()).isEqualTo("토스티샵");
+        }
+
+        @Test
+        @DisplayName("셀러가 겹쳐도 셀러 조회는 한 번만 부른다")
+        void 셀러_조회는_한_번만_한다() {
+            given(liveRepository.findByStatus(any(), any(Pageable.class)))
+                    .willReturn(java.util.List.of(homeLive(1L, "첫째"), homeLive(2L, "둘째")));
+            given(liveRepository.findByStatusAndScheduledAtGreaterThanEqual(any(), any(), any()))
+                    .willReturn(java.util.List.of());
+            given(sellerService.findShopProfiles(any())).willReturn(java.util.Map.of());
+
+            liveService.findHomeLives();
+
+            verify(sellerService).findShopProfiles(java.util.List.of(SELLER_ID));
+        }
+
+        @Test
+        @DisplayName("방송 중이 자리를 다 채우면 예정은 읽지 않는다")
+        void 자리가_차면_예정을_안_읽는다() {
+            given(liveRepository.findByStatus(any(), any(Pageable.class)))
+                    .willReturn(
+                            java.util.List.of(
+                                    homeLive(1L, "1"),
+                                    homeLive(2L, "2"),
+                                    homeLive(3L, "3"),
+                                    homeLive(4L, "4"),
+                                    homeLive(5L, "5")));
+            given(sellerService.findShopProfiles(any())).willReturn(java.util.Map.of());
+
+            assertThat(liveService.findHomeLives()).hasSize(5);
+
+            verify(liveRepository, never())
+                    .findByStatusAndScheduledAtGreaterThanEqual(any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("띄울 라이브가 없으면 셀러도 조회하지 않는다")
+        void 없으면_조회하지_않는다() {
+            given(liveRepository.findByStatus(any(), any(Pageable.class)))
+                    .willReturn(java.util.List.of());
+            given(liveRepository.findByStatusAndScheduledAtGreaterThanEqual(any(), any(), any()))
+                    .willReturn(java.util.List.of());
+
+            assertThat(liveService.findHomeLives()).isEmpty();
+
+            verify(sellerService, never()).findShopProfiles(any());
         }
     }
 

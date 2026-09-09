@@ -9,6 +9,7 @@ import com.toasty.domain.live.client.dto.ChatTokenCommand;
 import com.toasty.domain.live.client.dto.StreamStatus;
 import com.toasty.domain.live.client.dto.StreamingChannel;
 import com.toasty.domain.live.controller.dto.response.BroadcastCredentialResponse;
+import com.toasty.domain.live.controller.dto.response.HomeLiveResponse;
 import com.toasty.domain.live.controller.dto.response.LiveChatTokenResponse;
 import com.toasty.domain.live.controller.dto.response.LiveDetailResponse;
 import com.toasty.domain.live.controller.dto.response.LivePlaybackResponse;
@@ -28,6 +29,7 @@ import com.toasty.domain.product.controller.dto.response.LiveProductsResponse;
 import com.toasty.domain.product.entity.LiveProductPinCommand;
 import com.toasty.domain.product.entity.LiveProductUpdateCommand;
 import com.toasty.domain.product.service.ProductService;
+import com.toasty.domain.seller.controller.dto.response.SellerProfileResponse;
 import com.toasty.domain.seller.service.SellerService;
 import com.toasty.global.exception.CustomException;
 import java.time.Duration;
@@ -40,6 +42,8 @@ import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -48,6 +52,16 @@ import org.springframework.transaction.support.TransactionTemplate;
 @Service
 @RequiredArgsConstructor
 public class LiveService {
+
+    private static final int HOME_LIVE_LIMIT = 5;
+
+    // 시청자 수나 예정 시각이 같아도 순서가 흔들리지 않게 id를 뒤에 둔다.
+    // id 방향은 인덱스를 읽는 방향과 맞춰 정렬을 따로 하지 않게 잡았다.
+    private static final Sort BROADCASTING_ORDER =
+            Sort.by(Sort.Order.desc("viewerCount"), Sort.Order.desc("id"));
+
+    private static final Sort SCHEDULED_ORDER =
+            Sort.by(Sort.Order.asc("scheduledAt"), Sort.Order.asc("id"));
 
     // 방송이 끝나도 결제 시트에 남아 있는 시청자가 있어, 이만큼 지난 뒤에 채팅방을 회수한다.
     private static final Duration CHAT_ROOM_RETENTION = Duration.ofMinutes(30);
@@ -358,6 +372,36 @@ public class LiveService {
             log.warn("이미 방송 중인 셀러라 상태를 올리지 못했습니다 - liveId={}", live.getId(), e);
             return false;
         }
+    }
+
+    /** 홈 화면의 라이브 섹션을 채운다. */
+    // 셀러 정보는 라이브마다 조회하지 않고 한 번에 모아 읽는다.
+    @Transactional(readOnly = true)
+    public List<HomeLiveResponse> findHomeLives() {
+        List<Live> lives = new ArrayList<>(broadcastingForHome());
+        if (lives.size() < HOME_LIVE_LIMIT) {
+            lives.addAll(scheduledForHome(HOME_LIVE_LIMIT - lives.size()));
+        }
+        if (lives.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, SellerProfileResponse> sellers =
+                sellerService.findShopProfiles(
+                        lives.stream().map(Live::getSellerId).distinct().toList());
+        return lives.stream()
+                .map(live -> HomeLiveResponse.of(live, sellers.get(live.getSellerId())))
+                .toList();
+    }
+
+    private List<Live> broadcastingForHome() {
+        return liveRepository.findByStatus(
+                LiveStatus.LIVE, PageRequest.of(0, HOME_LIVE_LIMIT, BROADCASTING_ORDER));
+    }
+
+    // 방송 중이 자리를 다 채웠으면 예정은 읽지 않는다.
+    private List<Live> scheduledForHome(int limit) {
+        return liveRepository.findByStatusAndScheduledAtGreaterThanEqual(
+                LiveStatus.READY, LocalDateTime.now(), PageRequest.of(0, limit, SCHEDULED_ORDER));
     }
 
     /** 시청자가 라이브 화면에서 상품 바와 전체 상품 시트를 채운다. */

@@ -1512,6 +1512,20 @@ class LiveServiceTest {
         }
 
         @Test
+        @DisplayName("상품 정리가 실패하면 종료도 실패로 나간다")
+        void 상품_정리가_실패하면_종료도_실패한다() {
+            Live live = givenLive(1L);
+            live.startBroadcast();
+            givenSaveSucceeds();
+            org.mockito.BDDMockito.willThrow(new IllegalStateException("정리 실패"))
+                    .given(productService)
+                    .closeLiveSales(1L);
+
+            assertThatThrownBy(() -> liveService.end(1L, SELLER_ID))
+                    .isInstanceOf(IllegalStateException.class);
+        }
+
+        @Test
         @DisplayName("종료하면 편성 상품의 판매 방식을 정리한다")
         void 상품을_정리한다() {
             Live live = givenLive(1L);

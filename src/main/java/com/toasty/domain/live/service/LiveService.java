@@ -462,14 +462,21 @@ public class LiveService {
 
     // 셀러가 누른 종료와 배치가 대신 하는 종료가 같은 경로를 타게 한다. 채팅방은 회수 배치가 따로 걷어간다.
     private void endBroadcast(Live live) {
-        if (!live.isEnded()) {
-            liveStreamingClient.stopStream(live.getIvsChannelArn());
-            liveStreamingClient.deleteStreamKeys(live.getIvsChannelArn());
-            live.end();
-            liveRepository.save(live);
+        if (live.isEnded()) {
+            // 상품 정리만 남은 라이브를 셀러가 다시 종료하면 여기서 보정된다.
+            productService.closeLiveSales(live.getId());
+            return;
         }
-        // 이미 끝난 라이브에도 태운다. 상품 정리가 실패했을 때 종료를 다시 호출해 보정할 수 있어야 한다.
-        productService.closeLiveSales(live.getId());
+        liveStreamingClient.stopStream(live.getIvsChannelArn());
+        liveStreamingClient.deleteStreamKeys(live.getIvsChannelArn());
+        // 상태와 상품 정리를 한 트랜잭션에 묶는다. 갈라 두면 상품 정리가 실패했을 때 라이브만 끝나
+        // 배치 대상에서 빠지고, 상품은 라이브 예정으로 굳어 아무도 다시 보지 않는다.
+        transactionTemplate.executeWithoutResult(
+                status -> {
+                    live.end();
+                    liveRepository.save(live);
+                    productService.closeLiveSales(live.getId());
+                });
     }
 
     // 방송 시작을 기록하면서 시청자 수도 함께 적는다. 여기 값이 없으면 배치가 처음 돌 때까지 0으로 보인다.

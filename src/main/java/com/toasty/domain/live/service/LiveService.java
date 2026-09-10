@@ -1,10 +1,15 @@
 package com.toasty.domain.live.service;
 
+import com.toasty.domain.auth.entity.AuthUser;
+import com.toasty.domain.customer.service.CustomerService;
 import com.toasty.domain.live.client.LiveChatClient;
 import com.toasty.domain.live.client.LiveStreamingClient;
+import com.toasty.domain.live.client.dto.ChatRole;
+import com.toasty.domain.live.client.dto.ChatTokenCommand;
 import com.toasty.domain.live.client.dto.StreamStatus;
 import com.toasty.domain.live.client.dto.StreamingChannel;
 import com.toasty.domain.live.controller.dto.response.BroadcastCredentialResponse;
+import com.toasty.domain.live.controller.dto.response.LiveChatTokenResponse;
 import com.toasty.domain.live.controller.dto.response.LiveDetailResponse;
 import com.toasty.domain.live.controller.dto.response.LivePlaybackResponse;
 import com.toasty.domain.live.controller.dto.response.LiveStreamStatusResponse;
@@ -18,7 +23,6 @@ import com.toasty.domain.live.entity.LiveStatus;
 import com.toasty.domain.live.entity.LiveUpdateCommand;
 import com.toasty.domain.live.exception.LiveErrorCode;
 import com.toasty.domain.live.repository.LiveRepository;
-import com.toasty.domain.live.repository.LiveViewerCountRepository;
 import com.toasty.domain.product.controller.dto.response.LiveProductResponse;
 import com.toasty.domain.product.controller.dto.response.LiveProductsResponse;
 import com.toasty.domain.product.entity.LiveProductPinCommand;
@@ -29,9 +33,9 @@ import com.toasty.global.exception.CustomException;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -48,12 +52,16 @@ public class LiveService {
     // 방송이 끝나도 결제 시트에 남아 있는 시청자가 있어, 이만큼 지난 뒤에 채팅방을 회수한다.
     private static final Duration CHAT_ROOM_RETENTION = Duration.ofMinutes(30);
 
+    // 셀러당 예정 라이브가 Live.MAX_SCHEDULED로 묶여 있어 배치가 도는 양에 상한이 있다.
+    private static final List<LiveStatus> UNFINISHED_STATUSES =
+            List.of(LiveStatus.READY, LiveStatus.LIVE);
+
     private final LiveRepository liveRepository;
-    private final LiveViewerCountRepository liveViewerCountRepository;
     private final LiveStreamingClient liveStreamingClient;
     private final LiveChatClient liveChatClient;
     private final ProductService productService;
     private final SellerService sellerService;
+    private final CustomerService customerService;
     private final TransactionTemplate transactionTemplate;
 
     /** 셀러가 라이브를 개설하면서 이번 방송에서 팔 상품을 함께 등록한다. */
@@ -281,34 +289,75 @@ public class LiveService {
         Live live = requireOwnLive(liveId, sellerId);
         StreamStatus streamStatus = liveStreamingClient.getStreamStatus(live.getIvsChannelArn());
         if (streamStatus.isBroadcasting() && !live.isEnded()) {
-            live = syncToBroadcasting(live);
+            live = syncToBroadcasting(live, streamStatus.viewerCount());
         }
         return LiveStreamStatusResponse.of(live, streamStatus.state());
     }
 
     /** 시청 화면이 시청자 수를 주기적으로 읽는다. */
-    // 값이 있는데 갱신을 선점하지 못했으면 다른 요청이 최근에 물어본 것이라 직전 값을 그대로 준다.
-    // 그래야 만료 순간에 몰린 요청이 저마다 IVS를 부르지 않는다. IVS를 부르므로 트랜잭션으로 묶지 않는다.
+    // 배치가 적어둔 값을 읽기만 한다. 시청자가 몇 명이든 IVS 호출은 늘지 않는다.
+    @Transactional(readOnly = true)
     public LiveViewerCountResponse getViewerCount(String publicId) {
-        Optional<Integer> cached = liveViewerCountRepository.find(publicId);
-        if (cached.isPresent() && !liveViewerCountRepository.tryStartRefresh(publicId)) {
-            return new LiveViewerCountResponse(cached.get());
-        }
-        return new LiveViewerCountResponse(fetchAndCacheViewerCount(publicId));
+        return new LiveViewerCountResponse(findByPublicId(publicId).getViewerCount());
     }
 
-    // 끝난 방송만 막고 나머지는 IVS에 묻는다. lives.status는 셀러의 송출 상태 조회로만 갱신돼서,
-    // 그걸로 막으면 영상은 나가는데 시청자 수만 0으로 내려가는 구간이 생긴다.
-    private int fetchAndCacheViewerCount(String publicId) {
-        Live live = findByPublicId(publicId);
-        int viewerCount =
-                live.isEnded()
-                        ? 0
-                        : liveStreamingClient
-                                .getStreamStatus(live.getIvsChannelArn())
-                                .viewerCount();
-        liveViewerCountRepository.save(publicId, viewerCount);
-        return viewerCount;
+    /** 아직 끝나지 않은 라이브의 시청자 수를 IVS에서 읽어 적어둔다. */
+    // 셀러가 송출 상태를 조회하지 않아도 방송이 잡히도록 예정까지 살펴, 송출 중이면 상태도 함께 올린다.
+    // IVS 왕복은 트랜잭션 밖에서 끝내고, 값이 바뀐 라이브만 짧은 트랜잭션 하나에 몰아 쓴다.
+    public void refreshViewerCounts() {
+        Map<Long, Integer> viewerCounts = new LinkedHashMap<>();
+        List<Long> startedLiveIds = new ArrayList<>();
+        for (Live live : liveRepository.findByStatusIn(UNFINISHED_STATUSES)) {
+            StreamStatus streamStatus = readStreamStatus(live);
+            if (streamStatus == null) {
+                continue;
+            }
+            if (streamStatus.isBroadcasting() && !live.isBroadcasting()) {
+                startedLiveIds.add(live.getId());
+                viewerCounts.put(live.getId(), streamStatus.viewerCount());
+            } else if (live.isBroadcasting()
+                    && streamStatus.viewerCount() != live.getViewerCount()) {
+                viewerCounts.put(live.getId(), streamStatus.viewerCount());
+            }
+        }
+        if (viewerCounts.isEmpty()) {
+            return;
+        }
+        transactionTemplate.executeWithoutResult(
+                status -> applyViewerCounts(viewerCounts, startedLiveIds));
+    }
+
+    // 한 라이브가 실패해도 나머지는 갱신한다.
+    private StreamStatus readStreamStatus(Live live) {
+        try {
+            return liveStreamingClient.getStreamStatus(live.getIvsChannelArn());
+        } catch (RuntimeException e) {
+            log.warn("송출 상태를 읽지 못했습니다 - liveId={}", live.getId(), e);
+            return null;
+        }
+    }
+
+    // 상태를 올릴 라이브만 엔티티로 다뤄 시청자 수까지 함께 반영하고, 나머지는 UPDATE 한 번씩으로 끝낸다.
+    private void applyViewerCounts(Map<Long, Integer> viewerCounts, List<Long> startedLiveIds) {
+        for (Live live : liveRepository.findAllById(startedLiveIds)) {
+            Integer viewerCount = viewerCounts.remove(live.getId());
+            if (startBroadcastQuietly(live)) {
+                live.updateViewerCount(viewerCount);
+            }
+        }
+        viewerCounts.forEach(liveRepository::updateViewerCount);
+    }
+
+    // 한 셀러가 두 라이브를 동시에 송출하면 나머지 갱신까지 멈추므로, 그 라이브만 건너뛴다.
+    private boolean startBroadcastQuietly(Live live) {
+        try {
+            live.startBroadcast();
+            liveRepository.flush();
+            return true;
+        } catch (DataIntegrityViolationException e) {
+            log.warn("이미 방송 중인 셀러라 상태를 올리지 못했습니다 - liveId={}", live.getId(), e);
+            return false;
+        }
     }
 
     /** 시청자가 라이브 화면에서 상품 바와 전체 상품 시트를 채운다. */
@@ -325,20 +374,25 @@ public class LiveService {
 
     public LiveDetailResponse end(Long liveId, Long sellerId) {
         Live live = requireOwnLive(liveId, sellerId);
-        if (live.isEnded()) {
-            return LiveDetailResponse.from(live);
+        if (!live.isEnded()) {
+            liveStreamingClient.stopStream(live.getIvsChannelArn());
+            liveStreamingClient.deleteStreamKeys(live.getIvsChannelArn());
+            live.end();
+            liveRepository.save(live);
         }
-        liveStreamingClient.stopStream(live.getIvsChannelArn());
-        liveStreamingClient.deleteStreamKeys(live.getIvsChannelArn());
-        live.end();
-        return LiveDetailResponse.from(liveRepository.save(live));
+        // 이미 끝난 라이브에도 태운다. 상품 정리가 실패했을 때 종료를 다시 호출해 보정할 수 있어야 한다.
+        productService.closeLiveSales(liveId);
+        return LiveDetailResponse.from(live);
     }
 
-    private Live syncToBroadcasting(Live live) {
+    // 방송 시작을 기록하면서 시청자 수도 함께 적는다. 여기 값이 없으면 배치가 처음 돌 때까지 0으로 보인다.
+    // 이미 부른 응답에서 꺼내 쓰므로 IVS 호출은 늘지 않는다.
+    private Live syncToBroadcasting(Live live, int viewerCount) {
         if (live.isBroadcasting()) {
             return live;
         }
         live.startBroadcast();
+        live.updateViewerCount(viewerCount);
         try {
             return liveRepository.save(live);
         } catch (DataIntegrityViolationException e) {
@@ -379,6 +433,49 @@ public class LiveService {
     // 채널과 채팅방이 같이 쓴다. 둘 중 빡빡한 IVS 채널명 규칙([a-zA-Z0-9-_], 128자)에 맞춘다.
     private String generateResourceName(Long sellerId) {
         return "toasty-live-" + sellerId + "-" + UUID.randomUUID().toString().substring(0, 8);
+    }
+
+    /** 시청자가 채팅방에 붙을 때 쓸 토큰을 발급한다. */
+    // 비로그인 시청자도 읽을 수 있어야 해서 viewer가 null로 들어온다. 그때는 쓰기 권한 없이 발급한다.
+    // IVS를 부르므로 트랜잭션으로 묶지 않는다.
+    public LiveChatTokenResponse issueChatToken(String publicId, AuthUser viewer) {
+        Live live = findByPublicId(publicId);
+        if (live.getIvsChatRoomArn() == null) {
+            throw new CustomException(LiveErrorCode.LIVE_CHAT_ROOM_NOT_FOUND);
+        }
+        ChatTokenCommand command = toChatTokenCommand(live, viewer);
+        return LiveChatTokenResponse.of(liveChatClient.createToken(command), command.writable());
+    }
+
+    // 채팅 참여자 번호는 방 안에서만 겹치지 않으면 된다. 비로그인은 매번 새로 만든다.
+    // 끝난 방송에는 쓰기를 열지 않는다. 방을 회수하기 전까지 남은 시청자가 읽을 수 있어야 해서 막지는 않는다.
+    private ChatTokenCommand toChatTokenCommand(Live live, AuthUser viewer) {
+        if (viewer == null) {
+            return new ChatTokenCommand(
+                    live.getIvsChatRoomArn(),
+                    "guest-" + UUID.randomUUID(),
+                    null,
+                    ChatRole.GUEST,
+                    false);
+        }
+        boolean owner = live.isOwnedBy(viewer.sellerId());
+        return new ChatTokenCommand(
+                live.getIvsChatRoomArn(),
+                "user-" + viewer.userId(),
+                findChatDisplayName(viewer),
+                owner ? ChatRole.SELLER : ChatRole.CUSTOMER,
+                !live.isEnded());
+    }
+
+    // 채팅에 뜨는 이름은 역할에 따라 다른 곳에 있다. 판매자는 스토어 이름, 구매자는 닉네임을 쓴다.
+    private String findChatDisplayName(AuthUser viewer) {
+        if (viewer.sellerId() != null) {
+            return sellerService.findShopProfile(viewer.sellerId()).shopName();
+        }
+        if (viewer.customerId() != null) {
+            return customerService.findNickname(viewer.customerId());
+        }
+        return null;
     }
 
     /** 종료된 지 오래된 라이브의 채팅방을 회수한다. */

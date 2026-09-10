@@ -33,6 +33,9 @@ public class UserSeeder {
     // 휴대폰 번호는 하이픈 없이 11자리로 저장한다
     private static final String MOCK_PHONE_NUMBER_FORMAT = "0101000%04d";
 
+    // point3 결제창을 거치지 않고 만드는 유저라, 계좌 등록을 마친 것처럼 보이도록 가짜 payerId를 박아둔다
+    private static final String MOCK_PAYER_ID_FORMAT = "mock_payer_%04d";
+
     // 온보딩 전 유저. 역할이 비어 있어 구매자·판매자 어느 쪽 정보도 없다
     private static final int PENDING_ONBOARDING_COUNT = 3;
 
@@ -89,8 +92,10 @@ public class UserSeeder {
                         mock.name(),
                         mock.nickname(),
                         MOCK_PHONE_NUMBER_FORMAT.formatted(index),
+                        null,
                         null);
-        customerRepository.save(Customer.createForOnboarding(command));
+        customerRepository.save(
+                Customer.createForOnboarding(command, MOCK_PAYER_ID_FORMAT.formatted(index)));
         return true;
     }
 

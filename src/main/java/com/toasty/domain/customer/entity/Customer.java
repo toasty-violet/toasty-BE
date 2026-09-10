@@ -41,20 +41,26 @@ public class Customer extends BaseTimeEntity {
     private String phoneNumber;
 
     // 결제 연동 시 P3로부터 받는 결제자 식별자
-    @Column(name = "payer_id", length = 50)
+    @Column(name = "payer_id", length = 100)
     private String payerId;
 
-    private Customer(Long userId, String nickname, String name, String phoneNumber) {
+    private Customer(
+            Long userId, String nickname, String name, String phoneNumber, String payerId) {
         this.userId = userId;
         this.nickname = nickname;
         this.name = name;
         this.phoneNumber = phoneNumber;
+        this.payerId = payerId;
     }
 
-    /** 온보딩 제출 시점에 만들어진다. payerId는 이후 결제 연동에서 채운다. */
-    public static Customer createForOnboarding(CustomerOnboardingCommand command) {
+    /** 온보딩 제출 시점에 만들어진다. payerId는 계좌 등록 결제 세션에서 받아 함께 채운다. */
+    public static Customer createForOnboarding(CustomerOnboardingCommand command, String payerId) {
         return new Customer(
-                command.userId(), command.nickname(), command.name(), command.phoneNumber());
+                command.userId(),
+                command.nickname(),
+                command.name(),
+                command.phoneNumber(),
+                payerId);
     }
 
     /** 내 정보 수정으로 닉네임과 이름, 연락처를 바꾼다. */

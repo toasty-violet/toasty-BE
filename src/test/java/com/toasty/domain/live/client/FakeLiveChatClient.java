@@ -1,5 +1,8 @@
 package com.toasty.domain.live.client;
 
+import com.toasty.domain.live.client.dto.ChatToken;
+import com.toasty.domain.live.client.dto.ChatTokenCommand;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -8,7 +11,9 @@ public class FakeLiveChatClient implements LiveChatClient {
 
     private final List<String> createdRoomNames = new ArrayList<>();
     private final List<String> deletedRoomArns = new ArrayList<>();
+    private final List<ChatTokenCommand> issuedTokenCommands = new ArrayList<>();
     private RuntimeException createFailure;
+    private RuntimeException tokenFailure;
     private RuntimeException deleteFailure;
 
     @Override
@@ -26,6 +31,23 @@ public class FakeLiveChatClient implements LiveChatClient {
             throw deleteFailure;
         }
         deletedRoomArns.add(roomArn);
+    }
+
+    @Override
+    public ChatToken createToken(ChatTokenCommand command) {
+        if (tokenFailure != null) {
+            throw tokenFailure;
+        }
+        issuedTokenCommands.add(command);
+        return new ChatToken("token-" + command.chatUserId(), Instant.EPOCH);
+    }
+
+    public List<ChatTokenCommand> issuedTokenCommands() {
+        return issuedTokenCommands;
+    }
+
+    public void failOnCreateToken(RuntimeException failure) {
+        this.tokenFailure = failure;
     }
 
     public List<String> createdRoomNames() {

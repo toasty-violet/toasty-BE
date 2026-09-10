@@ -4,6 +4,7 @@ import com.toasty.domain.auth.entity.AuthUser;
 import com.toasty.domain.customer.entity.CustomerOnboardingCommand;
 import com.toasty.domain.customer.service.CustomerService;
 import com.toasty.domain.follow.service.FollowService;
+import com.toasty.domain.payment.service.PaymentService;
 import com.toasty.domain.seller.entity.SellerOnboardingCommand;
 import com.toasty.domain.seller.service.SellerService;
 import com.toasty.domain.user.controller.dto.response.UserRoleResponse;
@@ -29,6 +30,7 @@ public class UserService {
     private final CustomerService customerService;
     private final SellerService sellerService;
     private final FollowService followService;
+    private final PaymentService paymentService;
     private final TransactionTemplate transactionTemplate;
 
     /** 인증 필터가 액세스 토큰의 userId로 호출한다. 토큰은 유효해도 그 사이 탈퇴했을 수 있어, 판단은 호출한 쪽에 맡기고 Optional로 돌려준다. */
@@ -55,11 +57,16 @@ public class UserService {
                 .orElseThrow(() -> new CustomException(UserErrorCode.USER_NOT_FOUND));
     }
 
-    /** 구매자 온보딩 제출을 받아 역할을 구매자로 설정하고 구매자 정보를 만든다. */
-    @Transactional
+    /** 구매자 온보딩 제출을 받아 역할을 구매자로 설정하고 구매자 정보와 payerId를 확정한다. */
+    // point3 호출이 DB 커넥션을 잡고 있지 않도록 payerId를 트랜잭션 밖에서 먼저 받아둔다.
     public void completeCustomerOnboarding(CustomerOnboardingCommand command) {
-        startOnboarding(command.userId(), Role.CUSTOMER);
-        createOrThrowAlreadyCompleted(() -> customerService.createForOnboarding(command));
+        String payerId = paymentService.getVerifiedPayerId(command.userId(), command.sessionId());
+        transactionTemplate.executeWithoutResult(
+                status -> {
+                    startOnboarding(command.userId(), Role.CUSTOMER);
+                    createOrThrowAlreadyCompleted(
+                            () -> customerService.createForOnboarding(command, payerId));
+                });
     }
 
     /** 판매자 온보딩 제출을 받아 역할을 판매자로 설정하고 판매자 정보를 만든다. */

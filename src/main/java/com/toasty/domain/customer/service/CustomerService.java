@@ -43,11 +43,17 @@ public class CustomerService {
 
     /** 온보딩 제출로 구매자 정보와 기본 배송지를 만든다. 유저의 역할 확정과 같은 트랜잭션에서 일어난다. */
     @Transactional
-    public Customer createForOnboarding(CustomerOnboardingCommand command) {
+    public Customer createForOnboarding(CustomerOnboardingCommand command, String payerId) {
         requireNicknameAvailable(command.nickname(), null);
-        Customer customer = saveNicknameOrThrow(Customer.createForOnboarding(command));
+        Customer customer = saveNicknameOrThrow(Customer.createForOnboarding(command, payerId));
         addressRepository.save(Address.createDefault(customer.getId(), command.address()));
         return customer;
+    }
+
+    /** 다른 도메인이 화면에 구매자를 표시할 때 쓴다. */
+    @Transactional(readOnly = true)
+    public String findNickname(Long customerId) {
+        return findCustomer(customerId).getNickname();
     }
 
     /** 구매자 내 정보 화면에 쓸 닉네임·이름·연락처와 기본 배송지를 모은다. */

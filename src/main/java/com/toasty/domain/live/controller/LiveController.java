@@ -7,6 +7,7 @@ import com.toasty.domain.live.controller.dto.request.LiveCreateRequest;
 import com.toasty.domain.live.controller.dto.request.LiveProductUpdateRequest;
 import com.toasty.domain.live.controller.dto.request.LiveUpdateRequest;
 import com.toasty.domain.live.controller.dto.response.BroadcastCredentialResponse;
+import com.toasty.domain.live.controller.dto.response.LiveChatTokenResponse;
 import com.toasty.domain.live.controller.dto.response.LiveDetailResponse;
 import com.toasty.domain.live.controller.dto.response.LivePlaybackResponse;
 import com.toasty.domain.live.controller.dto.response.LiveStreamStatusResponse;
@@ -214,7 +215,7 @@ public class LiveController {
             description =
                     "시청 화면 상단의 시청자 수를 채웁니다. 값이 계속 바뀌므로 시청 중에 주기적으로 호출하세요."
                             + " 인증이 필요 없어 비로그인 유저도 호출할 수 있습니다. 송출 전이면 0이고, 끝난 방송도 0입니다."
-                            + " 서버가 라이브당 10초에 한 번만 실제 값을 받아오므로 그보다 자주 불러도 같은 값이 나옵니다.")
+                            + " 서버가 30초마다 갱신해 둔 값을 읽어 주므로 그보다 자주 불러도 같은 값이 나옵니다.")
     @GetMapping("/public/{publicId}/viewer-count")
     public ApiResponse<LiveViewerCountResponse> getViewerCount(@PathVariable String publicId) {
         return ApiResponse.ok(liveService.getViewerCount(publicId));
@@ -233,6 +234,22 @@ public class LiveController {
     @GetMapping("/public/{publicId}/products")
     public ApiResponse<LiveProductsResponse> getPublicLiveProducts(@PathVariable String publicId) {
         return ApiResponse.ok(liveService.getPublicLiveProducts(publicId));
+    }
+
+    @Operation(
+            summary = "라이브 시청 - 채팅 입장 토큰 발급",
+            description =
+                    "시청 화면이 채팅에 붙을 때 호출합니다. 받은 token을 IVS Chat SDK에 넘기세요."
+                            + " 인증이 필요 없어 비로그인 유저도 호출할 수 있고, 그때는 writable이 false로 내려가"
+                            + " 읽기만 됩니다. 로그인 뒤 다시 호출하면 메시지를 보낼 수 있는 토큰을 받습니다."
+                            + " 끝난 방송도 방이 남아 있는 동안은 읽을 수 있지만 writable은 false입니다."
+                            + " expiresAt은 접속한 세션이 유지되는 시각입니다. 그 전에 다시 호출해 새 토큰을 받으세요."
+                            + " 메시지에 실려 오는 role이 SELLER면 방송을 진행하는 셀러가 보낸 것이고,"
+                            + " displayName이 화면에 띄울 이름입니다. 채팅방이 없는 라이브면 404가 납니다.")
+    @PostMapping("/public/{publicId}/chat-token")
+    public ApiResponse<LiveChatTokenResponse> issueChatToken(
+            @PathVariable String publicId, @LoginUser AuthUser viewer) {
+        return ApiResponse.ok(liveService.issueChatToken(publicId, viewer));
     }
 
     @Operation(

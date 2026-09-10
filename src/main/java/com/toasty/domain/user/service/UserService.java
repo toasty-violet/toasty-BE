@@ -60,6 +60,15 @@ public class UserService {
                 .orElseThrow(() -> new CustomException(UserErrorCode.USER_NOT_FOUND));
     }
 
+    /** 다른 도메인이 화면에 유저 이름을 표시할 때 쓴다. */
+    @Transactional(readOnly = true)
+    public String findNickname(Long userId) {
+        return userRepository
+                .findById(userId)
+                .map(User::getNickname)
+                .orElseThrow(() -> new CustomException(UserErrorCode.USER_NOT_FOUND));
+    }
+
     /** 구매자 내 정보 화면에 쓸 정보를 모은다. 닉네임은 유저 쪽에, 이름·연락처·배송지는 구매자 쪽에 있다. */
     @Transactional(readOnly = true)
     public CustomerProfileResponse getCustomerProfile(Long userId, Long customerId) {
@@ -91,12 +100,8 @@ public class UserService {
     @Transactional(readOnly = true)
     public SellerProfileResponse findSellerProfile(Long sellerId) {
         SellerShop shop = sellerService.findShop(sellerId);
-        String shopName =
-                userRepository
-                        .findById(shop.userId())
-                        .map(User::getNickname)
-                        .orElseThrow(() -> new CustomException(UserErrorCode.USER_NOT_FOUND));
-        return new SellerProfileResponse(shop.sellerId(), shopName, shop.shopImageUrl());
+        return new SellerProfileResponse(
+                shop.sellerId(), findNickname(shop.userId()), shop.shopImageUrl());
     }
 
     /** 입력한 닉네임을 이미 다른 유저가 쓰고 있는지 확인한다. 자기 닉네임을 그대로 둔 경우는 중복으로 보지 않는다. */

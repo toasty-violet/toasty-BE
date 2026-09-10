@@ -2,6 +2,7 @@ package com.toasty.domain.product.service;
 
 import com.toasty.domain.product.controller.dto.response.LiveProductResponse;
 import com.toasty.domain.product.controller.dto.response.LiveProductsResponse;
+import com.toasty.domain.product.controller.dto.response.ProductDetailResponse;
 import com.toasty.domain.product.controller.dto.response.SellerProductCountsResponse;
 import com.toasty.domain.product.controller.dto.response.SellerProductDetailResponse;
 import com.toasty.domain.product.controller.dto.response.SellerProductResponse;
@@ -63,6 +64,9 @@ public class ProductService {
 
     // 첫 페이지는 커서가 없다. id는 양수라 최댓값을 넣으면 맨 앞부터 읽는다.
     private static final long FIRST_PAGE_CURSOR = Long.MAX_VALUE;
+
+    // 상품 상세 아래에 함께 걸어 주는 같은 스토어의 다른 상품 수.
+    private static final int OTHER_PRODUCTS_LIMIT = 3;
 
     private final ProductRepository productRepository;
     private final ProductImageRepository productImageRepository;
@@ -314,6 +318,37 @@ public class ProductService {
                         keyword,
                         cursorOf(command.cursor()),
                         oneMoreThanPage());
+    }
+
+    /** 구매자가 보는 상품 상세 화면을 채운다. */
+    // 스토어 목록과 같은 조건으로 읽어, 목록에 걸리지 않는 상품은 링크를 직접 열어도 없는 상품이 된다.
+    @Transactional(readOnly = true)
+    public ProductDetailResponse findProductDetail(Long productId) {
+        Product product =
+                productRepository
+                        .findByIdAndSalesType(productId, SalesType.GENERAL)
+                        .orElseThrow(() -> new CustomException(ProductErrorCode.PRODUCT_NOT_FOUND));
+        List<String> imageUrls =
+                productImageRepository.findByProductIdOrderByDisplayOrder(productId).stream()
+                        .map(ProductImage::getImageUrl)
+                        .toList();
+        return ProductDetailResponse.of(product, imageUrls, otherProductsOf(product));
+    }
+
+    // 자기 자신이 섞여 나오므로 한 칸 더 읽어 빼낸다.
+    private List<StoreProductResponse> otherProductsOf(Product product) {
+        List<Product> others =
+                productRepository
+                        .findBySellerIdAndSalesTypeAndIdLessThanOrderByIdDesc(
+                                product.getSellerId(),
+                                SalesType.GENERAL,
+                                FIRST_PAGE_CURSOR,
+                                PageRequest.of(0, OTHER_PRODUCTS_LIMIT + 1))
+                        .stream()
+                        .filter(other -> !other.getId().equals(product.getId()))
+                        .limit(OTHER_PRODUCTS_LIMIT)
+                        .toList();
+        return toCards(others, StoreProductResponse::of);
     }
 
     /** 스토어 화면의 상품 그리드를 채운다. 지금 살 수 있는 상품만 담는다. */

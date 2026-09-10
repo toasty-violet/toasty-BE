@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 
+import com.toasty.domain.follow.service.FollowService;
+import com.toasty.domain.product.service.ProductService;
 import com.toasty.domain.seller.controller.dto.response.SellerProfileResponse;
 import com.toasty.domain.seller.entity.Seller;
 import com.toasty.domain.seller.entity.SellerOnboardingCommand;
@@ -17,6 +19,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @DisplayName("SellerService")
 class SellerServiceTest {
@@ -34,7 +37,11 @@ class SellerServiceTest {
                 new SellerService(
                         sellerRepository,
                         new SellerS3Properties(
-                                "toasty-media", "https://cdn.example.com", "sellers/images/", 300));
+                                "toasty-media", "https://cdn.example.com", "sellers/images/", 300),
+                        mock(FollowService.class),
+                        mock(ProductService.class),
+                        mock(SellerShopImageService.class),
+                        mock(TransactionTemplate.class));
     }
 
     @Nested

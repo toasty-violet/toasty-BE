@@ -299,6 +299,12 @@ public class ProductService {
                 hasNext);
     }
 
+    /** 다른 도메인이 화면에 판매자의 상품 수를 표시할 때 쓴다. 품절도 함께 센다. */
+    @Transactional(readOnly = true)
+    public long countBySeller(Long sellerId) {
+        return productRepository.countBySellerId(sellerId);
+    }
+
     private List<SellerProductResponse> toSellerResponses(List<Product> products) {
         if (products.isEmpty()) {
             return List.of();

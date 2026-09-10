@@ -2,11 +2,14 @@ package com.toasty.domain.seller.controller;
 
 import com.toasty.domain.auth.annotation.LoginRequired;
 import com.toasty.domain.auth.annotation.LoginUser;
+import com.toasty.domain.auth.annotation.SellerOnly;
 import com.toasty.domain.auth.entity.AuthUser;
 import com.toasty.domain.seller.controller.dto.request.ShopImageUploadUrlRequest;
+import com.toasty.domain.seller.controller.dto.request.ShopUpdateRequest;
 import com.toasty.domain.seller.controller.dto.response.ShopImageUploadUrlResponse;
 import com.toasty.domain.seller.controller.dto.response.ShopNameSearchResponse;
 import com.toasty.domain.seller.controller.dto.response.ShopNameSuggestionResponse;
+import com.toasty.domain.seller.controller.dto.response.ShopResponse;
 import com.toasty.domain.seller.service.SellerService;
 import com.toasty.domain.seller.service.SellerShopImageService;
 import com.toasty.global.response.ApiResponse;
@@ -19,6 +22,7 @@ import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -32,6 +36,41 @@ public class SellerController {
 
     private final SellerService sellerService;
     private final SellerShopImageService sellerShopImageService;
+
+    @Operation(
+            summary = "내 스토어 정보 조회",
+            description =
+                    """
+                    로그인한 판매자 본인의 스토어 관리 화면을 채웁니다.
+                    스토어 주소 복사 버튼은 응답의 sellerId로 toast.kr/shop/{sellerId}를 만들어 쓰세요.
+                    상품 수는 품절까지 포함한 등록 상품 전체입니다.
+                    판매 내역은 아직 주문 기능이 없어 항상 0으로 내려갑니다.
+                    배송비는 온보딩에서 받지 않아 0으로 시작하고, 수정 API로 바꿉니다.
+                    """)
+    @SellerOnly
+    @GetMapping("/shop")
+    public ApiResponse<ShopResponse> findMyShop(@LoginUser AuthUser seller) {
+        return ApiResponse.ok(sellerService.findMyShop(seller.sellerId()));
+    }
+
+    @Operation(
+            summary = "내 스토어 정보 수정",
+            description =
+                    """
+                    스토어 이름, 대표 이미지, 소개, 배송비 3개를 수정합니다.
+                    내 스토어 정보 조회 응답을 입력창의 기본값으로 채워 두고, 유저가 수정한 상태를 보내면 됩니다.
+                    바뀐 값만 골라 보낼 수는 없고, 보낸 값이 그대로 저장됩니다.
+                    사진을 바꾸지 않으려면 조회로 받은 shopImageObjectKey를 그대로 실어 보내고, 비워 보내면 기본 이미지로 돌아갑니다.
+                    사진을 바꿀 때는 샵 이미지 업로드 주소를 먼저 발급받아 올린 뒤 그 objectKey를 보냅니다.
+                    판매 내역은 주문이 쌓여 만들어지는 값이라 여기서 바꿀 수 없습니다.
+                    """)
+    @SellerOnly
+    @PutMapping("/shop")
+    public ApiResponse<Void> updateMyShop(
+            @Valid @RequestBody ShopUpdateRequest request, @LoginUser AuthUser seller) {
+        sellerService.updateShop(request.toCommand(seller.userId(), seller.sellerId()));
+        return ApiResponse.ok();
+    }
 
     @Operation(
             summary = "스토어 이름 중복 조회",

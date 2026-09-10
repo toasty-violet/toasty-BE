@@ -36,7 +36,7 @@ public class UserSeeder {
     // point3 결제창을 거치지 않고 만드는 유저라, 계좌 등록을 마친 것처럼 보이도록 가짜 payerId를 박아둔다
     private static final String MOCK_PAYER_ID_FORMAT = "mock_payer_%04d";
 
-    // 온보딩 전 유저. 역할과 닉네임이 비어 있어 임시 닉네임(user_xxx)을 그대로 달고 있다
+    // 온보딩 전 유저. 역할이 비어 있어 구매자·판매자 어느 쪽 정보도 없다
     private static final int PENDING_ONBOARDING_COUNT = 3;
 
     private static final List<MockCustomer> CUSTOMERS =
@@ -82,10 +82,10 @@ public class UserSeeder {
     // 온보딩을 마친 구매자를 만든다. 배송지는 만들지 않는다
     private boolean seedCustomer(MockCustomer mock, int index) {
         String kakaoId = MOCK_KAKAO_ID_PREFIX + "customer_" + index;
-        if (exists(kakaoId, mock.nickname())) {
+        if (exists(kakaoId) || nicknameTaken(kakaoId, mock.nickname())) {
             return false;
         }
-        User user = save(kakaoId, Role.CUSTOMER, mock.nickname());
+        User user = save(kakaoId, Role.CUSTOMER);
         CustomerOnboardingCommand command =
                 new CustomerOnboardingCommand(
                         user.getId(),
@@ -99,13 +99,13 @@ public class UserSeeder {
         return true;
     }
 
-    // 온보딩을 마친 판매자를 만든다. 상점명은 users의 nickname에 들어간다
+    // 온보딩을 마친 판매자를 만든다
     private boolean seedSeller(String shopName, int index) {
         String kakaoId = MOCK_KAKAO_ID_PREFIX + "seller_" + index;
-        if (exists(kakaoId, shopName)) {
+        if (exists(kakaoId) || shopNameTaken(kakaoId, shopName)) {
             return false;
         }
-        User user = save(kakaoId, Role.SELLER, shopName);
+        User user = save(kakaoId, Role.SELLER);
         SellerOnboardingCommand command =
                 new SellerOnboardingCommand(
                         user.getId(),
@@ -135,21 +135,27 @@ public class UserSeeder {
         return userRepository.findByKakaoId(kakaoId).isPresent();
     }
 
-    // users.nickname이 UNIQUE라 실제 유저가 쓰는 닉네임과 겹치면 그 목 유저만 건너뛴다
-    private boolean exists(String kakaoId, String nickname) {
-        if (exists(kakaoId)) {
-            return true;
-        }
-        if (userRepository.existsByNickname(nickname)) {
-            log.warn("닉네임 '{}'을(를) 쓰는 유저가 이미 있어 {} 시딩을 건너뛴다", nickname, kakaoId);
+    // customers.nickname이 UNIQUE라 실제 구매자가 쓰는 닉네임과 겹치면 그 목 유저만 건너뛴다
+    private boolean nicknameTaken(String kakaoId, String nickname) {
+        if (customerRepository.existsByNickname(nickname)) {
+            log.warn("닉네임 '{}'을(를) 쓰는 구매자가 이미 있어 {} 시딩을 건너뛴다", nickname, kakaoId);
             return true;
         }
         return false;
     }
 
-    private User save(String kakaoId, Role role, String nickname) {
+    // sellers.shop_name이 UNIQUE라 실제 판매자가 쓰는 상점명과 겹치면 그 목 유저만 건너뛴다
+    private boolean shopNameTaken(String kakaoId, String shopName) {
+        if (sellerRepository.existsByShopName(shopName)) {
+            log.warn("상점명 '{}'을(를) 쓰는 판매자가 이미 있어 {} 시딩을 건너뛴다", shopName, kakaoId);
+            return true;
+        }
+        return false;
+    }
+
+    private User save(String kakaoId, Role role) {
         User user = User.createFromKakao(kakaoId);
-        user.completeOnboarding(role, nickname);
+        user.completeOnboarding(role);
         return userRepository.save(user);
     }
 

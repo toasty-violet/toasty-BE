@@ -1,6 +1,7 @@
 package com.toasty.domain.live.service;
 
 import com.toasty.domain.auth.entity.AuthUser;
+import com.toasty.domain.customer.service.CustomerService;
 import com.toasty.domain.live.client.LiveChatClient;
 import com.toasty.domain.live.client.LiveStreamingClient;
 import com.toasty.domain.live.client.dto.ChatRole;
@@ -27,7 +28,7 @@ import com.toasty.domain.product.controller.dto.response.LiveProductsResponse;
 import com.toasty.domain.product.entity.LiveProductPinCommand;
 import com.toasty.domain.product.entity.LiveProductUpdateCommand;
 import com.toasty.domain.product.service.ProductService;
-import com.toasty.domain.user.service.UserService;
+import com.toasty.domain.seller.service.SellerService;
 import com.toasty.global.exception.CustomException;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -59,7 +60,8 @@ public class LiveService {
     private final LiveStreamingClient liveStreamingClient;
     private final LiveChatClient liveChatClient;
     private final ProductService productService;
-    private final UserService userService;
+    private final SellerService sellerService;
+    private final CustomerService customerService;
     private final TransactionTemplate transactionTemplate;
 
     /** 셀러가 라이브를 개설하면서 이번 방송에서 팔 상품을 함께 등록한다. */
@@ -271,7 +273,7 @@ public class LiveService {
     @Transactional(readOnly = true)
     public LiveViewerResponse getByPublicId(String publicId) {
         Live live = findByPublicId(publicId);
-        return LiveViewerResponse.of(live, userService.findSellerProfile(live.getSellerId()));
+        return LiveViewerResponse.of(live, sellerService.findShopProfile(live.getSellerId()));
     }
 
     public BroadcastCredentialResponse reissueCredential(Long liveId, Long sellerId) {
@@ -460,9 +462,20 @@ public class LiveService {
         return new ChatTokenCommand(
                 live.getIvsChatRoomArn(),
                 "user-" + viewer.userId(),
-                userService.findNickname(viewer.userId()),
+                findChatDisplayName(viewer),
                 owner ? ChatRole.SELLER : ChatRole.CUSTOMER,
                 !live.isEnded());
+    }
+
+    // 채팅에 뜨는 이름은 역할에 따라 다른 곳에 있다. 판매자는 스토어 이름, 구매자는 닉네임을 쓴다.
+    private String findChatDisplayName(AuthUser viewer) {
+        if (viewer.sellerId() != null) {
+            return sellerService.findShopProfile(viewer.sellerId()).shopName();
+        }
+        if (viewer.customerId() != null) {
+            return customerService.findNickname(viewer.customerId());
+        }
+        return null;
     }
 
     /** 종료된 지 오래된 라이브의 채팅방을 회수한다. */

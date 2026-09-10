@@ -51,7 +51,8 @@ class LiveServiceTest {
     private FakeLiveStreamingClient streamingClient;
     private FakeLiveChatClient chatClient;
     private com.toasty.domain.product.service.ProductService productService;
-    private com.toasty.domain.user.service.UserService userService;
+    private com.toasty.domain.seller.service.SellerService sellerService;
+    private com.toasty.domain.customer.service.CustomerService customerService;
     private org.springframework.transaction.support.TransactionTemplate transactionTemplate;
     private LiveService liveService;
 
@@ -61,7 +62,8 @@ class LiveServiceTest {
         streamingClient = new FakeLiveStreamingClient();
         chatClient = new FakeLiveChatClient();
         productService = mock(com.toasty.domain.product.service.ProductService.class);
-        userService = mock(com.toasty.domain.user.service.UserService.class);
+        sellerService = mock(com.toasty.domain.seller.service.SellerService.class);
+        customerService = mock(com.toasty.domain.customer.service.CustomerService.class);
         transactionTemplate = passthroughTransaction();
         liveService =
                 new LiveService(
@@ -69,7 +71,8 @@ class LiveServiceTest {
                         streamingClient,
                         chatClient,
                         productService,
-                        userService,
+                        sellerService,
+                        customerService,
                         transactionTemplate);
     }
 
@@ -376,7 +379,8 @@ class LiveServiceTest {
                             failing,
                             chatClient,
                             productService,
-                            userService,
+                            sellerService,
+                            customerService,
                             passthroughTransaction());
 
             assertThatThrownBy(() -> service.create(command()))
@@ -533,7 +537,7 @@ class LiveServiceTest {
         @DisplayName("publicId로 조회해 저장된 값과 셀러 정보를 함께 반환한다")
         void 저장된_값을_반환한다() {
             givenLiveByPublicId("public-id");
-            given(userService.findSellerProfile(SELLER_ID))
+            given(sellerService.findShopProfile(SELLER_ID))
                     .willReturn(
                             new SellerProfileResponse(
                                     SELLER_ID, "토스티샵", "https://cdn.example.com/shop.jpg"));
@@ -891,7 +895,7 @@ class LiveServiceTest {
         @DisplayName("로그인 구매자는 쓰기 권한과 닉네임을 받는다")
         void 구매자는_쓸_수_있다() {
             givenLiveByPublicId("abc");
-            given(userService.findNickname(9L)).willReturn("토스티러버");
+            given(customerService.findNickname(3L)).willReturn("토스티러버");
 
             LiveChatTokenResponse response =
                     liveService.issueChatToken(
@@ -912,7 +916,10 @@ class LiveServiceTest {
         @DisplayName("방송을 진행하는 셀러는 SELLER로 받는다")
         void 셀러는_SELLER다() {
             givenLiveByPublicId("abc");
-            given(userService.findNickname(9L)).willReturn("토스티샵");
+            given(sellerService.findShopProfile(SELLER_ID))
+                    .willReturn(
+                            new com.toasty.domain.seller.controller.dto.response
+                                    .SellerProfileResponse(SELLER_ID, "토스티샵", null));
 
             liveService.issueChatToken(
                     "abc",
@@ -926,7 +933,10 @@ class LiveServiceTest {
         @DisplayName("다른 셀러가 보면 CUSTOMER로 받는다")
         void 남의_방송을_보는_셀러는_CUSTOMER다() {
             givenLiveByPublicId("abc");
-            given(userService.findNickname(9L)).willReturn("다른샵");
+            given(sellerService.findShopProfile(99L))
+                    .willReturn(
+                            new com.toasty.domain.seller.controller.dto.response
+                                    .SellerProfileResponse(99L, "다른샵", null));
 
             liveService.issueChatToken(
                     "abc", new AuthUser(9L, com.toasty.domain.user.entity.Role.SELLER, null, 99L));
@@ -940,7 +950,7 @@ class LiveServiceTest {
         void 끝난_방송은_읽기_전용이다() {
             Live live = givenLiveByPublicId("abc");
             live.end();
-            given(userService.findNickname(9L)).willReturn("토스티러버");
+            given(customerService.findNickname(3L)).willReturn("토스티러버");
 
             LiveChatTokenResponse response =
                     liveService.issueChatToken(

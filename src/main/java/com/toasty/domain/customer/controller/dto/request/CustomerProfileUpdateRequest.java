@@ -17,8 +17,8 @@ public record CustomerProfileUpdateRequest(
                 @NotBlank(message = "휴대폰 번호는 필수입니다.") @Pattern(regexp = "^01[016-9]\\d{7,8}$", message = "휴대폰 번호 형식이 올바르지 않습니다.") String phoneNumber,
         @Schema(description = "기본 배송지") @NotNull(message = "주소는 필수입니다.") @Valid AddressRequest address) {
 
-    public CustomerProfileUpdateCommand toCommand(Long userId, Long customerId) {
+    public CustomerProfileUpdateCommand toCommand(Long customerId) {
         return new CustomerProfileUpdateCommand(
-                userId, customerId, name, nickname, phoneNumber, address.toCommand());
+                customerId, name, nickname, phoneNumber, address.toCommand());
     }
 }

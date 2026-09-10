@@ -5,25 +5,20 @@ import com.toasty.domain.auth.annotation.LoginUser;
 import com.toasty.domain.auth.entity.AuthUser;
 import com.toasty.domain.user.controller.dto.request.CustomerOnboardingRequest;
 import com.toasty.domain.user.controller.dto.request.SellerOnboardingRequest;
-import com.toasty.domain.user.controller.dto.response.NicknameSearchResponse;
-import com.toasty.domain.user.controller.dto.response.UserMeResponse;
+import com.toasty.domain.user.controller.dto.response.UserRoleResponse;
 import com.toasty.domain.user.service.UserService;
 import com.toasty.global.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @Tag(name = "User", description = "유저 API")
@@ -35,12 +30,13 @@ public class UserController {
     private final UserService userService;
 
     @Operation(
-            summary = "내 정보 조회",
+            summary = "내 역할 조회",
             description =
                     """
-                    로그인한 유저의 정보를 조회합니다.
+                    로그인한 유저의 역할을 조회합니다.
                     role이 null이면 온보딩 전이므로 역할 선택 화면으로 보내고, 값이 있으면 그 역할에 맞는 화면으로 보냅니다.
-                    온보딩 전이면 nickname은 가입 시 발급된 임시 닉네임이며, 온보딩 입력창의 기본값으로 쓰세요.
+                    닉네임과 스토어 이름은 역할이 정해진 뒤에 생기므로 여기에 담기지 않습니다.
+                    구매자 닉네임은 구매자 내 정보 조회로, 스토어 이름은 스토어 조회로 받으세요.
                     """)
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
@@ -61,9 +57,9 @@ public class UserController {
                                                         """)))
     })
     @LoginRequired
-    @GetMapping("/users/me")
-    public ApiResponse<UserMeResponse> getMe(@LoginUser AuthUser user) {
-        return ApiResponse.ok(userService.getMe(user.userId()));
+    @GetMapping("/users/role")
+    public ApiResponse<UserRoleResponse> getRole(@LoginUser AuthUser user) {
+        return ApiResponse.ok(userService.getRole(user.userId()));
     }
 
     @Operation(
@@ -71,6 +67,7 @@ public class UserController {
             description =
                     """
                     유저의 역할을 CUSTOMER로 확정하고 닉네임, 전화번호, 배송지를 입력합니다.
+                    닉네임은 구매자끼리만 겹치지 않으면 되므로 닉네임 중복 조회로 미리 확인하세요.
                     계좌 등록 결제를 마치고 받은 sessionId를 함께 보내면 서버가 point3에서 payerId를 받아 저장합니다.
                     """)
     @ApiResponses({
@@ -141,18 +138,18 @@ public class UserController {
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "409",
                 description =
-                        "error.code로 갈라 처리하세요. 닉네임 중복은 입력창에, 온보딩 중복은 내 정보 조회로 되돌려 화면을 다시 분기하세요. 계좌"
+                        "error.code로 갈라 처리하세요. 닉네임 중복은 입력창에, 온보딩 중복은 내 역할 조회로 되돌려 화면을 다시 분기하세요. 계좌"
                                 + " 등록이 안 끝났으면 결제창으로 되돌리세요",
                 content =
                         @Content(
                                 mediaType = "application/json",
                                 examples = {
                                     @ExampleObject(
-                                            name = "USER_NICKNAME_DUPLICATED",
-                                            description = "다른 유저가 이미 쓰고 있는 닉네임",
+                                            name = "CUSTOMER_NICKNAME_DUPLICATED",
+                                            description = "다른 구매자가 이미 쓰고 있는 닉네임",
                                             value =
                                                     """
-                                                    {"success": false, "error": {"code": "USER_NICKNAME_DUPLICATED", "message": "이미 사용 중인 닉네임입니다."}}
+                                                    {"success": false, "error": {"code": "CUSTOMER_NICKNAME_DUPLICATED", "message": "이미 사용 중인 닉네임입니다."}}
                                                     """),
                                     @ExampleObject(
                                             name = "USER_ONBOARDING_ALREADY_COMPLETED",
@@ -183,7 +180,7 @@ public class UserController {
             description =
                     """
                     유저의 역할을 SELLER로 확정하고 스토어 정보, 대표자 정보, 정산 계좌를 입력합니다.
-                    스토어 이름은 닉네임 자리에 저장되므로 닉네임 중복 조회로 미리 확인하세요.
+                    스토어 이름은 판매자끼리만 겹치지 않으면 되므로 스토어 이름 중복 조회로 미리 확인하세요.
                     스토어 이미지는 샵 이미지 업로드 주소 발급으로 먼저 올린 뒤 받은 objectKey를 넣습니다.
                     사업자등록번호만 선택 입력이고 나머지는 모두 필수입니다.
                     """)
@@ -246,18 +243,18 @@ public class UserController {
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "409",
                 description =
-                        "error.code로 갈라 처리하세요. 스토어 이름·사업자등록번호 중복은 입력창에, 온보딩 중복은 내 정보 조회로 되돌려 화면을 다시"
+                        "error.code로 갈라 처리하세요. 스토어 이름·사업자등록번호 중복은 입력창에, 온보딩 중복은 내 역할 조회로 되돌려 화면을 다시"
                                 + " 분기하세요",
                 content =
                         @Content(
                                 mediaType = "application/json",
                                 examples = {
                                     @ExampleObject(
-                                            name = "USER_NICKNAME_DUPLICATED",
-                                            description = "다른 유저가 이미 쓰고 있는 스토어 이름",
+                                            name = "SELLER_SHOP_NAME_DUPLICATED",
+                                            description = "다른 판매자가 이미 쓰고 있는 스토어 이름",
                                             value =
                                                     """
-                                                    {"success": false, "error": {"code": "USER_NICKNAME_DUPLICATED", "message": "이미 사용 중인 닉네임입니다."}}
+                                                    {"success": false, "error": {"code": "SELLER_SHOP_NAME_DUPLICATED", "message": "이미 사용 중인 스토어 이름입니다."}}
                                                     """),
                                     @ExampleObject(
                                             name = "SELLER_BUSINESS_NUMBER_DUPLICATED",
@@ -281,23 +278,5 @@ public class UserController {
             @Valid @RequestBody SellerOnboardingRequest request, @LoginUser AuthUser user) {
         userService.completeSellerOnboarding(request.toCommand(user.userId()));
         return ApiResponse.ok();
-    }
-
-    @Operation(
-            summary = "닉네임 중복 조회",
-            description =
-                    """
-                    유저가 온보딩 중 입력한 닉네임을 다른 유저가 쓰고 있는지 확인합니다.
-                    duplicated가 true면 사용할 수 없는 닉네임입니다.
-                    토큰을 함께 보내면 자기 닉네임은 중복으로 보지 않아, 가입 시 받은 닉네임을 그대로 두고 진행할 수 있습니다.
-                    """)
-    @GetMapping("/search-nickname")
-    public ApiResponse<NicknameSearchResponse> searchNickname(
-            @Parameter(description = "조회할 닉네임", required = true, example = "토스티")
-                    @RequestParam
-                    @NotBlank(message = "닉네임은 필수입니다.") @Size(max = 20, message = "닉네임은 20자를 넘을 수 없습니다.") String nickname,
-            @LoginUser AuthUser user) {
-        return ApiResponse.ok(
-                userService.searchNickname(nickname, user == null ? null : user.userId()));
     }
 }

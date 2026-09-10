@@ -18,7 +18,11 @@ public enum SellerErrorCode implements ErrorCode {
 
     // 다른 판매자가 이미 등록한 사업자등록번호로 온보딩을 제출한 경우
     SELLER_BUSINESS_NUMBER_DUPLICATED(
-            HttpStatus.CONFLICT, "SELLER_BUSINESS_NUMBER_DUPLICATED", "이미 등록된 사업자등록번호입니다.");
+            HttpStatus.CONFLICT, "SELLER_BUSINESS_NUMBER_DUPLICATED", "이미 등록된 사업자등록번호입니다."),
+
+    // 다른 판매자가 이미 쓰고 있는 스토어 이름을 제출한 경우
+    SELLER_SHOP_NAME_DUPLICATED(
+            HttpStatus.CONFLICT, "SELLER_SHOP_NAME_DUPLICATED", "이미 사용 중인 스토어 이름입니다.");
 
     private final HttpStatus status;
     private final String code;

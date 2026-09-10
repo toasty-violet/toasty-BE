@@ -136,6 +136,7 @@ class LiveServiceTest {
                         "arn:aws:ivs:channel/abc",
                         "https://playback/abc.m3u8",
                         CHAT_ROOM_ARN);
+        org.springframework.test.util.ReflectionTestUtils.setField(live, "id", liveId);
         given(liveRepository.findById(liveId)).willReturn(Optional.of(live));
         return live;
     }
@@ -533,8 +534,8 @@ class LiveServiceTest {
     }
 
     @Nested
-    @DisplayName("시청자 수 갱신")
-    class RefreshViewerCounts {
+    @DisplayName("방송 상태 동기화")
+    class SyncBroadcasts {
 
         private Live live(Long liveId) {
             Live live =
@@ -560,7 +561,7 @@ class LiveServiceTest {
             streamingClient.broadcasting(StreamState.BROADCASTING);
             streamingClient.viewerCount(132);
 
-            liveService.refreshViewerCounts();
+            liveService.syncBroadcasts();
 
             verify(liveRepository).updateViewerCount(1L, 132);
         }
@@ -575,7 +576,7 @@ class LiveServiceTest {
             streamingClient.broadcasting(StreamState.BROADCASTING);
             streamingClient.viewerCount(132);
 
-            liveService.refreshViewerCounts();
+            liveService.syncBroadcasts();
 
             verify(liveRepository, never()).updateViewerCount(any(), anyInt());
         }
@@ -590,7 +591,7 @@ class LiveServiceTest {
             streamingClient.broadcasting(StreamState.BROADCASTING);
             streamingClient.viewerCount(132);
 
-            liveService.refreshViewerCounts();
+            liveService.syncBroadcasts();
 
             assertThat(scheduled.getStatus()).isEqualTo(LiveStatus.LIVE);
             assertThat(scheduled.getViewerCount()).isEqualTo(132);
@@ -603,10 +604,80 @@ class LiveServiceTest {
             givenUnfinished(live(1L));
             streamingClient.broadcasting(StreamState.NOT_BROADCASTING);
 
-            liveService.refreshViewerCounts();
+            liveService.syncBroadcasts();
 
             verify(liveRepository, never()).updateViewerCount(any(), anyInt());
             verify(liveRepository, never()).findAllById(any());
+        }
+
+        @Test
+        @DisplayName("송출이 한 번 끊긴 것만으로는 끝내지 않는다")
+        void 한_번으로는_안_끝낸다() {
+            Live live = live(1L);
+            live.startBroadcast();
+            givenUnfinished(live);
+            streamingClient.broadcasting(StreamState.NOT_BROADCASTING);
+
+            liveService.syncBroadcasts();
+
+            assertThat(live.getStatus()).isEqualTo(LiveStatus.LIVE);
+            assertThat(streamingClient.stoppedChannelArns()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("송출이 연속 세 번 끊겨 있으면 배치가 종료한다")
+        void 세_번이면_끝낸다() {
+            Live live = live(1L);
+            live.startBroadcast();
+            givenUnfinished(live);
+            givenSaveSucceeds();
+            streamingClient.broadcasting(StreamState.NOT_BROADCASTING);
+
+            liveService.syncBroadcasts();
+            liveService.syncBroadcasts();
+            liveService.syncBroadcasts();
+
+            assertThat(live.getStatus()).isEqualTo(LiveStatus.ENDED);
+            assertThat(streamingClient.stoppedChannelArns())
+                    .containsExactly(live.getIvsChannelArn());
+            assertThat(streamingClient.streamKeyDeletedChannelArns())
+                    .containsExactly(live.getIvsChannelArn());
+            verify(productService).closeLiveSales(1L);
+        }
+
+        @Test
+        @DisplayName("중간에 송출이 돌아오면 처음부터 다시 센다")
+        void 돌아오면_다시_센다() {
+            Live live = live(1L);
+            live.startBroadcast();
+            givenUnfinished(live);
+            givenSaveSucceeds();
+
+            streamingClient.broadcasting(StreamState.NOT_BROADCASTING);
+            liveService.syncBroadcasts();
+            liveService.syncBroadcasts();
+            streamingClient.broadcasting(StreamState.BROADCASTING);
+            liveService.syncBroadcasts();
+            streamingClient.broadcasting(StreamState.NOT_BROADCASTING);
+            liveService.syncBroadcasts();
+            liveService.syncBroadcasts();
+
+            assertThat(live.getStatus()).isEqualTo(LiveStatus.LIVE);
+            assertThat(streamingClient.stoppedChannelArns()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("아직 켜지지 않은 예정은 끊긴 것으로 세지 않는다")
+        void 예정은_세지_않는다() {
+            givenUnfinished(live(1L));
+            streamingClient.broadcasting(StreamState.NOT_BROADCASTING);
+
+            liveService.syncBroadcasts();
+            liveService.syncBroadcasts();
+            liveService.syncBroadcasts();
+
+            assertThat(streamingClient.stoppedChannelArns()).isEmpty();
+            verify(liveRepository, never()).save(any(Live.class));
         }
 
         @Test
@@ -618,7 +689,7 @@ class LiveServiceTest {
             streamingClient.failOnStreamStatus(
                     new CustomException(LiveErrorCode.LIVE_STREAM_STATUS_FETCH_FAILED));
 
-            assertThatCode(() -> liveService.refreshViewerCounts()).doesNotThrowAnyException();
+            assertThatCode(() -> liveService.syncBroadcasts()).doesNotThrowAnyException();
 
             verify(liveRepository, never()).updateViewerCount(any(), anyInt());
         }

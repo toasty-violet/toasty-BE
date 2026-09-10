@@ -39,6 +39,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -70,6 +71,9 @@ public class LiveService {
     private static final List<LiveStatus> UNFINISHED_STATUSES =
             List.of(LiveStatus.READY, LiveStatus.LIVE);
 
+    // 송출이 이만큼 연속으로 끊겨 있으면 셀러가 종료를 누르지 않은 것으로 본다. 배치가 30초 주기라 1분 30초다.
+    private static final int DROPPED_STREAM_CHECKS = 3;
+
     private final LiveRepository liveRepository;
     private final LiveStreamingClient liveStreamingClient;
     private final LiveChatClient liveChatClient;
@@ -77,6 +81,10 @@ public class LiveService {
     private final SellerService sellerService;
     private final CustomerService customerService;
     private final TransactionTemplate transactionTemplate;
+
+    // 라이브별로 송출이 연속 몇 번 끊겨 있었는지. 서버가 한 대라 메모리에 둔다.
+    // 재시작하면 처음부터 다시 세므로, 최악이라도 종료가 한 주기만큼 늦어진다.
+    private final Map<Long, Integer> droppedStreamChecks = new ConcurrentHashMap<>();
 
     /** 셀러가 라이브를 개설하면서 이번 방송에서 팔 상품을 함께 등록한다. */
     // AWS 호출은 수 초가 걸려 DB 커넥션을 잡고 있으면 안 되므로 채널 생성도 사진 복사도 트랜잭션 밖에 둔다.
@@ -315,30 +323,60 @@ public class LiveService {
         return new LiveViewerCountResponse(findByPublicId(publicId).getViewerCount());
     }
 
-    /** 아직 끝나지 않은 라이브의 시청자 수를 IVS에서 읽어 적어둔다. */
-    // 셀러가 송출 상태를 조회하지 않아도 방송이 잡히도록 예정까지 살펴, 송출 중이면 상태도 함께 올린다.
+    /** 아직 끝나지 않은 라이브를 IVS에 물어 방송 상태와 시청자 수를 맞춘다. */
+    // 셀러가 송출 상태를 조회하지 않아도 방송이 잡히도록 예정까지 살피고, 송출이 끊긴 채 남은 라이브는 대신 끝낸다.
     // IVS 왕복은 트랜잭션 밖에서 끝내고, 값이 바뀐 라이브만 짧은 트랜잭션 하나에 몰아 쓴다.
-    public void refreshViewerCounts() {
+    public void syncBroadcasts() {
         Map<Long, Integer> viewerCounts = new LinkedHashMap<>();
         List<Long> startedLiveIds = new ArrayList<>();
-        for (Live live : liveRepository.findByStatusIn(UNFINISHED_STATUSES)) {
+        List<Live> droppedLives = new ArrayList<>();
+        List<Live> unfinished = liveRepository.findByStatusIn(UNFINISHED_STATUSES);
+        for (Live live : unfinished) {
             StreamStatus streamStatus = readStreamStatus(live);
             if (streamStatus == null) {
                 continue;
             }
-            if (streamStatus.isBroadcasting() && !live.isBroadcasting()) {
+            if (!streamStatus.isBroadcasting()) {
+                if (live.isBroadcasting()
+                        && countDroppedStream(live.getId()) >= DROPPED_STREAM_CHECKS) {
+                    droppedLives.add(live);
+                }
+                continue;
+            }
+            droppedStreamChecks.remove(live.getId());
+            if (!live.isBroadcasting()) {
                 startedLiveIds.add(live.getId());
                 viewerCounts.put(live.getId(), streamStatus.viewerCount());
-            } else if (live.isBroadcasting()
-                    && streamStatus.viewerCount() != live.getViewerCount()) {
+            } else if (streamStatus.viewerCount() != live.getViewerCount()) {
                 viewerCounts.put(live.getId(), streamStatus.viewerCount());
             }
         }
-        if (viewerCounts.isEmpty()) {
-            return;
+        forgetFinishedLives(unfinished);
+        if (!viewerCounts.isEmpty()) {
+            transactionTemplate.executeWithoutResult(
+                    status -> applyViewerCounts(viewerCounts, startedLiveIds));
         }
-        transactionTemplate.executeWithoutResult(
-                status -> applyViewerCounts(viewerCounts, startedLiveIds));
+        droppedLives.forEach(this::endDroppedLive);
+    }
+
+    // 한 번 끊긴 것만으로는 끝내지 않는다. 잠깐 끊겼다 돌아오는 송출이 있다.
+    private int countDroppedStream(Long liveId) {
+        return droppedStreamChecks.merge(liveId, 1, Integer::sum);
+    }
+
+    // 끝난 라이브의 기록까지 들고 있지 않도록, 이번에 살펴본 라이브만 남긴다.
+    private void forgetFinishedLives(List<Live> unfinished) {
+        droppedStreamChecks.keySet().retainAll(unfinished.stream().map(Live::getId).toList());
+    }
+
+    // 셀러가 종료를 누르지 않아 남은 라이브를 배치가 대신 끝낸다. 한 라이브가 실패해도 나머지는 끝낸다.
+    private void endDroppedLive(Live live) {
+        try {
+            endBroadcast(live);
+            log.info("송출이 끊겨 배치가 라이브를 종료했습니다 - liveId={}", live.getId());
+        } catch (RuntimeException e) {
+            log.warn("배치가 라이브를 종료하지 못했습니다 - liveId={}", live.getId(), e);
+        }
     }
 
     // 한 라이브가 실패해도 나머지는 갱신한다.
@@ -418,6 +456,12 @@ public class LiveService {
 
     public LiveDetailResponse end(Long liveId, Long sellerId) {
         Live live = requireOwnLive(liveId, sellerId);
+        endBroadcast(live);
+        return LiveDetailResponse.from(live);
+    }
+
+    // 셀러가 누른 종료와 배치가 대신 하는 종료가 같은 경로를 타게 한다. 채팅방은 회수 배치가 따로 걷어간다.
+    private void endBroadcast(Live live) {
         if (!live.isEnded()) {
             liveStreamingClient.stopStream(live.getIvsChannelArn());
             liveStreamingClient.deleteStreamKeys(live.getIvsChannelArn());
@@ -425,8 +469,7 @@ public class LiveService {
             liveRepository.save(live);
         }
         // 이미 끝난 라이브에도 태운다. 상품 정리가 실패했을 때 종료를 다시 호출해 보정할 수 있어야 한다.
-        productService.closeLiveSales(liveId);
-        return LiveDetailResponse.from(live);
+        productService.closeLiveSales(live.getId());
     }
 
     // 방송 시작을 기록하면서 시청자 수도 함께 적는다. 여기 값이 없으면 배치가 처음 돌 때까지 0으로 보인다.

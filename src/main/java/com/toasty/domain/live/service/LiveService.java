@@ -381,6 +381,15 @@ public class LiveService {
         return !liveIds.isEmpty() && liveRepository.existsByIdInAndStatus(liveIds, LiveStatus.LIVE);
     }
 
+    /** 넘긴 라이브 중 아직 방송하지 않은 것만 추려 준다. */
+    @Transactional(readOnly = true)
+    public List<Long> filterScheduled(Collection<Long> liveIds) {
+        if (liveIds.isEmpty()) {
+            return List.of();
+        }
+        return liveRepository.findIdsByIdInAndStatus(liveIds, LiveStatus.READY);
+    }
+
     /** 홈 화면의 라이브 섹션을 채운다. */
     // 셀러 정보는 라이브마다 조회하지 않고 한 번에 모아 읽는다.
     @Transactional(readOnly = true)

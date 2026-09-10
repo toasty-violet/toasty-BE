@@ -143,6 +143,7 @@ class SellerProductServiceTest {
         @DisplayName("라이브에 남은 마지막 상품은 지울 수 없다")
         void 마지막_상품은_거부한다() {
             givenScheduledIn(12L);
+            given(liveService.filterScheduled(List.of(12L))).willReturn(List.of(12L));
             given(productService.hasLiveWithSingleProduct(List.of(12L))).willReturn(true);
 
             assertThatThrownBy(() -> sellerProductService.delete(PRODUCT_ID, SELLER_ID))
@@ -168,9 +169,24 @@ class SellerProductServiceTest {
         }
 
         @Test
+        @DisplayName("이미 끝난 라이브 때문에 삭제가 막히지 않는다")
+        void 끝난_라이브는_세지_않는다() {
+            givenScheduledIn(12L);
+            given(liveService.filterScheduled(List.of(12L))).willReturn(List.of());
+            given(productService.deleteSellerProduct(PRODUCT_ID, SELLER_ID))
+                    .willReturn(List.of("products/images/7/a.jpg"));
+
+            sellerProductService.delete(PRODUCT_ID, SELLER_ID);
+
+            verify(productService).hasLiveWithSingleProduct(List.of());
+            verify(productService).deleteSellerProduct(PRODUCT_ID, SELLER_ID);
+        }
+
+        @Test
         @DisplayName("지우고 나면 사진을 커밋 뒤에 지운다")
         void 사진을_지운다() {
             givenScheduledIn(12L);
+            given(liveService.filterScheduled(List.of(12L))).willReturn(List.of(12L));
             given(productService.hasLiveWithSingleProduct(List.of(12L))).willReturn(false);
             given(productService.deleteSellerProduct(PRODUCT_ID, SELLER_ID))
                     .willReturn(List.of("products/images/7/a.jpg"));

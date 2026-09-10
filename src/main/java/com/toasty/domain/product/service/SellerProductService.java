@@ -52,7 +52,9 @@ public class SellerProductService {
                 transactionTemplate.execute(
                         status -> {
                             List<Long> liveIds = requireEditable(productId, sellerId);
-                            if (productService.hasLiveWithSingleProduct(liveIds)) {
+                            // 끝난 라이브의 편성은 세지 않는다. 이미 지난 방송이 빌 일은 없다.
+                            if (productService.hasLiveWithSingleProduct(
+                                    liveService.filterScheduled(liveIds))) {
                                 throw new CustomException(ProductErrorCode.PRODUCT_LAST_IN_LIVE);
                             }
                             return productService.deleteSellerProduct(productId, sellerId);

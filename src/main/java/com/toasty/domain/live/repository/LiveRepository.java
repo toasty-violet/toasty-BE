@@ -19,6 +19,11 @@ public interface LiveRepository extends JpaRepository<Live, Long> {
     /** 넘긴 라이브 중 방송 중인 것이 있는지. 상품탭이 수정·삭제를 막는 데 쓴다. */
     boolean existsByIdInAndStatus(Collection<Long> liveIds, LiveStatus status);
 
+    /** 넘긴 라이브 중 이 상태인 것만 추려 준다. */
+    @Query("select l.id from Live l where l.id in :liveIds and l.status = :status")
+    List<Long> findIdsByIdInAndStatus(
+            @Param("liveIds") Collection<Long> liveIds, @Param("status") LiveStatus status);
+
     /** 홈 화면 1순위. 방송 중인 라이브를 준다. */
     List<Live> findByStatus(LiveStatus status, Pageable pageable);
 

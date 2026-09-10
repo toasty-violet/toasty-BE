@@ -20,7 +20,7 @@ public interface LiveProductRepository extends JpaRepository<LiveProduct, Long> 
                     + " where lp.liveId in :liveIds group by lp.liveId")
     List<LiveProductCount> countByLiveIdIn(@Param("liveIds") Collection<Long> liveIds);
 
-    /** 이 상품이 편성된 라이브. 상품탭이 방송 중인지 확인하는 데 쓴다. */
+    /** 이 상품이 편성된 라이브. 상품탭이 방송 중인지, 지우면 빈 방송이 남는지 보는 데 쓴다. */
     @Query("select lp.liveId from LiveProduct lp where lp.productId = :productId")
     List<Long> findLiveIdsByProductId(@Param("productId") Long productId);
 

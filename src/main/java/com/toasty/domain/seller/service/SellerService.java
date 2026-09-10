@@ -23,6 +23,7 @@ public class SellerService {
 
     // 저장이 실패했을 때 어느 값이 겹쳤는지 가르는 데 쓴다
     private static final String BUSINESS_NUMBER_CONSTRAINT = "uk_sellers_business_number";
+    private static final String SHOP_NAME_CONSTRAINT = "uk_sellers_shop_name";
 
     // 추천 스토어 이름은 이 셋을 이어 붙여 만든다. 가장 긴 조합도 스토어 이름 한도인 20자를 넘지 않는다
     private static final List<String> SHOP_NAME_MODIFIERS =
@@ -128,17 +129,24 @@ public class SellerService {
         try {
             return sellerRepository.saveAndFlush(seller);
         } catch (DataIntegrityViolationException e) {
-            throw new CustomException(duplicatedErrorCode(e), e);
+            throw duplicatedOrOriginal(e);
         }
     }
 
     // 스토어 이름과 사업자등록번호가 한 번에 들어가 둘 다 제약 위반이 날 수 있어, 제약 이름으로 가른다.
-    private static SellerErrorCode duplicatedErrorCode(DataIntegrityViolationException e) {
+    // 판매자 행에는 uk_sellers_user_id도 걸려 있어, 둘 중 어느 쪽도 아니면 여기서 판단하지 않고 그대로 올려보낸다.
+    private static RuntimeException duplicatedOrOriginal(DataIntegrityViolationException e) {
         String message = e.getMostSpecificCause().getMessage();
-        if (message != null && message.contains(BUSINESS_NUMBER_CONSTRAINT)) {
-            return SellerErrorCode.SELLER_BUSINESS_NUMBER_DUPLICATED;
+        if (message == null) {
+            return e;
         }
-        return SellerErrorCode.SELLER_SHOP_NAME_DUPLICATED;
+        if (message.contains(BUSINESS_NUMBER_CONSTRAINT)) {
+            return new CustomException(SellerErrorCode.SELLER_BUSINESS_NUMBER_DUPLICATED, e);
+        }
+        if (message.contains(SHOP_NAME_CONSTRAINT)) {
+            return new CustomException(SellerErrorCode.SELLER_SHOP_NAME_DUPLICATED, e);
+        }
+        return e;
     }
 
     private String randomShopName() {

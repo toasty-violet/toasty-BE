@@ -23,6 +23,9 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class CustomerService {
 
+    // 저장이 실패했을 때 닉네임이 겹쳐서인지 가르는 데 쓴다
+    private static final String NICKNAME_CONSTRAINT = "uk_customers_nickname";
+
     // 추천 닉네임은 이 셋을 이어 붙여 만든다. 가장 긴 조합도 닉네임 한도인 20자를 넘지 않는다
     private static final List<String> NICKNAME_ADJECTIVES =
             List.of("바삭한", "노릇한", "따끈한", "폭신한", "달콤한", "고소한", "포근한", "촉촉한");
@@ -119,27 +122,38 @@ public class CustomerService {
     /**
      * 구매자를 DB에 바로 넣어, 검사와 저장 사이에 다른 구매자가 같은 닉네임을 선점했으면 닉네임 중복(409)으로 돌려준다.
      *
-     * <p>배송지를 쓰기 전에 호출해야 한다. 그래야 여기서 나는 제약 위반이 uk_customers_nickname 하나로 좁혀진다.
+     * <p>배송지를 쓰기 전에 호출해야 한다. 그래야 여기서 나는 제약 위반이 구매자 행 하나에서 난 것으로 좁혀진다.
      */
     private Customer saveNicknameOrThrow(Customer customer) {
         try {
             return customerRepository.saveAndFlush(customer);
         } catch (DataIntegrityViolationException e) {
-            throw new CustomException(CustomerErrorCode.CUSTOMER_NICKNAME_DUPLICATED, e);
+            throw nicknameDuplicatedOrOriginal(e);
         }
     }
 
     /**
      * 닉네임 변경만 DB에 먼저 반영해, 다른 구매자가 같은 닉네임을 선점했으면 닉네임 중복(409)으로 돌려준다.
      *
-     * <p>배송지를 쓰기 전에 호출해야 한다. 그래야 여기서 나는 제약 위반이 uk_customers_nickname 하나로 좁혀진다.
+     * <p>배송지를 쓰기 전에 호출해야 한다. 그래야 여기서 나는 제약 위반이 구매자 행 하나에서 난 것으로 좁혀진다.
      */
     private void flushNicknameOrThrow() {
         try {
             customerRepository.flush();
         } catch (DataIntegrityViolationException e) {
-            throw new CustomException(CustomerErrorCode.CUSTOMER_NICKNAME_DUPLICATED, e);
+            throw nicknameDuplicatedOrOriginal(e);
         }
+    }
+
+    // 구매자 행에는 uk_customers_user_id도 걸려 있어, 제약 이름으로 닉네임이 겹친 경우만 가려낸다.
+    // 그 밖의 제약이 막은 경우는 여기서 판단하지 않고 그대로 올려보낸다.
+    private static RuntimeException nicknameDuplicatedOrOriginal(
+            DataIntegrityViolationException e) {
+        String message = e.getMostSpecificCause().getMessage();
+        if (message != null && message.contains(NICKNAME_CONSTRAINT)) {
+            return new CustomException(CustomerErrorCode.CUSTOMER_NICKNAME_DUPLICATED, e);
+        }
+        return e;
     }
 
     private String randomNickname() {

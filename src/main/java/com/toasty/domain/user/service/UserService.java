@@ -16,6 +16,7 @@ import com.toasty.domain.user.repository.UserRepository;
 import com.toasty.global.exception.CustomException;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -58,14 +59,29 @@ public class UserService {
     @Transactional
     public void completeCustomerOnboarding(CustomerOnboardingCommand command) {
         startOnboarding(command.userId(), Role.CUSTOMER);
-        customerService.createForOnboarding(command);
+        createOrThrowAlreadyCompleted(() -> customerService.createForOnboarding(command));
     }
 
     /** 판매자 온보딩 제출을 받아 역할을 판매자로 설정하고 판매자 정보를 만든다. */
     @Transactional
     public void completeSellerOnboarding(SellerOnboardingCommand command) {
         startOnboarding(command.userId(), Role.SELLER);
-        sellerService.createForOnboarding(command);
+        createOrThrowAlreadyCompleted(() -> sellerService.createForOnboarding(command));
+    }
+
+    /**
+     * 온보딩이 동시에 두 번 들어와도 온보딩 중복(409)으로 돌려준다.
+     *
+     * <p>역할을 읽는 시점과 구매자·판매자를 만드는 시점이 떨어져 있어, 두 요청이 나란히 역할 검사를 통과할 수 있다. 그 경우
+     * uk_customers_user_id·uk_sellers_user_id가 뒤늦게 막는다. 닉네임·스토어 이름·사업자등록번호가 겹친 경우는 각 도메인이 이미 자기 에러로
+     * 바꿔 던지므로, 여기까지 올라온 제약 위반은 유저당 하나뿐인 행이 두 번 만들어진 것이다.
+     */
+    private void createOrThrowAlreadyCompleted(Runnable create) {
+        try {
+            create.run();
+        } catch (DataIntegrityViolationException e) {
+            throw new CustomException(UserErrorCode.USER_ONBOARDING_ALREADY_COMPLETED, e);
+        }
     }
 
     private void startOnboarding(Long userId, Role role) {

@@ -21,6 +21,7 @@ import com.toasty.domain.product.entity.Product;
 import com.toasty.domain.product.entity.ProductCreateCommand;
 import com.toasty.domain.product.entity.ProductImage;
 import com.toasty.domain.product.entity.ProductUpsertCommand;
+import com.toasty.domain.product.entity.SalesType;
 import com.toasty.domain.product.exception.ProductErrorCode;
 import com.toasty.domain.product.repository.LiveProductRepository;
 import com.toasty.domain.product.repository.ProductImageRepository;
@@ -583,6 +584,66 @@ class ProductServiceTest {
                     .isEqualTo(ProductErrorCode.PRODUCT_NOT_IN_LIVE);
 
             verify(productRepository, never()).findById(any());
+        }
+    }
+
+    @Nested
+    @DisplayName("라이브 종료 - 판매 방식 정리")
+    class CloseLiveSales {
+
+        private Product product(Long productId, String name, int stockQuantity) {
+            Product product =
+                    Product.createForLive(
+                            SELLER_ID,
+                            new ProductCreateCommand(name, 45000, stockQuantity, null, "k.jpg"));
+            org.springframework.test.util.ReflectionTestUtils.setField(product, "id", productId);
+            return product;
+        }
+
+        private void givenScheduled(Product... products) {
+            given(liveProductRepository.findByLiveIdOrderByDisplayOrder(LIVE_ID))
+                    .willReturn(
+                            java.util.Arrays.stream(products)
+                                    .map(p -> LiveProduct.schedule(LIVE_ID, p.getId(), 0))
+                                    .toList());
+            given(productRepository.findAllById(any())).willReturn(List.of(products));
+        }
+
+        @Test
+        @DisplayName("재고가 남으면 일반판매로, 다 팔렸으면 판매를 닫는다")
+        void 재고에_따라_나뉜다() {
+            Product remaining = product(31L, "가죽 벨트", 2);
+            Product soldOut = product(32L, "도자기 컵", 0);
+            givenScheduled(remaining, soldOut);
+
+            productService.closeLiveSales(LIVE_ID);
+
+            assertThat(remaining.getSalesType()).isEqualTo(SalesType.GENERAL);
+            assertThat(soldOut.getSalesType()).isEqualTo(SalesType.SOLD_OUT);
+        }
+
+        @Test
+        @DisplayName("이미 넘어간 상품은 다시 바뀌지 않는다")
+        void 두_번_넘기지_않는다() {
+            Product product = product(31L, "가죽 벨트", 2);
+            product.closeLiveSales();
+            product.changePriceAndStock(45000, 0);
+            givenScheduled(product);
+
+            productService.closeLiveSales(LIVE_ID);
+
+            assertThat(product.getSalesType()).isEqualTo(SalesType.GENERAL);
+        }
+
+        @Test
+        @DisplayName("편성이 비어 있으면 상품을 읽지 않는다")
+        void 편성이_없으면_읽지_않는다() {
+            given(liveProductRepository.findByLiveIdOrderByDisplayOrder(LIVE_ID))
+                    .willReturn(List.of());
+
+            productService.closeLiveSales(LIVE_ID);
+
+            verify(productRepository, never()).findAllById(any());
         }
     }
 

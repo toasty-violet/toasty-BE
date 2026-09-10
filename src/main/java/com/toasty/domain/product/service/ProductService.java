@@ -261,6 +261,18 @@ public class ProductService {
                                 LiveProductCount::getLiveId, LiveProductCount::getProductCount));
     }
 
+    /** 라이브가 끝나면 편성 상품의 판매 방식을 정리한다. */
+    @Transactional
+    public void closeLiveSales(Long liveId) {
+        List<LiveProduct> scheduled = liveProductRepository.findByLiveIdOrderByDisplayOrder(liveId);
+        if (scheduled.isEmpty()) {
+            return;
+        }
+        productRepository
+                .findAllById(scheduled.stream().map(LiveProduct::getProductId).toList())
+                .forEach(Product::closeLiveSales);
+    }
+
     /** 라이브가 지워질 때 그 라이브의 편성과 상품을 정리하고, 더 이상 쓰지 않는 사진의 objectKey를 돌려준다. 돌려받은 키는 커밋된 뒤에 지운다. */
     @Transactional
     public List<String> removeAllForLive(Long liveId) {

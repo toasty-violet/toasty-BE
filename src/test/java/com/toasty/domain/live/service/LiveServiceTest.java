@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
@@ -87,6 +88,20 @@ class LiveServiceTest {
                                                 mock(
                                                         org.springframework.transaction
                                                                 .TransactionStatus.class)));
+        org.mockito.BDDMockito.willAnswer(
+                        call -> {
+                            ((java.util.function.Consumer<
+                                                    org.springframework.transaction
+                                                            .TransactionStatus>)
+                                            call.getArgument(0))
+                                    .accept(
+                                            mock(
+                                                    org.springframework.transaction
+                                                            .TransactionStatus.class));
+                            return null;
+                        })
+                .given(template)
+                .executeWithoutResult(any());
         return template;
     }
 
@@ -422,41 +437,91 @@ class LiveServiceTest {
     @DisplayName("시청자 수 갱신")
     class RefreshViewerCounts {
 
+        private Live live(Long liveId) {
+            Live live =
+                    Live.create(
+                            command(),
+                            "arn:aws:ivs:channel/" + liveId,
+                            "https://playback/abc.m3u8",
+                            CHAT_ROOM_ARN);
+            org.springframework.test.util.ReflectionTestUtils.setField(live, "id", liveId);
+            return live;
+        }
+
+        private void givenUnfinished(Live... lives) {
+            given(liveRepository.findByStatusIn(any())).willReturn(java.util.List.of(lives));
+        }
+
         @Test
-        @DisplayName("방송 중인 라이브의 시청자 수를 IVS에서 받아 적어둔다")
-        void 받아서_적어둔다() {
-            Live live = givenBroadcastingLive();
+        @DisplayName("방송 중인 라이브의 시청자 수가 바뀌면 적어둔다")
+        void 바뀌면_적어둔다() {
+            Live live = live(1L);
+            live.startBroadcast();
+            givenUnfinished(live);
+            streamingClient.broadcasting(StreamState.BROADCASTING);
             streamingClient.viewerCount(132);
-            givenSaveSucceeds();
 
             liveService.refreshViewerCounts();
 
-            assertThat(live.getViewerCount()).isEqualTo(132);
-            verify(liveRepository).save(live);
+            verify(liveRepository).updateViewerCount(1L, 132);
+        }
+
+        @Test
+        @DisplayName("시청자 수가 그대로면 쓰지 않는다")
+        void 그대로면_쓰지_않는다() {
+            Live live = live(1L);
+            live.startBroadcast();
+            live.updateViewerCount(132);
+            givenUnfinished(live);
+            streamingClient.broadcasting(StreamState.BROADCASTING);
+            streamingClient.viewerCount(132);
+
+            liveService.refreshViewerCounts();
+
+            verify(liveRepository, never()).updateViewerCount(any(), anyInt());
+        }
+
+        @Test
+        @DisplayName("셀러가 화면을 열지 않아도 송출이 시작되면 방송 중으로 올린다")
+        void 송출이_시작되면_상태를_올린다() {
+            Live scheduled = live(1L);
+            givenUnfinished(scheduled);
+            given(liveRepository.findAllById(java.util.List.of(1L)))
+                    .willReturn(java.util.List.of(scheduled));
+            streamingClient.broadcasting(StreamState.BROADCASTING);
+            streamingClient.viewerCount(132);
+
+            liveService.refreshViewerCounts();
+
+            assertThat(scheduled.getStatus()).isEqualTo(LiveStatus.LIVE);
+            assertThat(scheduled.getViewerCount()).isEqualTo(132);
+            verify(liveRepository, never()).updateViewerCount(any(), anyInt());
+        }
+
+        @Test
+        @DisplayName("아직 켜지지 않은 예정은 건드리지 않는다")
+        void 켜지지_않았으면_건드리지_않는다() {
+            givenUnfinished(live(1L));
+            streamingClient.broadcasting(StreamState.NOT_BROADCASTING);
+
+            liveService.refreshViewerCounts();
+
+            verify(liveRepository, never()).updateViewerCount(any(), anyInt());
+            verify(liveRepository, never()).findAllById(any());
         }
 
         @Test
         @DisplayName("한 라이브가 실패해도 요청은 성공한다")
         void 실패해도_넘어간다() {
-            givenBroadcastingLive();
+            Live live = live(1L);
+            live.startBroadcast();
+            givenUnfinished(live);
             streamingClient.failOnStreamStatus(
                     new CustomException(LiveErrorCode.LIVE_STREAM_STATUS_FETCH_FAILED));
 
             assertThatCode(() -> liveService.refreshViewerCounts()).doesNotThrowAnyException();
 
-            verify(liveRepository, never()).save(any(Live.class));
-        }
-
-        private Live givenBroadcastingLive() {
-            Live live =
-                    Live.create(
-                            command(),
-                            "arn:aws:ivs:channel/abc",
-                            "https://playback/abc.m3u8",
-                            CHAT_ROOM_ARN);
-            live.startBroadcast();
-            given(liveRepository.findByStatus(LiveStatus.LIVE)).willReturn(java.util.List.of(live));
-            return live;
+            verify(liveRepository, never()).updateViewerCount(any(), anyInt());
         }
     }
 

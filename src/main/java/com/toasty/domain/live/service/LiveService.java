@@ -32,6 +32,7 @@ import com.toasty.global.exception.CustomException;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -49,6 +50,10 @@ public class LiveService {
 
     // 방송이 끝나도 결제 시트에 남아 있는 시청자가 있어, 이만큼 지난 뒤에 채팅방을 회수한다.
     private static final Duration CHAT_ROOM_RETENTION = Duration.ofMinutes(30);
+
+    // 셀러당 예정 라이브가 Live.MAX_SCHEDULED로 묶여 있어 배치가 도는 양에 상한이 있다.
+    private static final List<LiveStatus> UNFINISHED_STATUSES =
+            List.of(LiveStatus.READY, LiveStatus.LIVE);
 
     private final LiveRepository liveRepository;
     private final LiveStreamingClient liveStreamingClient;
@@ -294,25 +299,63 @@ public class LiveService {
         return new LiveViewerCountResponse(findByPublicId(publicId).getViewerCount());
     }
 
-    /** 방송 중인 라이브의 시청자 수를 IVS에서 읽어 적어둔다. */
-    // IVS를 부르므로 트랜잭션으로 묶지 않는다. 한 라이브가 실패해도 나머지는 갱신한다.
+    /** 아직 끝나지 않은 라이브의 시청자 수를 IVS에서 읽어 적어둔다. */
+    // 셀러가 송출 상태를 조회하지 않아도 방송이 잡히도록 예정까지 살펴, 송출 중이면 상태도 함께 올린다.
+    // IVS 왕복은 트랜잭션 밖에서 끝내고, 값이 바뀐 라이브만 짧은 트랜잭션 하나에 몰아 쓴다.
     public void refreshViewerCounts() {
-        for (Live live : liveRepository.findByStatus(LiveStatus.LIVE)) {
-            refreshViewerCount(live);
+        Map<Long, Integer> viewerCounts = new LinkedHashMap<>();
+        List<Long> startedLiveIds = new ArrayList<>();
+        for (Live live : liveRepository.findByStatusIn(UNFINISHED_STATUSES)) {
+            StreamStatus streamStatus = readStreamStatus(live);
+            if (streamStatus == null) {
+                continue;
+            }
+            if (streamStatus.isBroadcasting() && !live.isBroadcasting()) {
+                startedLiveIds.add(live.getId());
+                viewerCounts.put(live.getId(), streamStatus.viewerCount());
+            } else if (live.isBroadcasting()
+                    && streamStatus.viewerCount() != live.getViewerCount()) {
+                viewerCounts.put(live.getId(), streamStatus.viewerCount());
+            }
+        }
+        if (viewerCounts.isEmpty()) {
+            return;
+        }
+        transactionTemplate.executeWithoutResult(
+                status -> applyViewerCounts(viewerCounts, startedLiveIds));
+    }
+
+    // 한 라이브가 실패해도 나머지는 갱신한다.
+    private StreamStatus readStreamStatus(Live live) {
+        try {
+            return liveStreamingClient.getStreamStatus(live.getIvsChannelArn());
+        } catch (RuntimeException e) {
+            log.warn("송출 상태를 읽지 못했습니다 - liveId={}", live.getId(), e);
+            return null;
         }
     }
 
-    private void refreshViewerCount(Live live) {
-        int viewerCount;
-        try {
-            viewerCount =
-                    liveStreamingClient.getStreamStatus(live.getIvsChannelArn()).viewerCount();
-        } catch (RuntimeException e) {
-            log.warn("시청자 수를 읽지 못했습니다 - liveId={}", live.getId(), e);
-            return;
+    // 상태를 올릴 라이브만 엔티티로 다뤄 시청자 수까지 함께 반영하고, 나머지는 UPDATE 한 번씩으로 끝낸다.
+    private void applyViewerCounts(Map<Long, Integer> viewerCounts, List<Long> startedLiveIds) {
+        for (Live live : liveRepository.findAllById(startedLiveIds)) {
+            Integer viewerCount = viewerCounts.remove(live.getId());
+            if (startBroadcastQuietly(live)) {
+                live.updateViewerCount(viewerCount);
+            }
         }
-        live.updateViewerCount(viewerCount);
-        liveRepository.save(live);
+        viewerCounts.forEach(liveRepository::updateViewerCount);
+    }
+
+    // 한 셀러가 두 라이브를 동시에 송출하면 나머지 갱신까지 멈추므로, 그 라이브만 건너뛴다.
+    private boolean startBroadcastQuietly(Live live) {
+        try {
+            live.startBroadcast();
+            liveRepository.flush();
+            return true;
+        } catch (DataIntegrityViolationException e) {
+            log.warn("이미 방송 중인 셀러라 상태를 올리지 못했습니다 - liveId={}", live.getId(), e);
+            return false;
+        }
     }
 
     /** 시청자가 라이브 화면에서 상품 바와 전체 상품 시트를 채운다. */

@@ -329,13 +329,15 @@ public class LiveService {
 
     public LiveDetailResponse end(Long liveId, Long sellerId) {
         Live live = requireOwnLive(liveId, sellerId);
-        if (live.isEnded()) {
-            return LiveDetailResponse.from(live);
+        if (!live.isEnded()) {
+            liveStreamingClient.stopStream(live.getIvsChannelArn());
+            liveStreamingClient.deleteStreamKeys(live.getIvsChannelArn());
+            live.end();
+            liveRepository.save(live);
         }
-        liveStreamingClient.stopStream(live.getIvsChannelArn());
-        liveStreamingClient.deleteStreamKeys(live.getIvsChannelArn());
-        live.end();
-        return LiveDetailResponse.from(liveRepository.save(live));
+        // 이미 끝난 라이브에도 태운다. 상품 정리가 실패했을 때 종료를 다시 호출해 보정할 수 있어야 한다.
+        productService.closeLiveSales(liveId);
+        return LiveDetailResponse.from(live);
     }
 
     private Live syncToBroadcasting(Live live) {

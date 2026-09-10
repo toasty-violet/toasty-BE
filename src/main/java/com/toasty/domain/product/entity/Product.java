@@ -70,6 +70,15 @@ public class Product extends BaseTimeEntity {
         return stockQuantity <= 0;
     }
 
+    /** 라이브가 끝나면 재고가 남은 상품은 일반판매로 넘기고, 다 팔린 상품은 판매를 닫는다. */
+    // 이미 넘어간 상품은 다시 라이브로 되돌리지 않는다.
+    public void closeLiveSales() {
+        if (salesType != SalesType.LIVE) {
+            return;
+        }
+        this.salesType = isSoldOut() ? SalesType.SOLD_OUT : SalesType.GENERAL;
+    }
+
     public static Product createForLive(Long sellerId, ProductCreateCommand command) {
         return new Product(
                 sellerId,

@@ -1257,6 +1257,29 @@ class LiveServiceTest {
             assertThat(streamingClient.streamKeyDeletedChannelArns()).isEmpty();
             verify(liveRepository, never()).save(any(Live.class));
         }
+
+        @Test
+        @DisplayName("종료하면 편성 상품의 판매 방식을 정리한다")
+        void 상품을_정리한다() {
+            Live live = givenLive(1L);
+            live.startBroadcast();
+            givenSaveSucceeds();
+
+            liveService.end(1L, SELLER_ID);
+
+            verify(productService).closeLiveSales(1L);
+        }
+
+        @Test
+        @DisplayName("이미 종료된 라이브도 상품 정리는 다시 태운다")
+        void 이미_종료됐어도_상품은_정리한다() {
+            Live live = givenLive(1L);
+            live.end();
+
+            liveService.end(1L, SELLER_ID);
+
+            verify(productService).closeLiveSales(1L);
+        }
     }
 
     @Nested

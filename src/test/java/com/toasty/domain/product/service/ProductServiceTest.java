@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.mock;
@@ -13,6 +14,7 @@ import static org.mockito.Mockito.verify;
 
 import com.toasty.domain.product.controller.dto.response.LiveProductResponse;
 import com.toasty.domain.product.controller.dto.response.LiveProductsResponse;
+import com.toasty.domain.product.controller.dto.response.SellerProductsResponse;
 import com.toasty.domain.product.entity.LiveProduct;
 import com.toasty.domain.product.entity.LiveProductPinCommand;
 import com.toasty.domain.product.entity.LiveProductStatus;
@@ -21,10 +23,14 @@ import com.toasty.domain.product.entity.Product;
 import com.toasty.domain.product.entity.ProductCreateCommand;
 import com.toasty.domain.product.entity.ProductImage;
 import com.toasty.domain.product.entity.ProductUpsertCommand;
+import com.toasty.domain.product.entity.SalesType;
+import com.toasty.domain.product.entity.SellerProductFilter;
+import com.toasty.domain.product.entity.SellerProductPageCommand;
 import com.toasty.domain.product.exception.ProductErrorCode;
 import com.toasty.domain.product.repository.LiveProductRepository;
 import com.toasty.domain.product.repository.ProductImageRepository;
 import com.toasty.domain.product.repository.ProductRepository;
+import com.toasty.domain.product.repository.SellerProductCount;
 import com.toasty.global.config.S3Properties;
 import com.toasty.global.exception.CustomException;
 import java.util.List;
@@ -583,6 +589,229 @@ class ProductServiceTest {
                     .isEqualTo(ProductErrorCode.PRODUCT_NOT_IN_LIVE);
 
             verify(productRepository, never()).findById(any());
+        }
+    }
+
+    @Nested
+    @DisplayName("셀러 상품탭 목록")
+    class FindSellerProducts {
+
+        private static final int PAGE_SIZE = 20;
+
+        private List<Product> products(int count) {
+            return java.util.stream.IntStream.rangeClosed(1, count)
+                    .mapToObj(i -> product((long) i, "상품" + i))
+                    .toList();
+        }
+
+        private Product product(Long productId, String name) {
+            Product product =
+                    Product.createForLive(
+                            SELLER_ID, new ProductCreateCommand(name, 12000, 1, null, "k.jpg"));
+            org.springframework.test.util.ReflectionTestUtils.setField(product, "id", productId);
+            return product;
+        }
+
+        private void givenFound(List<Product> found) {
+            given(
+                            productRepository
+                                    .findBySellerIdAndSalesTypeInAndNameContainingAndIdLessThanOrderByIdDesc(
+                                            any(), any(), any(), any(), any()))
+                    .willReturn(found);
+            given(productImageRepository.findByProductIdInOrderByDisplayOrder(any()))
+                    .willReturn(List.of());
+        }
+
+        @Test
+        @DisplayName("첫 요청에는 상태 칩 건수를 함께 내린다")
+        void 첫_요청은_건수를_준다() {
+            givenFound(products(2));
+            given(productRepository.countBySalesType(any(), any(), any()))
+                    .willReturn(List.of(count(SalesType.GENERAL, 8), count(SalesType.LIVE, 24)));
+
+            SellerProductsResponse response =
+                    productService.findSellerProducts(
+                            new SellerProductPageCommand(
+                                    SELLER_ID, SellerProductFilter.ALL, null, null));
+
+            assertThat(response.counts().all()).isEqualTo(32);
+            assertThat(response.counts().onSale()).isEqualTo(8);
+            assertThat(response.counts().scheduled()).isEqualTo(24);
+        }
+
+        @Test
+        @DisplayName("이어 받을 때는 건수를 세지 않는다")
+        void 이어_받으면_건수를_안_센다() {
+            givenFound(products(2));
+
+            SellerProductsResponse response =
+                    productService.findSellerProducts(
+                            new SellerProductPageCommand(
+                                    SELLER_ID, SellerProductFilter.ALL, 30L, null));
+
+            assertThat(response.counts()).isNull();
+            verify(productRepository, never()).countBySalesType(any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("한 장을 더 읽어 다음이 있는지 보고, 넘치는 건 잘라낸다")
+        void 다음_페이지를_안다() {
+            givenFound(products(PAGE_SIZE + 1));
+            given(productRepository.countBySalesType(any(), any(), any())).willReturn(List.of());
+
+            SellerProductsResponse response =
+                    productService.findSellerProducts(
+                            new SellerProductPageCommand(
+                                    SELLER_ID, SellerProductFilter.ALL, null, null));
+
+            assertThat(response.items()).hasSize(PAGE_SIZE);
+            assertThat(response.hasNext()).isTrue();
+            assertThat(response.nextCursor()).isEqualTo(PAGE_SIZE);
+        }
+
+        @Test
+        @DisplayName("마지막 묶음이면 다음이 없다")
+        void 마지막이면_끝이다() {
+            givenFound(products(3));
+            given(productRepository.countBySalesType(any(), any(), any())).willReturn(List.of());
+
+            SellerProductsResponse response =
+                    productService.findSellerProducts(
+                            new SellerProductPageCommand(
+                                    SELLER_ID, SellerProductFilter.ALL, null, null));
+
+            assertThat(response.items()).hasSize(3);
+            assertThat(response.hasNext()).isFalse();
+            assertThat(response.nextCursor()).isNull();
+        }
+
+        @Test
+        @DisplayName("상품이 없으면 커서를 주지 않는다")
+        void 비어_있으면_커서가_없다() {
+            givenFound(List.of());
+            given(productRepository.countBySalesType(any(), any(), any())).willReturn(List.of());
+
+            SellerProductsResponse response =
+                    productService.findSellerProducts(
+                            new SellerProductPageCommand(
+                                    SELLER_ID, SellerProductFilter.ALL, null, null));
+
+            assertThat(response.items()).isEmpty();
+            assertThat(response.nextCursor()).isNull();
+            assertThat(response.hasNext()).isFalse();
+        }
+
+        @Test
+        @DisplayName("검색어가 없으면 빈 문자열로 넘겨 전체를 읽는다")
+        void 검색어가_없으면_전체다() {
+            givenFound(List.of());
+            given(productRepository.countBySalesType(any(), any(), any())).willReturn(List.of());
+
+            productService.findSellerProducts(
+                    new SellerProductPageCommand(SELLER_ID, SellerProductFilter.ALL, null, null));
+
+            verify(productRepository)
+                    .findBySellerIdAndSalesTypeInAndNameContainingAndIdLessThanOrderByIdDesc(
+                            any(), any(), eq(""), any(), any());
+        }
+
+        @Test
+        @DisplayName("검색 중이면 건수도 그 검색어 안에서 센다")
+        void 검색어로_건수를_센다() {
+            givenFound(List.of());
+            given(productRepository.countBySalesType(any(), any(), any())).willReturn(List.of());
+
+            productService.findSellerProducts(
+                    new SellerProductPageCommand(SELLER_ID, SellerProductFilter.ALL, null, "가디건"));
+
+            verify(productRepository).countBySalesType(any(), any(), eq("가디건"));
+            verify(productRepository)
+                    .findBySellerIdAndSalesTypeInAndNameContainingAndIdLessThanOrderByIdDesc(
+                            any(), any(), eq("가디건"), any(), any());
+        }
+
+        @Test
+        @DisplayName("어느 칩으로도 다 팔린 상품은 나오지 않는다")
+        void 품절은_어디에도_없다() {
+            assertThat(SellerProductFilter.values())
+                    .allSatisfy(
+                            filter ->
+                                    assertThat(filter.salesTypes())
+                                            .doesNotContain(SalesType.SOLD_OUT));
+        }
+
+        private SellerProductCount count(SalesType salesType, int productCount) {
+            return new SellerProductCount() {
+                @Override
+                public SalesType getSalesType() {
+                    return salesType;
+                }
+
+                @Override
+                public int getProductCount() {
+                    return productCount;
+                }
+            };
+        }
+    }
+
+    @Nested
+    @DisplayName("라이브 종료 - 판매 방식 정리")
+    class CloseLiveSales {
+
+        private Product product(Long productId, String name, int stockQuantity) {
+            Product product =
+                    Product.createForLive(
+                            SELLER_ID,
+                            new ProductCreateCommand(name, 45000, stockQuantity, null, "k.jpg"));
+            org.springframework.test.util.ReflectionTestUtils.setField(product, "id", productId);
+            return product;
+        }
+
+        private void givenScheduled(Product... products) {
+            given(liveProductRepository.findByLiveIdOrderByDisplayOrder(LIVE_ID))
+                    .willReturn(
+                            java.util.Arrays.stream(products)
+                                    .map(p -> LiveProduct.schedule(LIVE_ID, p.getId(), 0))
+                                    .toList());
+            given(productRepository.findAllById(any())).willReturn(List.of(products));
+        }
+
+        @Test
+        @DisplayName("재고가 남으면 일반판매로, 다 팔렸으면 판매를 닫는다")
+        void 재고에_따라_나뉜다() {
+            Product remaining = product(31L, "가죽 벨트", 2);
+            Product soldOut = product(32L, "도자기 컵", 0);
+            givenScheduled(remaining, soldOut);
+
+            productService.closeLiveSales(LIVE_ID);
+
+            assertThat(remaining.getSalesType()).isEqualTo(SalesType.GENERAL);
+            assertThat(soldOut.getSalesType()).isEqualTo(SalesType.SOLD_OUT);
+        }
+
+        @Test
+        @DisplayName("이미 넘어간 상품은 다시 바뀌지 않는다")
+        void 두_번_넘기지_않는다() {
+            Product product = product(31L, "가죽 벨트", 2);
+            product.closeLiveSales();
+            product.changePriceAndStock(45000, 0);
+            givenScheduled(product);
+
+            productService.closeLiveSales(LIVE_ID);
+
+            assertThat(product.getSalesType()).isEqualTo(SalesType.GENERAL);
+        }
+
+        @Test
+        @DisplayName("편성이 비어 있으면 상품을 읽지 않는다")
+        void 편성이_없으면_읽지_않는다() {
+            given(liveProductRepository.findByLiveIdOrderByDisplayOrder(LIVE_ID))
+                    .willReturn(List.of());
+
+            productService.closeLiveSales(LIVE_ID);
+
+            verify(productRepository, never()).findAllById(any());
         }
     }
 

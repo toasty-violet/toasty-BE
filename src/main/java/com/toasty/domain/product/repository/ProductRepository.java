@@ -30,4 +30,11 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
             @Param("sellerId") Long sellerId,
             @Param("salesTypes") Collection<SalesType> salesTypes,
             @Param("keyword") String keyword);
+
+    /** 스토어 카드에 붙는 상품 수. 판매 방식을 가리지 않고 스토어가 등록한 상품을 모두 센다. */
+    @Query(
+            "select p.sellerId as sellerId, count(p) as productCount from Product p"
+                    + " where p.sellerId in :sellerIds"
+                    + " group by p.sellerId")
+    List<StoreProductCount> countBySellerIdIn(@Param("sellerIds") Collection<Long> sellerIds);
 }

@@ -59,6 +59,14 @@ public class SellerService {
         return toShopProfile(findSeller(sellerId));
     }
 
+    /** 다른 도메인이 밖에서 받은 셀러 번호를 쓰기 전에 실제로 있는 스토어인지 확인한다. */
+    @Transactional(readOnly = true)
+    public void requireSellerExists(Long sellerId) {
+        if (!sellerRepository.existsById(sellerId)) {
+            throw new CustomException(SellerErrorCode.SELLER_NOT_FOUND);
+        }
+    }
+
     /** 목록 화면이 셀러마다 조회하지 않도록 여러 스토어를 한 번에 모아 준다. */
     @Transactional(readOnly = true)
     public Map<Long, SellerProfileResponse> findShopProfiles(Collection<Long> sellerIds) {

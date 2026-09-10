@@ -20,6 +20,15 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
             Long cursor,
             Pageable pageable);
 
+    /** 스토어 화면의 상품 그리드. 셀러 상품탭과 같은 커서 방식이다. */
+    // 살 수 없는 상품은 화면에 표시할 자리가 없어 아예 담지 않는다.
+    List<Product> findBySellerIdAndSalesTypeAndStockQuantityGreaterThanAndIdLessThanOrderByIdDesc(
+            Long sellerId,
+            SalesType salesType,
+            int minStockQuantity,
+            Long cursor,
+            Pageable pageable);
+
     /** 상품탭 상태 칩에 붙는 건수. 검색 중이면 그 결과 안에서 센다. */
     @Query(
             "select p.salesType as salesType, count(p) as productCount from Product p"

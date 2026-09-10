@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.mock;
@@ -614,8 +615,8 @@ class ProductServiceTest {
         private void givenFound(List<Product> found) {
             given(
                             productRepository
-                                    .findBySellerIdAndSalesTypeInAndIdLessThanOrderByIdDesc(
-                                            any(), any(), any(), any()))
+                                    .findBySellerIdAndSalesTypeInAndNameContainingAndIdLessThanOrderByIdDesc(
+                                            any(), any(), any(), any(), any()))
                     .willReturn(found);
             given(productImageRepository.findByProductIdInOrderByDisplayOrder(any()))
                     .willReturn(List.of());
@@ -625,12 +626,13 @@ class ProductServiceTest {
         @DisplayName("첫 요청에는 상태 칩 건수를 함께 내린다")
         void 첫_요청은_건수를_준다() {
             givenFound(products(2));
-            given(productRepository.countBySalesType(any(), any()))
+            given(productRepository.countBySalesType(any(), any(), any()))
                     .willReturn(List.of(count(SalesType.GENERAL, 8), count(SalesType.LIVE, 24)));
 
             SellerProductsResponse response =
                     productService.findSellerProducts(
-                            new SellerProductPageCommand(SELLER_ID, SellerProductFilter.ALL, null));
+                            new SellerProductPageCommand(
+                                    SELLER_ID, SellerProductFilter.ALL, null, null));
 
             assertThat(response.counts().all()).isEqualTo(32);
             assertThat(response.counts().onSale()).isEqualTo(8);
@@ -644,21 +646,23 @@ class ProductServiceTest {
 
             SellerProductsResponse response =
                     productService.findSellerProducts(
-                            new SellerProductPageCommand(SELLER_ID, SellerProductFilter.ALL, 30L));
+                            new SellerProductPageCommand(
+                                    SELLER_ID, SellerProductFilter.ALL, 30L, null));
 
             assertThat(response.counts()).isNull();
-            verify(productRepository, never()).countBySalesType(any(), any());
+            verify(productRepository, never()).countBySalesType(any(), any(), any());
         }
 
         @Test
         @DisplayName("한 장을 더 읽어 다음이 있는지 보고, 넘치는 건 잘라낸다")
         void 다음_페이지를_안다() {
             givenFound(products(PAGE_SIZE + 1));
-            given(productRepository.countBySalesType(any(), any())).willReturn(List.of());
+            given(productRepository.countBySalesType(any(), any(), any())).willReturn(List.of());
 
             SellerProductsResponse response =
                     productService.findSellerProducts(
-                            new SellerProductPageCommand(SELLER_ID, SellerProductFilter.ALL, null));
+                            new SellerProductPageCommand(
+                                    SELLER_ID, SellerProductFilter.ALL, null, null));
 
             assertThat(response.items()).hasSize(PAGE_SIZE);
             assertThat(response.hasNext()).isTrue();
@@ -669,11 +673,12 @@ class ProductServiceTest {
         @DisplayName("마지막 묶음이면 다음이 없다")
         void 마지막이면_끝이다() {
             givenFound(products(3));
-            given(productRepository.countBySalesType(any(), any())).willReturn(List.of());
+            given(productRepository.countBySalesType(any(), any(), any())).willReturn(List.of());
 
             SellerProductsResponse response =
                     productService.findSellerProducts(
-                            new SellerProductPageCommand(SELLER_ID, SellerProductFilter.ALL, null));
+                            new SellerProductPageCommand(
+                                    SELLER_ID, SellerProductFilter.ALL, null, null));
 
             assertThat(response.items()).hasSize(3);
             assertThat(response.hasNext()).isFalse();
@@ -684,15 +689,45 @@ class ProductServiceTest {
         @DisplayName("상품이 없으면 커서를 주지 않는다")
         void 비어_있으면_커서가_없다() {
             givenFound(List.of());
-            given(productRepository.countBySalesType(any(), any())).willReturn(List.of());
+            given(productRepository.countBySalesType(any(), any(), any())).willReturn(List.of());
 
             SellerProductsResponse response =
                     productService.findSellerProducts(
-                            new SellerProductPageCommand(SELLER_ID, SellerProductFilter.ALL, null));
+                            new SellerProductPageCommand(
+                                    SELLER_ID, SellerProductFilter.ALL, null, null));
 
             assertThat(response.items()).isEmpty();
             assertThat(response.nextCursor()).isNull();
             assertThat(response.hasNext()).isFalse();
+        }
+
+        @Test
+        @DisplayName("검색어가 없으면 빈 문자열로 넘겨 전체를 읽는다")
+        void 검색어가_없으면_전체다() {
+            givenFound(List.of());
+            given(productRepository.countBySalesType(any(), any(), any())).willReturn(List.of());
+
+            productService.findSellerProducts(
+                    new SellerProductPageCommand(SELLER_ID, SellerProductFilter.ALL, null, null));
+
+            verify(productRepository)
+                    .findBySellerIdAndSalesTypeInAndNameContainingAndIdLessThanOrderByIdDesc(
+                            any(), any(), eq(""), any(), any());
+        }
+
+        @Test
+        @DisplayName("검색 중이면 건수도 그 검색어 안에서 센다")
+        void 검색어로_건수를_센다() {
+            givenFound(List.of());
+            given(productRepository.countBySalesType(any(), any(), any())).willReturn(List.of());
+
+            productService.findSellerProducts(
+                    new SellerProductPageCommand(SELLER_ID, SellerProductFilter.ALL, null, "가디건"));
+
+            verify(productRepository).countBySalesType(any(), any(), eq("가디건"));
+            verify(productRepository)
+                    .findBySellerIdAndSalesTypeInAndNameContainingAndIdLessThanOrderByIdDesc(
+                            any(), any(), eq("가디건"), any(), any());
         }
 
         @Test

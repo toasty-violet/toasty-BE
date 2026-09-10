@@ -54,7 +54,8 @@ public class SellerProductController {
                             + " nextCursor를 그대로 넘겨 이어 받으세요. hasNext가 false면 더 부르지 않습니다."
                             + " 상태 칩은 status로 거르며, 다 팔린 상품은 어느 값으로도 나오지 않습니다."
                             + " 칩에 붙는 건수(counts)는 스크롤 중에 바뀌지 않아 첫 요청에서만 내려주고 이어 받을"
-                            + " 때는 null입니다.")
+                            + " 때는 null입니다. 검색 화면도 이 API를 keyword와 함께 부르면 되고, 그때 건수는"
+                            + " 검색 결과 안에서 셉니다.")
     @SellerOnly
     @GetMapping
     public ApiResponse<SellerProductsResponse> findMyProducts(
@@ -63,9 +64,11 @@ public class SellerProductController {
             @Parameter(description = "직전 응답의 nextCursor. 첫 요청에는 넣지 않는다")
                     @RequestParam(required = false)
                     Long cursor,
+            @Parameter(description = "상품명 검색어. 넣지 않으면 전체") @RequestParam(required = false)
+                    String keyword,
             @LoginUser AuthUser seller) {
         return ApiResponse.ok(
                 productService.findSellerProducts(
-                        new SellerProductPageCommand(seller.sellerId(), status, cursor)));
+                        new SellerProductPageCommand(seller.sellerId(), status, cursor, keyword)));
     }
 }

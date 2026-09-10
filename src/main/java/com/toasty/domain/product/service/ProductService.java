@@ -281,16 +281,19 @@ public class ProductService {
     // 상품마다 사진을 읽지 않고 한 번에 모아 읽는다. 건수는 스크롤 중에 바뀌지 않아 첫 요청에서만 센다.
     @Transactional(readOnly = true)
     public SellerProductsResponse findSellerProducts(SellerProductPageCommand command) {
+        String keyword = command.keyword() == null ? "" : command.keyword();
         List<Product> found =
-                productRepository.findBySellerIdAndSalesTypeInAndIdLessThanOrderByIdDesc(
-                        command.sellerId(),
-                        command.filter().salesTypes(),
-                        command.cursor() == null ? FIRST_PAGE_CURSOR : command.cursor(),
-                        PageRequest.of(0, SELLER_PRODUCT_PAGE_SIZE + 1));
+                productRepository
+                        .findBySellerIdAndSalesTypeInAndNameContainingAndIdLessThanOrderByIdDesc(
+                                command.sellerId(),
+                                command.filter().salesTypes(),
+                                keyword,
+                                command.cursor() == null ? FIRST_PAGE_CURSOR : command.cursor(),
+                                PageRequest.of(0, SELLER_PRODUCT_PAGE_SIZE + 1));
         boolean hasNext = found.size() > SELLER_PRODUCT_PAGE_SIZE;
         List<Product> products = hasNext ? found.subList(0, SELLER_PRODUCT_PAGE_SIZE) : found;
         return new SellerProductsResponse(
-                command.cursor() == null ? countSellerProducts(command.sellerId()) : null,
+                command.cursor() == null ? countSellerProducts(command.sellerId(), keyword) : null,
                 toSellerResponses(products),
                 hasNext ? products.get(products.size() - 1).getId() : null,
                 hasNext);
@@ -310,10 +313,10 @@ public class ProductService {
                 .toList();
     }
 
-    private SellerProductCountsResponse countSellerProducts(Long sellerId) {
+    private SellerProductCountsResponse countSellerProducts(Long sellerId, String keyword) {
         Map<SalesType, Integer> counted =
                 productRepository
-                        .countBySalesType(sellerId, SellerProductFilter.ALL.salesTypes())
+                        .countBySalesType(sellerId, SellerProductFilter.ALL.salesTypes(), keyword)
                         .stream()
                         .collect(
                                 Collectors.toMap(

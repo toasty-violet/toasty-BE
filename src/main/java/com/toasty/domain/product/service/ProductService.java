@@ -2,6 +2,9 @@ package com.toasty.domain.product.service;
 
 import com.toasty.domain.product.controller.dto.response.LiveProductResponse;
 import com.toasty.domain.product.controller.dto.response.LiveProductsResponse;
+import com.toasty.domain.product.controller.dto.response.SellerProductCountsResponse;
+import com.toasty.domain.product.controller.dto.response.SellerProductResponse;
+import com.toasty.domain.product.controller.dto.response.SellerProductsResponse;
 import com.toasty.domain.product.entity.LiveProduct;
 import com.toasty.domain.product.entity.LiveProductPinCommand;
 import com.toasty.domain.product.entity.LiveProductUpdateCommand;
@@ -9,11 +12,15 @@ import com.toasty.domain.product.entity.Product;
 import com.toasty.domain.product.entity.ProductCreateCommand;
 import com.toasty.domain.product.entity.ProductImage;
 import com.toasty.domain.product.entity.ProductUpsertCommand;
+import com.toasty.domain.product.entity.SalesType;
+import com.toasty.domain.product.entity.SellerProductFilter;
+import com.toasty.domain.product.entity.SellerProductPageCommand;
 import com.toasty.domain.product.exception.ProductErrorCode;
 import com.toasty.domain.product.repository.LiveProductCount;
 import com.toasty.domain.product.repository.LiveProductRepository;
 import com.toasty.domain.product.repository.ProductImageRepository;
 import com.toasty.domain.product.repository.ProductRepository;
+import com.toasty.domain.product.repository.SellerProductCount;
 import com.toasty.global.config.S3Properties;
 import com.toasty.global.exception.CustomException;
 import java.time.LocalDateTime;
@@ -30,6 +37,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import software.amazon.awssdk.core.exception.SdkException;
@@ -43,6 +51,11 @@ import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 @Service
 @RequiredArgsConstructor
 public class ProductService {
+
+    private static final int SELLER_PRODUCT_PAGE_SIZE = 20;
+
+    // 첫 페이지는 커서가 없다. id는 양수라 최댓값을 넣으면 맨 앞부터 읽는다.
+    private static final long FIRST_PAGE_CURSOR = Long.MAX_VALUE;
 
     private final ProductRepository productRepository;
     private final ProductImageRepository productImageRepository;
@@ -187,6 +200,16 @@ public class ProductService {
         return new LiveProductsResponse(currentPinnedProductId(scheduled), toResponses(scheduled));
     }
 
+    // display_order 순으로 받아 상품마다 첫 번째를 대표로 쓴다.
+    private Map<Long, String> findMainImageUrls(List<Long> productIds) {
+        return productImageRepository.findByProductIdInOrderByDisplayOrder(productIds).stream()
+                .collect(
+                        Collectors.toMap(
+                                ProductImage::getProductId,
+                                ProductImage::getImageUrl,
+                                (main, rest) -> main));
+    }
+
     private Long currentPinnedProductId(List<LiveProduct> scheduled) {
         return scheduled.stream()
                 .filter(liveProduct -> liveProduct.getPinnedAt() != null)
@@ -204,14 +227,7 @@ public class ProductService {
         Map<Long, Product> products =
                 productRepository.findAllById(productIds).stream()
                         .collect(Collectors.toMap(Product::getId, Function.identity()));
-        // display_order 순으로 받아 상품마다 첫 번째를 대표로 쓴다.
-        Map<Long, String> mainImageUrls =
-                productImageRepository.findByProductIdInOrderByDisplayOrder(productIds).stream()
-                        .collect(
-                                Collectors.toMap(
-                                        ProductImage::getProductId,
-                                        ProductImage::getImageUrl,
-                                        (main, rest) -> main));
+        Map<Long, String> mainImageUrls = findMainImageUrls(productIds);
 
         return scheduled.stream()
                 .map(
@@ -259,6 +275,53 @@ public class ProductService {
                 .collect(
                         Collectors.toMap(
                                 LiveProductCount::getLiveId, LiveProductCount::getProductCount));
+    }
+
+    /** 셀러 상품탭 한 묶음을 채운다. */
+    // 상품마다 사진을 읽지 않고 한 번에 모아 읽는다. 건수는 스크롤 중에 바뀌지 않아 첫 요청에서만 센다.
+    @Transactional(readOnly = true)
+    public SellerProductsResponse findSellerProducts(SellerProductPageCommand command) {
+        List<Product> found =
+                productRepository.findBySellerIdAndSalesTypeInAndIdLessThanOrderByIdDesc(
+                        command.sellerId(),
+                        command.filter().salesTypes(),
+                        command.cursor() == null ? FIRST_PAGE_CURSOR : command.cursor(),
+                        PageRequest.of(0, SELLER_PRODUCT_PAGE_SIZE + 1));
+        boolean hasNext = found.size() > SELLER_PRODUCT_PAGE_SIZE;
+        List<Product> products = hasNext ? found.subList(0, SELLER_PRODUCT_PAGE_SIZE) : found;
+        return new SellerProductsResponse(
+                command.cursor() == null ? countSellerProducts(command.sellerId()) : null,
+                toSellerResponses(products),
+                hasNext ? products.get(products.size() - 1).getId() : null,
+                hasNext);
+    }
+
+    private List<SellerProductResponse> toSellerResponses(List<Product> products) {
+        if (products.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, String> mainImageUrls =
+                findMainImageUrls(products.stream().map(Product::getId).toList());
+        return products.stream()
+                .map(
+                        product ->
+                                SellerProductResponse.of(
+                                        product, mainImageUrls.get(product.getId())))
+                .toList();
+    }
+
+    private SellerProductCountsResponse countSellerProducts(Long sellerId) {
+        Map<SalesType, Integer> counted =
+                productRepository
+                        .countBySalesType(sellerId, SellerProductFilter.ALL.salesTypes())
+                        .stream()
+                        .collect(
+                                Collectors.toMap(
+                                        SellerProductCount::getSalesType,
+                                        SellerProductCount::getProductCount));
+        int onSale = counted.getOrDefault(SalesType.GENERAL, 0);
+        int scheduled = counted.getOrDefault(SalesType.LIVE, 0);
+        return new SellerProductCountsResponse(onSale + scheduled, onSale, scheduled);
     }
 
     /** 라이브가 끝나면 편성 상품의 판매 방식을 정리한다. */

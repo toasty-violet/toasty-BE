@@ -8,15 +8,18 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+import com.toasty.domain.order.controller.dto.response.CustomerOrderResponse;
+import com.toasty.domain.order.controller.dto.response.CustomerOrdersResponse;
 import com.toasty.domain.order.controller.dto.response.SellerOrderDetailResponse;
 import com.toasty.domain.order.controller.dto.response.SellerOrdersResponse;
+import com.toasty.domain.order.entity.CustomerOrderPageCommand;
 import com.toasty.domain.order.entity.Order;
 import com.toasty.domain.order.entity.OrderStatus;
-import com.toasty.domain.order.entity.SellerOrderFilter;
+import com.toasty.domain.order.entity.OrderStatusFilter;
 import com.toasty.domain.order.entity.SellerOrderPageCommand;
 import com.toasty.domain.order.exception.OrderErrorCode;
 import com.toasty.domain.order.repository.OrderRepository;
-import com.toasty.domain.order.repository.SellerOrderCount;
+import com.toasty.domain.order.repository.OrderStatusCount;
 import com.toasty.global.exception.CustomException;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -35,12 +38,14 @@ class OrderServiceTest {
     private static final int PAGE_SIZE = 20;
 
     private OrderRepository orderRepository;
+    private com.toasty.domain.seller.service.SellerService sellerService;
     private OrderService orderService;
 
     @BeforeEach
     void setUp() {
         orderRepository = mock(OrderRepository.class);
-        orderService = new OrderService(orderRepository);
+        sellerService = mock(com.toasty.domain.seller.service.SellerService.class);
+        orderService = new OrderService(orderRepository, sellerService);
     }
 
     // 주문을 만드는 것은 결제 흐름의 몫이라 이 도메인에 팩터리가 없다. 테스트에서만 빈 인스턴스를 세운다.
@@ -64,8 +69,8 @@ class OrderServiceTest {
         return order;
     }
 
-    private SellerOrderCount count(OrderStatus status, int orderCount) {
-        return new SellerOrderCount() {
+    private OrderStatusCount count(OrderStatus status, int orderCount) {
+        return new OrderStatusCount() {
             @Override
             public OrderStatus getStatus() {
                 return status;
@@ -109,7 +114,7 @@ class OrderServiceTest {
 
             SellerOrdersResponse response =
                     orderService.findSellerOrders(
-                            new SellerOrderPageCommand(SELLER_ID, SellerOrderFilter.ALL, null));
+                            new SellerOrderPageCommand(SELLER_ID, OrderStatusFilter.ALL, null));
 
             assertThat(response.counts().all()).isEqualTo(43);
             assertThat(response.counts().shippingPending()).isEqualTo(12);
@@ -123,7 +128,7 @@ class OrderServiceTest {
 
             SellerOrdersResponse response =
                     orderService.findSellerOrders(
-                            new SellerOrderPageCommand(SELLER_ID, SellerOrderFilter.ALL, 30L));
+                            new SellerOrderPageCommand(SELLER_ID, OrderStatusFilter.ALL, 30L));
 
             assertThat(response.counts()).isNull();
             verify(orderRepository, never()).countBySellerIdGroupByStatus(any());
@@ -137,7 +142,7 @@ class OrderServiceTest {
 
             SellerOrdersResponse response =
                     orderService.findSellerOrders(
-                            new SellerOrderPageCommand(SELLER_ID, SellerOrderFilter.ALL, null));
+                            new SellerOrderPageCommand(SELLER_ID, OrderStatusFilter.ALL, null));
 
             assertThat(response.items()).hasSize(PAGE_SIZE);
             assertThat(response.hasNext()).isTrue();
@@ -152,10 +157,109 @@ class OrderServiceTest {
 
             SellerOrdersResponse response =
                     orderService.findSellerOrders(
-                            new SellerOrderPageCommand(SELLER_ID, SellerOrderFilter.ALL, null));
+                            new SellerOrderPageCommand(SELLER_ID, OrderStatusFilter.ALL, null));
 
             assertThat(response.hasNext()).isFalse();
             assertThat(response.nextCursor()).isNull();
+        }
+    }
+
+    @Nested
+    @DisplayName("구매자 주문내역")
+    class CustomerOrders {
+
+        private static final Long CUSTOMER_ID = 1L;
+
+        private void givenFound(int count) {
+            given(
+                            orderRepository.findByCustomerIdAndStatusInAndIdLessThanOrderByIdDesc(
+                                    any(), any(), any(), any()))
+                    .willReturn(
+                            IntStream.rangeClosed(1, count)
+                                    .mapToObj(
+                                            i ->
+                                                    order(
+                                                            (long) i,
+                                                            SELLER_ID,
+                                                            OrderStatus.SHIPPING_PENDING))
+                                    .toList());
+            given(sellerService.findShopProfiles(any()))
+                    .willReturn(
+                            java.util.Map.of(
+                                    SELLER_ID,
+                                    new com.toasty.domain.seller.controller.dto.response
+                                            .SellerProfileResponse(SELLER_ID, "토스티샵", null)));
+        }
+
+        @Test
+        @DisplayName("스토어 이름을 붙여 준다")
+        void 스토어_이름을_붙인다() {
+            givenFound(2);
+            given(orderRepository.countByCustomerIdGroupByStatus(CUSTOMER_ID))
+                    .willReturn(List.of(count(OrderStatus.SHIPPING_PENDING, 2)));
+
+            CustomerOrdersResponse response =
+                    orderService.findCustomerOrders(
+                            new CustomerOrderPageCommand(CUSTOMER_ID, OrderStatusFilter.ALL, null));
+
+            assertThat(response.items())
+                    .extracting(CustomerOrderResponse::shopName)
+                    .containsOnly("토스티샵");
+            assertThat(response.counts().all()).isEqualTo(2);
+        }
+
+        @Test
+        @DisplayName("스토어가 겹쳐도 한 번에 모아 읽는다")
+        void 스토어를_모아_읽는다() {
+            givenFound(3);
+            given(orderRepository.countByCustomerIdGroupByStatus(any())).willReturn(List.of());
+
+            orderService.findCustomerOrders(
+                    new CustomerOrderPageCommand(CUSTOMER_ID, OrderStatusFilter.ALL, null));
+
+            verify(sellerService).findShopProfiles(List.of(SELLER_ID));
+        }
+
+        @Test
+        @DisplayName("이어 받을 때는 건수를 세지 않는다")
+        void 이어_받으면_건수를_안_센다() {
+            givenFound(2);
+
+            CustomerOrdersResponse response =
+                    orderService.findCustomerOrders(
+                            new CustomerOrderPageCommand(CUSTOMER_ID, OrderStatusFilter.ALL, 30L));
+
+            assertThat(response.counts()).isNull();
+            verify(orderRepository, never()).countByCustomerIdGroupByStatus(any());
+        }
+
+        @Test
+        @DisplayName("주문이 없으면 스토어도 읽지 않는다")
+        void 없으면_스토어를_안_읽는다() {
+            given(
+                            orderRepository.findByCustomerIdAndStatusInAndIdLessThanOrderByIdDesc(
+                                    any(), any(), any(), any()))
+                    .willReturn(List.of());
+            given(orderRepository.countByCustomerIdGroupByStatus(any())).willReturn(List.of());
+
+            CustomerOrdersResponse response =
+                    orderService.findCustomerOrders(
+                            new CustomerOrderPageCommand(CUSTOMER_ID, OrderStatusFilter.ALL, null));
+
+            assertThat(response.items()).isEmpty();
+            verify(sellerService, never()).findShopProfiles(any());
+        }
+
+        @Test
+        @DisplayName("남의 주문이면 ORDER_NOT_FOUND다")
+        void 남의_주문은_못_본다() {
+            given(orderRepository.findById(31L))
+                    .willReturn(Optional.of(order(31L, SELLER_ID, OrderStatus.SHIPPING_PENDING)));
+
+            assertThatThrownBy(() -> orderService.findCustomerOrder(31L, 99L))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(OrderErrorCode.ORDER_NOT_FOUND);
         }
     }
 

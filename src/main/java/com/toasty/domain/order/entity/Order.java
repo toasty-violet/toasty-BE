@@ -91,4 +91,8 @@ public class Order extends BaseTimeEntity {
     public boolean isOwnedBySeller(Long sellerId) {
         return this.sellerId.equals(sellerId);
     }
+
+    public boolean isOwnedByCustomer(Long customerId) {
+        return this.customerId.equals(customerId);
+    }
 }

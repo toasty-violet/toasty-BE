@@ -5,7 +5,7 @@ import com.toasty.domain.auth.annotation.SellerOnly;
 import com.toasty.domain.auth.entity.AuthUser;
 import com.toasty.domain.order.controller.dto.response.SellerOrderDetailResponse;
 import com.toasty.domain.order.controller.dto.response.SellerOrdersResponse;
-import com.toasty.domain.order.entity.SellerOrderFilter;
+import com.toasty.domain.order.entity.OrderStatusFilter;
 import com.toasty.domain.order.entity.SellerOrderPageCommand;
 import com.toasty.domain.order.service.OrderService;
 import com.toasty.global.response.ApiResponse;
@@ -38,7 +38,7 @@ public class SellerOrderController {
     @GetMapping
     public ApiResponse<SellerOrdersResponse> findMyOrders(
             @Parameter(description = "상태 칩. 생략하면 전체") @RequestParam(defaultValue = "ALL")
-                    SellerOrderFilter status,
+                    OrderStatusFilter status,
             @Parameter(description = "직전 응답의 nextCursor. 첫 요청에는 넣지 않는다")
                     @RequestParam(required = false)
                     Long cursor,

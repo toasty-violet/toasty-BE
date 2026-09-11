@@ -15,9 +15,19 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     List<Order> findBySellerIdAndStatusInAndIdLessThanOrderByIdDesc(
             Long sellerId, Collection<OrderStatus> statuses, Long cursor, Pageable pageable);
 
-    /** 주문탭 상태 칩에 붙는 건수. */
+    /** 구매자 주문내역 목록. 최신순이라 id 내림차순이고, 커서보다 작은 id부터 읽는다. */
+    List<Order> findByCustomerIdAndStatusInAndIdLessThanOrderByIdDesc(
+            Long customerId, Collection<OrderStatus> statuses, Long cursor, Pageable pageable);
+
+    /** 셀러 주문탭 상태 칩에 붙는 건수. */
     @Query(
             "select o.status as status, count(o) as orderCount from Order o"
                     + " where o.sellerId = :sellerId group by o.status")
-    List<SellerOrderCount> countBySellerIdGroupByStatus(@Param("sellerId") Long sellerId);
+    List<OrderStatusCount> countBySellerIdGroupByStatus(@Param("sellerId") Long sellerId);
+
+    /** 구매자 주문내역 상태 칩에 붙는 건수. */
+    @Query(
+            "select o.status as status, count(o) as orderCount from Order o"
+                    + " where o.customerId = :customerId group by o.status")
+    List<OrderStatusCount> countByCustomerIdGroupByStatus(@Param("customerId") Long customerId);
 }

@@ -5,6 +5,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -19,6 +20,15 @@ public interface LiveProductRepository extends JpaRepository<LiveProduct, Long> 
             "select lp.liveId as liveId, count(lp) as productCount from LiveProduct lp"
                     + " where lp.liveId in :liveIds group by lp.liveId")
     List<LiveProductCount> countByLiveIdIn(@Param("liveIds") Collection<Long> liveIds);
+
+    /** 이 상품이 편성된 라이브. 상품탭이 방송 중인지, 지우면 빈 방송이 남는지 보는 데 쓴다. */
+    @Query("select lp.liveId from LiveProduct lp where lp.productId = :productId")
+    List<Long> findLiveIdsByProductId(@Param("productId") Long productId);
+
+    /** 상품을 지울 때 그 상품의 편성도 함께 걷어낸다. 지울 행을 다시 읽지 않도록 한 문장으로 보낸다. */
+    @Modifying(flushAutomatically = true)
+    @Query("delete from LiveProduct lp where lp.productId = :productId")
+    void deleteByProductId(@Param("productId") Long productId);
 
     /** 넘긴 상품들 중 이 라이브 말고 다른 라이브에도 편성돼 있는 것만 돌려준다. */
     @Query(

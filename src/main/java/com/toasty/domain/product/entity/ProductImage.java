@@ -44,6 +44,11 @@ public class ProductImage extends BaseTimeEntity {
         this.imageUrl = imageUrl;
     }
 
+    /** 상품탭 수정에서 사진 전체를 다시 깔 때 쓴다. 첫 장이 대표다. */
+    public static ProductImage create(Long productId, String imageUrl, int displayOrder) {
+        return new ProductImage(productId, imageUrl, displayOrder);
+    }
+
     public static ProductImage createMain(Long productId, String imageUrl) {
         return new ProductImage(productId, imageUrl, MAIN_IMAGE_ORDER);
     }

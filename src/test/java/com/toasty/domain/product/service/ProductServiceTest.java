@@ -26,6 +26,7 @@ import com.toasty.domain.product.entity.ProductUpsertCommand;
 import com.toasty.domain.product.entity.SalesType;
 import com.toasty.domain.product.entity.SellerProductFilter;
 import com.toasty.domain.product.entity.SellerProductPageCommand;
+import com.toasty.domain.product.entity.SellerProductUpdateCommand;
 import com.toasty.domain.product.exception.ProductErrorCode;
 import com.toasty.domain.product.repository.LiveProductRepository;
 import com.toasty.domain.product.repository.ProductImageRepository;
@@ -752,6 +753,84 @@ class ProductServiceTest {
                     return productCount;
                 }
             };
+        }
+    }
+
+    @Nested
+    @DisplayName("셀러 상품탭 수정")
+    class UpdateSellerProduct {
+
+        private static final Long PRODUCT_ID = 31L;
+        private static final String BASE = "https://cdn.example.com/";
+
+        private void givenOwnProductWithImages(String... objectKeys) {
+            Product product =
+                    Product.createForLive(
+                            SELLER_ID, new ProductCreateCommand("가디건", 29000, 1, null, "k.jpg"));
+            org.springframework.test.util.ReflectionTestUtils.setField(product, "id", PRODUCT_ID);
+            given(productRepository.findById(PRODUCT_ID))
+                    .willReturn(java.util.Optional.of(product));
+            given(productImageRepository.findByProductIdOrderByDisplayOrder(PRODUCT_ID))
+                    .willReturn(
+                            java.util.Arrays.stream(objectKeys)
+                                    .map(key -> ProductImage.create(PRODUCT_ID, BASE + key, 0))
+                                    .toList());
+        }
+
+        private SellerProductUpdateCommand command(String... objectKeys) {
+            return new SellerProductUpdateCommand(
+                    PRODUCT_ID, SELLER_ID, "가디건", 29000, 1, "설명", List.of(objectKeys));
+        }
+
+        @Test
+        @DisplayName("목록에서 빠진 사진을 지울 대상으로 돌려준다")
+        void 빠진_사진을_돌려준다() {
+            givenOwnProductWithImages("products/images/7/a.jpg", "products/images/7/b.jpg");
+
+            List<String> obsolete =
+                    productService.updateSellerProduct(
+                            command("products/images/7/b.jpg"), List.of("products/images/7/b.jpg"));
+
+            assertThat(obsolete).containsExactly("products/images/7/a.jpg");
+        }
+
+        @Test
+        @DisplayName("이 상품 것이 아닌 확정 사진은 붙일 수 없다")
+        void 남의_사진은_붙일_수_없다() {
+            givenOwnProductWithImages("products/images/7/a.jpg");
+
+            assertThatThrownBy(
+                            () ->
+                                    productService.updateSellerProduct(
+                                            command("products/images/9/other.jpg"),
+                                            List.of("products/images/9/other.jpg")))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(ProductErrorCode.PRODUCT_IMAGE_FORBIDDEN);
+
+            verify(productImageRepository, never()).deleteAllInBatch(any());
+        }
+
+        @Test
+        @DisplayName("남의 상품이면 PRODUCT_NOT_FOUND다")
+        void 남의_상품은_고칠_수_없다() {
+            givenOwnProductWithImages("products/images/7/a.jpg");
+
+            assertThatThrownBy(
+                            () ->
+                                    productService.updateSellerProduct(
+                                            new SellerProductUpdateCommand(
+                                                    PRODUCT_ID,
+                                                    99L,
+                                                    "가디건",
+                                                    29000,
+                                                    1,
+                                                    null,
+                                                    List.of("products/images/7/a.jpg")),
+                                            List.of("products/images/7/a.jpg")))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(ProductErrorCode.PRODUCT_NOT_FOUND);
         }
     }
 

@@ -35,6 +35,7 @@ import com.toasty.global.exception.CustomException;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -416,6 +417,21 @@ public class LiveService {
             log.warn("이미 방송 중인 셀러라 상태를 올리지 못했습니다 - liveId={}", live.getId(), e);
             return false;
         }
+    }
+
+    /** 넘긴 라이브 중 방송 중인 것이 있는지 알려준다. 무엇을 막을지는 물어본 쪽이 정한다. */
+    @Transactional(readOnly = true)
+    public boolean hasBroadcasting(Collection<Long> liveIds) {
+        return !liveIds.isEmpty() && liveRepository.existsByIdInAndStatus(liveIds, LiveStatus.LIVE);
+    }
+
+    /** 넘긴 라이브 중 아직 방송하지 않은 것만 추려 준다. */
+    @Transactional(readOnly = true)
+    public List<Long> filterScheduled(Collection<Long> liveIds) {
+        if (liveIds.isEmpty()) {
+            return List.of();
+        }
+        return liveRepository.findIdsByIdInAndStatus(liveIds, LiveStatus.READY);
     }
 
     /** 홈 화면의 라이브 섹션을 채운다. */

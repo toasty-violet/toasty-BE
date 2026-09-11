@@ -3,6 +3,7 @@ package com.toasty.domain.product.service;
 import com.toasty.domain.product.controller.dto.response.LiveProductResponse;
 import com.toasty.domain.product.controller.dto.response.LiveProductsResponse;
 import com.toasty.domain.product.controller.dto.response.SellerProductCountsResponse;
+import com.toasty.domain.product.controller.dto.response.SellerProductDetailResponse;
 import com.toasty.domain.product.controller.dto.response.SellerProductResponse;
 import com.toasty.domain.product.controller.dto.response.SellerProductsResponse;
 import com.toasty.domain.product.entity.LiveProduct;
@@ -15,6 +16,7 @@ import com.toasty.domain.product.entity.ProductUpsertCommand;
 import com.toasty.domain.product.entity.SalesType;
 import com.toasty.domain.product.entity.SellerProductFilter;
 import com.toasty.domain.product.entity.SellerProductPageCommand;
+import com.toasty.domain.product.entity.SellerProductUpdateCommand;
 import com.toasty.domain.product.exception.ProductErrorCode;
 import com.toasty.domain.product.repository.LiveProductCount;
 import com.toasty.domain.product.repository.LiveProductRepository;
@@ -325,6 +327,152 @@ public class ProductService {
         int onSale = counted.getOrDefault(SalesType.GENERAL, 0);
         int scheduled = counted.getOrDefault(SalesType.LIVE, 0);
         return new SellerProductCountsResponse(onSale + scheduled, onSale, scheduled);
+    }
+
+    /** 셀러 상품 수정 화면을 채운다. */
+    @Transactional(readOnly = true)
+    public SellerProductDetailResponse findSellerProduct(Long productId, Long sellerId) {
+        Product product = requireOwnProduct(productId, sellerId);
+        List<SellerProductDetailResponse.Image> images =
+                productImageRepository.findByProductIdOrderByDisplayOrder(productId).stream()
+                        .map(
+                                image ->
+                                        toObjectKey(image.getImageUrl())
+                                                .map(
+                                                        key ->
+                                                                new SellerProductDetailResponse
+                                                                        .Image(
+                                                                        key, image.getImageUrl()))
+                                                .orElse(null))
+                        .filter(Objects::nonNull)
+                        .toList();
+        return SellerProductDetailResponse.of(product, images);
+    }
+
+    /** 이 상품이 편성된 라이브. 상품탭이 방송 중인지 확인하는 데 쓴다. */
+    // 남의 상품을 넘겨 편성을 엿보지 못하도록 소유부터 확인한다.
+    @Transactional(readOnly = true)
+    public List<Long> findScheduledLiveIds(Long productId, Long sellerId) {
+        requireOwnProduct(productId, sellerId);
+        return liveProductRepository.findLiveIdsByProductId(productId);
+    }
+
+    /** 넘긴 라이브 중 편성 상품이 하나뿐인 것이 있는지. 상품탭이 마지막 상품 삭제를 막는 데 쓴다. */
+    @Transactional(readOnly = true)
+    public boolean hasLiveWithSingleProduct(Collection<Long> liveIds) {
+        return countScheduledProducts(liveIds).values().stream().anyMatch(count -> count <= 1);
+    }
+
+    /** 상품탭 수정 전에 이번에 새로 올린 사진만 영구 경로로 옮긴다. 그대로 두는 사진은 받은 키를 돌려준다. */
+    // copyImagesToPermanent와 같은 이유로 트랜잭션 밖에서 돌아야 한다.
+    public List<String> copySellerImagesToPermanent(Long sellerId, List<String> objectKeys) {
+        List<String> copied = new ArrayList<>();
+        try {
+            for (String objectKey : objectKeys) {
+                copied.add(isPending(objectKey) ? copyToPermanent(sellerId, objectKey) : objectKey);
+            }
+            return copied;
+        } catch (RuntimeException e) {
+            deleteCopiedImagesQuietly(objectKeys, copied);
+            throw e;
+        }
+    }
+
+    /** 방금 복사한 사진만 지운다. 그대로 둔 사진은 아직 DB가 참조하고 있어 건드리지 않는다. */
+    public void deleteCopiedImagesQuietly(List<String> objectKeys, List<String> permanentKeys) {
+        List<String> copied = new ArrayList<>();
+        for (int i = 0; i < permanentKeys.size(); i++) {
+            if (isPending(objectKeys.get(i))) {
+                copied.add(permanentKeys.get(i));
+            }
+        }
+        deleteImagesQuietly(copied);
+    }
+
+    /** 상품탭에서 상품 하나를 고치고, 더 이상 쓰지 않는 사진의 objectKey를 돌려준다. 돌려받은 키는 커밋된 뒤에 지운다. */
+    @Transactional
+    public List<String> updateSellerProduct(
+            SellerProductUpdateCommand command, List<String> permanentKeys) {
+        Product product = requireOwnProduct(command.productId(), command.sellerId());
+        product.update(
+                command.name(), command.price(), command.stockQuantity(), command.description());
+        return replaceImages(product.getId(), command.imageObjectKeys(), permanentKeys);
+    }
+
+    /** 상품탭에서 상품 하나를 지우고, 지울 사진의 objectKey를 돌려준다. 돌려받은 키는 커밋된 뒤에 지운다. */
+    // 편성 행을 먼저 지운다. 끝난 라이브의 편성이 남아 있어 그대로 두면 외래키에 걸린다.
+    @Transactional
+    public List<String> deleteSellerProduct(Long productId, Long sellerId) {
+        Product product = requireOwnProduct(productId, sellerId);
+        List<ProductImage> images =
+                productImageRepository.findByProductIdOrderByDisplayOrder(productId);
+        List<String> objectKeys =
+                images.stream()
+                        .map(image -> toObjectKey(image.getImageUrl()))
+                        .flatMap(Optional::stream)
+                        .toList();
+        liveProductRepository.deleteByProductId(productId);
+        productImageRepository.deleteAllInBatch(images);
+        productRepository.delete(product);
+        return objectKeys;
+    }
+
+    // 상품탭은 라이브 편성과 무관하게 자기 상품만 다룬다.
+    private Product requireOwnProduct(Long productId, Long sellerId) {
+        Product product =
+                productRepository
+                        .findById(productId)
+                        .orElseThrow(() -> new CustomException(ProductErrorCode.PRODUCT_NOT_FOUND));
+        if (!product.getSellerId().equals(sellerId)) {
+            throw new CustomException(ProductErrorCode.PRODUCT_NOT_FOUND);
+        }
+        return product;
+    }
+
+    private boolean isPending(String objectKey) {
+        return objectKey.startsWith(s3Properties.pendingPrefix());
+    }
+
+    // 사진은 최대 다섯 장이라 통째로 다시 깐다. 순서가 바뀐 자리를 따로 가려내지 않는다.
+    private List<String> replaceImages(
+            Long productId, List<String> objectKeys, List<String> permanentKeys) {
+        List<ProductImage> existing =
+                productImageRepository.findByProductIdOrderByDisplayOrder(productId);
+        requireKeptImagesOwned(objectKeys, existingObjectKeys(existing));
+        Set<String> kept = Set.copyOf(permanentKeys);
+        List<String> obsolete =
+                existing.stream()
+                        .map(image -> toObjectKey(image.getImageUrl()))
+                        .flatMap(Optional::stream)
+                        .filter(objectKey -> !kept.contains(objectKey))
+                        .toList();
+        productImageRepository.deleteAllInBatch(existing);
+        for (int order = 0; order < permanentKeys.size(); order++) {
+            productImageRepository.save(
+                    ProductImage.create(productId, toImageUrl(permanentKeys.get(order)), order));
+        }
+        return obsolete;
+    }
+
+    // 이번에 올린 사진이 아니면 원래 이 상품에 붙어 있던 것만 남길 수 있다.
+    // 확정된 사진 경로는 복사를 거치지 않아 소유 검사도 지나가므로, 남의 사진 주소를 그대로 넣는 길을 여기서 막는다.
+    private void requireKeptImagesOwned(List<String> objectKeys, Set<String> existingObjectKeys) {
+        boolean borrowed =
+                objectKeys.stream()
+                        .anyMatch(
+                                objectKey ->
+                                        !isPending(objectKey)
+                                                && !existingObjectKeys.contains(objectKey));
+        if (borrowed) {
+            throw new CustomException(ProductErrorCode.PRODUCT_IMAGE_FORBIDDEN);
+        }
+    }
+
+    private Set<String> existingObjectKeys(List<ProductImage> images) {
+        return images.stream()
+                .map(image -> toObjectKey(image.getImageUrl()))
+                .flatMap(Optional::stream)
+                .collect(Collectors.toSet());
     }
 
     /** 라이브가 끝나면 편성 상품의 판매 방식을 정리한다. */

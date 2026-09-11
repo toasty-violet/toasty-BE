@@ -6,6 +6,8 @@ import com.toasty.domain.product.controller.dto.response.SellerProductCountsResp
 import com.toasty.domain.product.controller.dto.response.SellerProductDetailResponse;
 import com.toasty.domain.product.controller.dto.response.SellerProductResponse;
 import com.toasty.domain.product.controller.dto.response.SellerProductsResponse;
+import com.toasty.domain.product.controller.dto.response.StoreProductResponse;
+import com.toasty.domain.product.controller.dto.response.StoreProductsResponse;
 import com.toasty.domain.product.entity.LiveProduct;
 import com.toasty.domain.product.entity.LiveProductPinCommand;
 import com.toasty.domain.product.entity.LiveProductUpdateCommand;
@@ -17,6 +19,7 @@ import com.toasty.domain.product.entity.SalesType;
 import com.toasty.domain.product.entity.SellerProductFilter;
 import com.toasty.domain.product.entity.SellerProductPageCommand;
 import com.toasty.domain.product.entity.SellerProductUpdateCommand;
+import com.toasty.domain.product.entity.StoreProductPageCommand;
 import com.toasty.domain.product.exception.ProductErrorCode;
 import com.toasty.domain.product.repository.LiveProductCount;
 import com.toasty.domain.product.repository.LiveProductRepository;
@@ -35,6 +38,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -54,7 +58,8 @@ import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 @RequiredArgsConstructor
 public class ProductService {
 
-    private static final int SELLER_PRODUCT_PAGE_SIZE = 20;
+    // 셀러 상품탭과 스토어 화면이 한 번에 당겨오는 개수. 둘 다 무한스크롤이다.
+    private static final int PRODUCT_PAGE_SIZE = 20;
 
     // 첫 페이지는 커서가 없다. id는 양수라 최댓값을 넣으면 맨 앞부터 읽는다.
     private static final long FIRST_PAGE_CURSOR = Long.MAX_VALUE;
@@ -284,41 +289,83 @@ public class ProductService {
     @Transactional(readOnly = true)
     public SellerProductsResponse findSellerProducts(SellerProductPageCommand command) {
         String keyword = command.keyword() == null ? "" : command.keyword();
-        List<Product> found =
-                productRepository
-                        .findBySellerIdAndSalesTypeInAndNameContainingAndIdLessThanOrderByIdDesc(
-                                command.sellerId(),
-                                command.filter().salesTypes(),
-                                keyword,
-                                command.cursor() == null ? FIRST_PAGE_CURSOR : command.cursor(),
-                                PageRequest.of(0, SELLER_PRODUCT_PAGE_SIZE + 1));
-        boolean hasNext = found.size() > SELLER_PRODUCT_PAGE_SIZE;
-        List<Product> products = hasNext ? found.subList(0, SELLER_PRODUCT_PAGE_SIZE) : found;
+        CursorPage page = toCursorPage(readSellerProducts(command, keyword));
         return new SellerProductsResponse(
                 command.cursor() == null ? countSellerProducts(command.sellerId(), keyword) : null,
-                toSellerResponses(products),
-                hasNext ? products.get(products.size() - 1).getId() : null,
-                hasNext);
+                toCards(page.products(), SellerProductResponse::of),
+                page.nextCursor(),
+                page.hasNext());
     }
 
-    private List<SellerProductResponse> toSellerResponses(List<Product> products) {
+    private List<Product> readSellerProducts(SellerProductPageCommand command, String keyword) {
+        if (command.filter().isAll()) {
+            return productRepository
+                    .findBySellerIdAndSalesTypeNotAndNameContainingAndIdLessThanOrderByIdDesc(
+                            command.sellerId(),
+                            SellerProductFilter.EXCLUDED,
+                            keyword,
+                            cursorOf(command.cursor()),
+                            oneMoreThanPage());
+        }
+        return productRepository
+                .findBySellerIdAndSalesTypeAndNameContainingAndIdLessThanOrderByIdDesc(
+                        command.sellerId(),
+                        command.filter().salesType(),
+                        keyword,
+                        cursorOf(command.cursor()),
+                        oneMoreThanPage());
+    }
+
+    /** 스토어 화면의 상품 그리드를 채운다. 지금 살 수 있는 상품만 담는다. */
+    @Transactional(readOnly = true)
+    public StoreProductsResponse findStoreProducts(StoreProductPageCommand command) {
+        CursorPage page =
+                toCursorPage(
+                        productRepository.findBySellerIdAndSalesTypeAndIdLessThanOrderByIdDesc(
+                                command.sellerId(),
+                                SalesType.GENERAL,
+                                cursorOf(command.cursor()),
+                                oneMoreThanPage()));
+        return new StoreProductsResponse(
+                toCards(page.products(), StoreProductResponse::of),
+                page.nextCursor(),
+                page.hasNext());
+    }
+
+    private record CursorPage(List<Product> products, Long nextCursor, boolean hasNext) {}
+
+    // 다음이 있는지는 한 장을 더 읽어서 가린다. 넘친 한 장은 toCursorPage가 잘라낸다.
+    private PageRequest oneMoreThanPage() {
+        return PageRequest.of(0, PRODUCT_PAGE_SIZE + 1);
+    }
+
+    private CursorPage toCursorPage(List<Product> found) {
+        boolean hasNext = found.size() > PRODUCT_PAGE_SIZE;
+        List<Product> products = hasNext ? found.subList(0, PRODUCT_PAGE_SIZE) : found;
+        return new CursorPage(
+                products, hasNext ? products.get(products.size() - 1).getId() : null, hasNext);
+    }
+
+    private Long cursorOf(Long cursor) {
+        return cursor == null ? FIRST_PAGE_CURSOR : cursor;
+    }
+
+    // 카드는 상품마다 사진을 읽지 않고 한 번에 모아 읽는다.
+    private <T> List<T> toCards(List<Product> products, BiFunction<Product, String, T> toCard) {
         if (products.isEmpty()) {
             return List.of();
         }
         Map<Long, String> mainImageUrls =
                 findMainImageUrls(products.stream().map(Product::getId).toList());
         return products.stream()
-                .map(
-                        product ->
-                                SellerProductResponse.of(
-                                        product, mainImageUrls.get(product.getId())))
+                .map(product -> toCard.apply(product, mainImageUrls.get(product.getId())))
                 .toList();
     }
 
     private SellerProductCountsResponse countSellerProducts(Long sellerId, String keyword) {
         Map<SalesType, Integer> counted =
                 productRepository
-                        .countBySalesType(sellerId, SellerProductFilter.ALL.salesTypes(), keyword)
+                        .countBySalesType(sellerId, SellerProductFilter.EXCLUDED, keyword)
                         .stream()
                         .collect(
                                 Collectors.toMap(

@@ -1,6 +1,5 @@
 package com.toasty.domain.product.service;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
@@ -193,7 +192,6 @@ class SellerProductServiceTest {
 
             sellerProductService.delete(PRODUCT_ID, SELLER_ID);
 
-            assertThat(true).isTrue();
             verify(productService).deleteImagesQuietly(List.of("products/images/7/a.jpg"));
         }
     }

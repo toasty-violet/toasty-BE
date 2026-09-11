@@ -5,6 +5,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -24,7 +25,10 @@ public interface LiveProductRepository extends JpaRepository<LiveProduct, Long> 
     @Query("select lp.liveId from LiveProduct lp where lp.productId = :productId")
     List<Long> findLiveIdsByProductId(@Param("productId") Long productId);
 
-    List<LiveProduct> findByProductId(Long productId);
+    /** 상품을 지울 때 그 상품의 편성도 함께 걷어낸다. 지울 행을 다시 읽지 않도록 한 문장으로 보낸다. */
+    @Modifying(flushAutomatically = true)
+    @Query("delete from LiveProduct lp where lp.productId = :productId")
+    void deleteByProductId(@Param("productId") Long productId);
 
     /** 넘긴 상품들 중 이 라이브 말고 다른 라이브에도 편성돼 있는 것만 돌려준다. */
     @Query(

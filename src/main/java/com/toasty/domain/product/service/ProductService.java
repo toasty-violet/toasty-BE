@@ -411,7 +411,7 @@ public class ProductService {
                         .map(image -> toObjectKey(image.getImageUrl()))
                         .flatMap(Optional::stream)
                         .toList();
-        liveProductRepository.deleteAllInBatch(liveProductRepository.findByProductId(productId));
+        liveProductRepository.deleteByProductId(productId);
         productImageRepository.deleteAllInBatch(images);
         productRepository.delete(product);
         return objectKeys;

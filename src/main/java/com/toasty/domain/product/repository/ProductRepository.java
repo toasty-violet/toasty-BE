@@ -3,6 +3,7 @@ package com.toasty.domain.product.repository;
 import com.toasty.domain.product.entity.Product;
 import com.toasty.domain.product.entity.SalesType;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -28,6 +29,9 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     // 판매중은 재고가 남아 있는 상태다. 다 팔리면 SOLD_OUT으로 넘어가므로 재고를 따로 보지 않는다.
     List<Product> findBySellerIdAndSalesTypeAndIdLessThanOrderByIdDesc(
             Long sellerId, SalesType salesType, Long cursor, Pageable pageable);
+
+    /** 구매자가 여는 상품 상세. 스토어 목록과 같은 조건이라 목록에 없는 상품은 열리지 않는다. */
+    Optional<Product> findByIdAndSalesType(Long id, SalesType salesType);
 
     /** 상품탭 상태 칩에 붙는 건수. 검색 중이면 그 결과 안에서 센다. */
     @Query(

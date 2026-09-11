@@ -667,6 +667,41 @@ class LiveServiceTest {
         }
 
         @Test
+        @DisplayName("송출이 끊기면 시청자 수를 바로 0으로 적는다")
+        void 끊기면_0으로_적는다() {
+            Live live = live(1L);
+            live.startBroadcast();
+            live.updateViewerCount(132);
+            givenUnfinished(live);
+            streamingClient.broadcasting(StreamState.NOT_BROADCASTING);
+
+            liveService.syncBroadcasts();
+
+            verify(liveRepository).updateViewerCount(1L, 0);
+            assertThat(live.getStatus()).isEqualTo(LiveStatus.LIVE);
+        }
+
+        @Test
+        @DisplayName("이번에 끝낼 라이브는 시청자 수를 따로 적지 않는다")
+        void 끝낼_때는_따로_안_적는다() {
+            Live live = live(1L);
+            live.startBroadcast();
+            live.updateViewerCount(132);
+            givenUnfinished(live);
+            givenSaveSucceeds();
+            streamingClient.broadcasting(StreamState.NOT_BROADCASTING);
+
+            liveService.syncBroadcasts();
+            liveService.syncBroadcasts();
+            org.mockito.Mockito.clearInvocations(liveRepository);
+            liveService.syncBroadcasts();
+
+            assertThat(live.getStatus()).isEqualTo(LiveStatus.ENDED);
+            assertThat(live.getViewerCount()).isZero();
+            verify(liveRepository, never()).updateViewerCount(any(), anyInt());
+        }
+
+        @Test
         @DisplayName("아직 켜지지 않은 예정은 끊긴 것으로 세지 않는다")
         void 예정은_세지_않는다() {
             givenUnfinished(live(1L));

@@ -336,18 +336,24 @@ public class LiveService {
             if (streamStatus == null) {
                 continue;
             }
-            if (!streamStatus.isBroadcasting()) {
-                if (live.isBroadcasting()
-                        && countDroppedStream(live.getId()) >= DROPPED_STREAM_CHECKS) {
-                    droppedLives.add(live);
+            if (streamStatus.isBroadcasting()) {
+                droppedStreamChecks.remove(live.getId());
+                if (!live.isBroadcasting()) {
+                    startedLiveIds.add(live.getId());
+                    viewerCounts.put(live.getId(), streamStatus.viewerCount());
+                } else if (streamStatus.viewerCount() != live.getViewerCount()) {
+                    viewerCounts.put(live.getId(), streamStatus.viewerCount());
                 }
                 continue;
             }
-            droppedStreamChecks.remove(live.getId());
             if (!live.isBroadcasting()) {
-                startedLiveIds.add(live.getId());
-                viewerCounts.put(live.getId(), streamStatus.viewerCount());
+                continue;
+            }
+            if (countDroppedStream(live.getId()) >= DROPPED_STREAM_CHECKS) {
+                // 이번에 끝낼 라이브는 end()가 시청자 수를 0으로 되돌린다.
+                droppedLives.add(live);
             } else if (streamStatus.viewerCount() != live.getViewerCount()) {
+                // 끊긴 채로 마지막 값을 들고 있으면 재생되지 않는 카드가 홈 1순위를 차지한다.
                 viewerCounts.put(live.getId(), streamStatus.viewerCount());
             }
         }

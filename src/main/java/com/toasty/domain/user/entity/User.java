@@ -10,15 +10,14 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.LocalDateTime;
-import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 /**
- * 유저 Entity. 계정 식별과 역할, 표시명만 가진다.
+ * 유저 Entity. 계정 식별과 역할만 가진다.
  *
- * <p>온보딩에서 채우는 상세 정보는 역할에 따라 Customer·Seller가 나눠 가진다.
+ * <p>온보딩에서 채우는 상세 정보와 화면에 뜨는 표시명은 역할에 따라 Customer·Seller가 나눠 가진다.
  */
 @Entity
 @Getter
@@ -26,9 +25,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class User extends BaseTimeEntity {
 
-    private static final String TEMPORARY_NICKNAME_PREFIX = "user_";
     private static final String WITHDRAWN_KAKAO_ID_PREFIX = "withdrawn_";
-    private static final String WITHDRAWN_NICKNAME_PREFIX = "del_";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -43,29 +40,18 @@ public class User extends BaseTimeEntity {
     @Column(name = "role", length = 20)
     private Role role;
 
-    // 구매자에게는 닉네임, 판매자에게는 상점명 — 가입 시점에는 임시 닉네임이 들어가고 온보딩에서 교체된다
-    @Column(length = 20, nullable = false, unique = true)
-    private String nickname;
-
     // 탈퇴 시각 — null이면 이용 중인 유저
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
 
-    private User(String kakaoId, Role role, String nickname) {
+    private User(String kakaoId, Role role) {
         this.kakaoId = kakaoId;
         this.role = role;
-        this.nickname = nickname;
     }
 
     /** 카카오 최초 로그인 시점에는 kakaoId 외의 정보가 없다. 나머지는 온보딩에서 채운다. */
     public static User createFromKakao(String kakaoId) {
-        return new User(kakaoId, null, generateTemporaryNickname());
-    }
-
-    // 닉네임은 not null이라 온보딩 전까지 쓸 값을 가입 시점에 만들어 넣는다
-    private static String generateTemporaryNickname() {
-        return TEMPORARY_NICKNAME_PREFIX
-                + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        return new User(kakaoId, null);
     }
 
     /** 온보딩은 역할 선택과 상세 정보 입력을 한 번에 제출받으므로, 역할이 정해졌다면 상세 정보도 채워져 있다. */
@@ -73,10 +59,9 @@ public class User extends BaseTimeEntity {
         return role != null;
     }
 
-    /** 온보딩 제출로 역할을 확정하고 임시 닉네임을 유저가 입력한 값으로 바꾼다. */
-    public void completeOnboarding(Role role, String nickname) {
+    /** 온보딩 제출로 역할을 확정한다. */
+    public void completeOnboarding(Role role) {
         this.role = role;
-        this.nickname = nickname;
     }
 
     public boolean isWithdrawn() {
@@ -88,17 +73,10 @@ public class User extends BaseTimeEntity {
      *
      * <p>구매자·판매자 정보는 거래 상대방을 식별하는 데 필요해 함께 지우지 않는다.
      */
-    // kakaoId와 nickname은 unique라 값을 그대로 두면 같은 계정으로 재가입하거나 그 닉네임을 다시 쓸 수 없다.
+    // kakaoId는 unique라 값을 그대로 두면 같은 계정으로 재가입할 수 없다.
     // 그래서 다른 유저와 겹치지 않는 값으로 바꿔 자리를 비운다.
     public void withdraw() {
         this.deletedAt = LocalDateTime.now();
         this.kakaoId = WITHDRAWN_KAKAO_ID_PREFIX + id;
-        this.nickname = generateWithdrawnNickname();
-    }
-
-    // 닉네임은 20자까지라 id 대신 길이가 고정된 값을 쓴다.
-    private static String generateWithdrawnNickname() {
-        return WITHDRAWN_NICKNAME_PREFIX
-                + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
     }
 }

@@ -2,6 +2,13 @@ package com.toasty.domain.product.service;
 
 import com.toasty.domain.product.controller.dto.response.LiveProductResponse;
 import com.toasty.domain.product.controller.dto.response.LiveProductsResponse;
+import com.toasty.domain.product.controller.dto.response.ProductDetailResponse;
+import com.toasty.domain.product.controller.dto.response.SellerProductCountsResponse;
+import com.toasty.domain.product.controller.dto.response.SellerProductDetailResponse;
+import com.toasty.domain.product.controller.dto.response.SellerProductResponse;
+import com.toasty.domain.product.controller.dto.response.SellerProductsResponse;
+import com.toasty.domain.product.controller.dto.response.StoreProductResponse;
+import com.toasty.domain.product.controller.dto.response.StoreProductsResponse;
 import com.toasty.domain.product.entity.LiveProduct;
 import com.toasty.domain.product.entity.LiveProductPinCommand;
 import com.toasty.domain.product.entity.LiveProductUpdateCommand;
@@ -9,11 +16,17 @@ import com.toasty.domain.product.entity.Product;
 import com.toasty.domain.product.entity.ProductCreateCommand;
 import com.toasty.domain.product.entity.ProductImage;
 import com.toasty.domain.product.entity.ProductUpsertCommand;
+import com.toasty.domain.product.entity.SalesType;
+import com.toasty.domain.product.entity.SellerProductFilter;
+import com.toasty.domain.product.entity.SellerProductPageCommand;
+import com.toasty.domain.product.entity.SellerProductUpdateCommand;
+import com.toasty.domain.product.entity.StoreProductPageCommand;
 import com.toasty.domain.product.exception.ProductErrorCode;
 import com.toasty.domain.product.repository.LiveProductCount;
 import com.toasty.domain.product.repository.LiveProductRepository;
 import com.toasty.domain.product.repository.ProductImageRepository;
 import com.toasty.domain.product.repository.ProductRepository;
+import com.toasty.domain.product.repository.SellerProductCount;
 import com.toasty.global.config.S3Properties;
 import com.toasty.global.exception.CustomException;
 import java.time.LocalDateTime;
@@ -26,10 +39,12 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import software.amazon.awssdk.core.exception.SdkException;
@@ -43,6 +58,15 @@ import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 @Service
 @RequiredArgsConstructor
 public class ProductService {
+
+    // 셀러 상품탭과 스토어 화면이 한 번에 당겨오는 개수. 둘 다 무한스크롤이다.
+    private static final int PRODUCT_PAGE_SIZE = 20;
+
+    // 첫 페이지는 커서가 없다. id는 양수라 최댓값을 넣으면 맨 앞부터 읽는다.
+    private static final long FIRST_PAGE_CURSOR = Long.MAX_VALUE;
+
+    // 상품 상세 아래에 함께 걸어 주는 같은 스토어의 다른 상품 수.
+    private static final int OTHER_PRODUCTS_LIMIT = 3;
 
     private final ProductRepository productRepository;
     private final ProductImageRepository productImageRepository;
@@ -187,6 +211,16 @@ public class ProductService {
         return new LiveProductsResponse(currentPinnedProductId(scheduled), toResponses(scheduled));
     }
 
+    // display_order 순으로 받아 상품마다 첫 번째를 대표로 쓴다.
+    private Map<Long, String> findMainImageUrls(List<Long> productIds) {
+        return productImageRepository.findByProductIdInOrderByDisplayOrder(productIds).stream()
+                .collect(
+                        Collectors.toMap(
+                                ProductImage::getProductId,
+                                ProductImage::getImageUrl,
+                                (main, rest) -> main));
+    }
+
     private Long currentPinnedProductId(List<LiveProduct> scheduled) {
         return scheduled.stream()
                 .filter(liveProduct -> liveProduct.getPinnedAt() != null)
@@ -204,14 +238,7 @@ public class ProductService {
         Map<Long, Product> products =
                 productRepository.findAllById(productIds).stream()
                         .collect(Collectors.toMap(Product::getId, Function.identity()));
-        // display_order 순으로 받아 상품마다 첫 번째를 대표로 쓴다.
-        Map<Long, String> mainImageUrls =
-                productImageRepository.findByProductIdInOrderByDisplayOrder(productIds).stream()
-                        .collect(
-                                Collectors.toMap(
-                                        ProductImage::getProductId,
-                                        ProductImage::getImageUrl,
-                                        (main, rest) -> main));
+        Map<Long, String> mainImageUrls = findMainImageUrls(productIds);
 
         return scheduled.stream()
                 .map(
@@ -259,6 +286,287 @@ public class ProductService {
                 .collect(
                         Collectors.toMap(
                                 LiveProductCount::getLiveId, LiveProductCount::getProductCount));
+    }
+
+    /** 셀러 상품탭 한 묶음을 채운다. */
+    // 상품마다 사진을 읽지 않고 한 번에 모아 읽는다. 건수는 스크롤 중에 바뀌지 않아 첫 요청에서만 센다.
+    @Transactional(readOnly = true)
+    public SellerProductsResponse findSellerProducts(SellerProductPageCommand command) {
+        String keyword = command.keyword() == null ? "" : command.keyword();
+        CursorPage page = toCursorPage(readSellerProducts(command, keyword));
+        return new SellerProductsResponse(
+                command.cursor() == null ? countSellerProducts(command.sellerId(), keyword) : null,
+                toCards(page.products(), SellerProductResponse::of),
+                page.nextCursor(),
+                page.hasNext());
+    }
+
+    private List<Product> readSellerProducts(SellerProductPageCommand command, String keyword) {
+        if (command.filter().isAll()) {
+            return productRepository
+                    .findBySellerIdAndSalesTypeNotAndNameContainingAndIdLessThanOrderByIdDesc(
+                            command.sellerId(),
+                            SellerProductFilter.EXCLUDED,
+                            keyword,
+                            cursorOf(command.cursor()),
+                            oneMoreThanPage());
+        }
+        return productRepository
+                .findBySellerIdAndSalesTypeAndNameContainingAndIdLessThanOrderByIdDesc(
+                        command.sellerId(),
+                        command.filter().salesType(),
+                        keyword,
+                        cursorOf(command.cursor()),
+                        oneMoreThanPage());
+    }
+
+    /** 구매자가 보는 상품 상세 화면을 채운다. */
+    // 스토어 목록과 같은 조건으로 읽어, 목록에 걸리지 않는 상품은 링크를 직접 열어도 없는 상품이 된다.
+    @Transactional(readOnly = true)
+    public ProductDetailResponse findProductDetail(Long productId) {
+        Product product =
+                productRepository
+                        .findByIdAndSalesType(productId, SalesType.GENERAL)
+                        .orElseThrow(() -> new CustomException(ProductErrorCode.PRODUCT_NOT_FOUND));
+        List<String> imageUrls =
+                productImageRepository.findByProductIdOrderByDisplayOrder(productId).stream()
+                        .map(ProductImage::getImageUrl)
+                        .toList();
+        return ProductDetailResponse.of(product, imageUrls, otherProductsOf(product));
+    }
+
+    // 자기 자신이 섞여 나오므로 한 칸 더 읽어 빼낸다.
+    private List<StoreProductResponse> otherProductsOf(Product product) {
+        List<Product> others =
+                productRepository
+                        .findBySellerIdAndSalesTypeAndIdLessThanOrderByIdDesc(
+                                product.getSellerId(),
+                                SalesType.GENERAL,
+                                FIRST_PAGE_CURSOR,
+                                PageRequest.of(0, OTHER_PRODUCTS_LIMIT + 1))
+                        .stream()
+                        .filter(other -> !other.getId().equals(product.getId()))
+                        .limit(OTHER_PRODUCTS_LIMIT)
+                        .toList();
+        return toCards(others, StoreProductResponse::of);
+    }
+
+    /** 스토어 화면의 상품 그리드를 채운다. 지금 살 수 있는 상품만 담는다. */
+    @Transactional(readOnly = true)
+    public StoreProductsResponse findStoreProducts(StoreProductPageCommand command) {
+        CursorPage page =
+                toCursorPage(
+                        productRepository.findBySellerIdAndSalesTypeAndIdLessThanOrderByIdDesc(
+                                command.sellerId(),
+                                SalesType.GENERAL,
+                                cursorOf(command.cursor()),
+                                oneMoreThanPage()));
+        return new StoreProductsResponse(
+                toCards(page.products(), StoreProductResponse::of),
+                page.nextCursor(),
+                page.hasNext());
+    }
+
+    private record CursorPage(List<Product> products, Long nextCursor, boolean hasNext) {}
+
+    // 다음이 있는지는 한 장을 더 읽어서 가린다. 넘친 한 장은 toCursorPage가 잘라낸다.
+    private PageRequest oneMoreThanPage() {
+        return PageRequest.of(0, PRODUCT_PAGE_SIZE + 1);
+    }
+
+    private CursorPage toCursorPage(List<Product> found) {
+        boolean hasNext = found.size() > PRODUCT_PAGE_SIZE;
+        List<Product> products = hasNext ? found.subList(0, PRODUCT_PAGE_SIZE) : found;
+        return new CursorPage(
+                products, hasNext ? products.get(products.size() - 1).getId() : null, hasNext);
+    }
+
+    private Long cursorOf(Long cursor) {
+        return cursor == null ? FIRST_PAGE_CURSOR : cursor;
+    }
+
+    // 카드는 상품마다 사진을 읽지 않고 한 번에 모아 읽는다.
+    private <T> List<T> toCards(List<Product> products, BiFunction<Product, String, T> toCard) {
+        if (products.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, String> mainImageUrls =
+                findMainImageUrls(products.stream().map(Product::getId).toList());
+        return products.stream()
+                .map(product -> toCard.apply(product, mainImageUrls.get(product.getId())))
+                .toList();
+    }
+
+    private SellerProductCountsResponse countSellerProducts(Long sellerId, String keyword) {
+        Map<SalesType, Integer> counted =
+                productRepository
+                        .countBySalesType(sellerId, SellerProductFilter.EXCLUDED, keyword)
+                        .stream()
+                        .collect(
+                                Collectors.toMap(
+                                        SellerProductCount::getSalesType,
+                                        SellerProductCount::getProductCount));
+        int onSale = counted.getOrDefault(SalesType.GENERAL, 0);
+        int scheduled = counted.getOrDefault(SalesType.LIVE, 0);
+        return new SellerProductCountsResponse(onSale + scheduled, onSale, scheduled);
+    }
+
+    /** 셀러 상품 수정 화면을 채운다. */
+    @Transactional(readOnly = true)
+    public SellerProductDetailResponse findSellerProduct(Long productId, Long sellerId) {
+        Product product = requireOwnProduct(productId, sellerId);
+        List<SellerProductDetailResponse.Image> images =
+                productImageRepository.findByProductIdOrderByDisplayOrder(productId).stream()
+                        .map(
+                                image ->
+                                        toObjectKey(image.getImageUrl())
+                                                .map(
+                                                        key ->
+                                                                new SellerProductDetailResponse
+                                                                        .Image(
+                                                                        key, image.getImageUrl()))
+                                                .orElse(null))
+                        .filter(Objects::nonNull)
+                        .toList();
+        return SellerProductDetailResponse.of(product, images);
+    }
+
+    /** 이 상품이 편성된 라이브. 상품탭이 방송 중인지 확인하는 데 쓴다. */
+    // 남의 상품을 넘겨 편성을 엿보지 못하도록 소유부터 확인한다.
+    @Transactional(readOnly = true)
+    public List<Long> findScheduledLiveIds(Long productId, Long sellerId) {
+        requireOwnProduct(productId, sellerId);
+        return liveProductRepository.findLiveIdsByProductId(productId);
+    }
+
+    /** 넘긴 라이브 중 편성 상품이 하나뿐인 것이 있는지. 상품탭이 마지막 상품 삭제를 막는 데 쓴다. */
+    @Transactional(readOnly = true)
+    public boolean hasLiveWithSingleProduct(Collection<Long> liveIds) {
+        return countScheduledProducts(liveIds).values().stream().anyMatch(count -> count <= 1);
+    }
+
+    /** 상품탭 수정 전에 이번에 새로 올린 사진만 영구 경로로 옮긴다. 그대로 두는 사진은 받은 키를 돌려준다. */
+    // copyImagesToPermanent와 같은 이유로 트랜잭션 밖에서 돌아야 한다.
+    public List<String> copySellerImagesToPermanent(Long sellerId, List<String> objectKeys) {
+        List<String> copied = new ArrayList<>();
+        try {
+            for (String objectKey : objectKeys) {
+                copied.add(isPending(objectKey) ? copyToPermanent(sellerId, objectKey) : objectKey);
+            }
+            return copied;
+        } catch (RuntimeException e) {
+            deleteCopiedImagesQuietly(objectKeys, copied);
+            throw e;
+        }
+    }
+
+    /** 방금 복사한 사진만 지운다. 그대로 둔 사진은 아직 DB가 참조하고 있어 건드리지 않는다. */
+    public void deleteCopiedImagesQuietly(List<String> objectKeys, List<String> permanentKeys) {
+        List<String> copied = new ArrayList<>();
+        for (int i = 0; i < permanentKeys.size(); i++) {
+            if (isPending(objectKeys.get(i))) {
+                copied.add(permanentKeys.get(i));
+            }
+        }
+        deleteImagesQuietly(copied);
+    }
+
+    /** 상품탭에서 상품 하나를 고치고, 더 이상 쓰지 않는 사진의 objectKey를 돌려준다. 돌려받은 키는 커밋된 뒤에 지운다. */
+    @Transactional
+    public List<String> updateSellerProduct(
+            SellerProductUpdateCommand command, List<String> permanentKeys) {
+        Product product = requireOwnProduct(command.productId(), command.sellerId());
+        product.update(
+                command.name(), command.price(), command.stockQuantity(), command.description());
+        return replaceImages(product.getId(), command.imageObjectKeys(), permanentKeys);
+    }
+
+    /** 상품탭에서 상품 하나를 지우고, 지울 사진의 objectKey를 돌려준다. 돌려받은 키는 커밋된 뒤에 지운다. */
+    // 편성 행을 먼저 지운다. 끝난 라이브의 편성이 남아 있어 그대로 두면 외래키에 걸린다.
+    @Transactional
+    public List<String> deleteSellerProduct(Long productId, Long sellerId) {
+        Product product = requireOwnProduct(productId, sellerId);
+        List<ProductImage> images =
+                productImageRepository.findByProductIdOrderByDisplayOrder(productId);
+        List<String> objectKeys =
+                images.stream()
+                        .map(image -> toObjectKey(image.getImageUrl()))
+                        .flatMap(Optional::stream)
+                        .toList();
+        liveProductRepository.deleteByProductId(productId);
+        productImageRepository.deleteAllInBatch(images);
+        productRepository.delete(product);
+        return objectKeys;
+    }
+
+    // 상품탭은 라이브 편성과 무관하게 자기 상품만 다룬다.
+    private Product requireOwnProduct(Long productId, Long sellerId) {
+        Product product =
+                productRepository
+                        .findById(productId)
+                        .orElseThrow(() -> new CustomException(ProductErrorCode.PRODUCT_NOT_FOUND));
+        if (!product.getSellerId().equals(sellerId)) {
+            throw new CustomException(ProductErrorCode.PRODUCT_NOT_FOUND);
+        }
+        return product;
+    }
+
+    private boolean isPending(String objectKey) {
+        return objectKey.startsWith(s3Properties.pendingPrefix());
+    }
+
+    // 사진은 최대 다섯 장이라 통째로 다시 깐다. 순서가 바뀐 자리를 따로 가려내지 않는다.
+    private List<String> replaceImages(
+            Long productId, List<String> objectKeys, List<String> permanentKeys) {
+        List<ProductImage> existing =
+                productImageRepository.findByProductIdOrderByDisplayOrder(productId);
+        requireKeptImagesOwned(objectKeys, existingObjectKeys(existing));
+        Set<String> kept = Set.copyOf(permanentKeys);
+        List<String> obsolete =
+                existing.stream()
+                        .map(image -> toObjectKey(image.getImageUrl()))
+                        .flatMap(Optional::stream)
+                        .filter(objectKey -> !kept.contains(objectKey))
+                        .toList();
+        productImageRepository.deleteAllInBatch(existing);
+        for (int order = 0; order < permanentKeys.size(); order++) {
+            productImageRepository.save(
+                    ProductImage.create(productId, toImageUrl(permanentKeys.get(order)), order));
+        }
+        return obsolete;
+    }
+
+    // 이번에 올린 사진이 아니면 원래 이 상품에 붙어 있던 것만 남길 수 있다.
+    // 확정된 사진 경로는 복사를 거치지 않아 소유 검사도 지나가므로, 남의 사진 주소를 그대로 넣는 길을 여기서 막는다.
+    private void requireKeptImagesOwned(List<String> objectKeys, Set<String> existingObjectKeys) {
+        boolean borrowed =
+                objectKeys.stream()
+                        .anyMatch(
+                                objectKey ->
+                                        !isPending(objectKey)
+                                                && !existingObjectKeys.contains(objectKey));
+        if (borrowed) {
+            throw new CustomException(ProductErrorCode.PRODUCT_IMAGE_FORBIDDEN);
+        }
+    }
+
+    private Set<String> existingObjectKeys(List<ProductImage> images) {
+        return images.stream()
+                .map(image -> toObjectKey(image.getImageUrl()))
+                .flatMap(Optional::stream)
+                .collect(Collectors.toSet());
+    }
+
+    /** 라이브가 끝나면 편성 상품의 판매 방식을 정리한다. */
+    @Transactional
+    public void closeLiveSales(Long liveId) {
+        List<LiveProduct> scheduled = liveProductRepository.findByLiveIdOrderByDisplayOrder(liveId);
+        if (scheduled.isEmpty()) {
+            return;
+        }
+        productRepository
+                .findAllById(scheduled.stream().map(LiveProduct::getProductId).toList())
+                .forEach(Product::closeLiveSales);
     }
 
     /** 라이브가 지워질 때 그 라이브의 편성과 상품을 정리하고, 더 이상 쓰지 않는 사진의 objectKey를 돌려준다. 돌려받은 키는 커밋된 뒤에 지운다. */

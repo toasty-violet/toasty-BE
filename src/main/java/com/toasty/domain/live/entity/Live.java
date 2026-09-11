@@ -58,6 +58,10 @@ public class Live extends BaseTimeEntity {
     @Column(name = "active_seller_id")
     private Long activeSellerId;
 
+    // 배치가 IVS에서 읽어 적어둔다. 방송 중이 아니면 0이다.
+    @Column(name = "viewer_count", nullable = false)
+    private int viewerCount;
+
     // 라이브마다 IVS Chat 방을 하나 둔다. 이 기능 이전에 만들어진 라이브에는 없어 null이다.
     @Column(name = "ivs_chat_room_arn", length = 200)
     private String ivsChatRoomArn;
@@ -155,6 +159,11 @@ public class Live extends BaseTimeEntity {
         this.activeSellerId = sellerId;
     }
 
+    /** 배치가 읽어온 시청자 수를 반영한다. */
+    public void updateViewerCount(int viewerCount) {
+        this.viewerCount = viewerCount;
+    }
+
     /** 채팅방을 회수한 뒤 자리를 비운다. */
     public void clearChatRoom() {
         this.ivsChatRoomArn = null;
@@ -167,5 +176,6 @@ public class Live extends BaseTimeEntity {
         this.status = LiveStatus.ENDED;
         this.endedAt = LocalDateTime.now();
         this.activeSellerId = null;
+        this.viewerCount = 0;
     }
 }

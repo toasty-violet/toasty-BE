@@ -14,7 +14,11 @@ public enum CustomerErrorCode implements ErrorCode {
 
     // 온보딩에서 만들어졌어야 할 기본 배송지가 없는 경우
     CUSTOMER_ADDRESS_NOT_FOUND(
-            HttpStatus.NOT_FOUND, "CUSTOMER_ADDRESS_NOT_FOUND", "등록된 배송지가 없습니다.");
+            HttpStatus.NOT_FOUND, "CUSTOMER_ADDRESS_NOT_FOUND", "등록된 배송지가 없습니다."),
+
+    // 다른 구매자가 이미 쓰고 있는 닉네임을 제출한 경우
+    CUSTOMER_NICKNAME_DUPLICATED(
+            HttpStatus.CONFLICT, "CUSTOMER_NICKNAME_DUPLICATED", "이미 사용 중인 닉네임입니다.");
 
     private final HttpStatus status;
     private final String code;

@@ -2,7 +2,7 @@
 -- Flyway 마이그레이션이 아니므로 db/migration 으로 옮기지 않는다.
 --
 -- 사용법: @kakao_id 에 본인 계정 값을 채우고 IntelliJ Query Console 에서 실행한다.
---   select id, kakao_id, role, nickname from users;
+--   select id, kakao_id, role from users;
 --
 -- 제약
 --   - 판매자에게 상품(products)이나 라이브(lives)가 있으면 외래키 제약으로 실패한다. 해당 데이터를 먼저 지운다.
@@ -20,8 +20,7 @@ delete
 from customers
 where user_id = (select id from users where kakao_id = @kakao_id collate utf8mb4_unicode_ci);
 
--- nickname 은 unique 제약이 있어 비울 수 없다. 충돌하지 않는 임시값으로 바꾼다.
+-- 닉네임과 상점명은 위에서 지운 행이 들고 있어, 유저에는 되돌릴 값이 역할뿐이다.
 update users
-set role     = null,
-    nickname = concat('user_', substring(replace(uuid(), '-', ''), 1, 12))
+set role = null
 where kakao_id = @kakao_id collate utf8mb4_unicode_ci;

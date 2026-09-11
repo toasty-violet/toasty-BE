@@ -1,6 +1,6 @@
 package com.toasty.domain.user.controller.dto.request;
 
-import com.toasty.domain.customer.entity.AddressType;
+import com.toasty.domain.customer.controller.dto.request.AddressRequest;
 import com.toasty.domain.customer.entity.CustomerOnboardingCommand;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
@@ -16,43 +16,14 @@ public record CustomerOnboardingRequest(
                 @NotBlank(message = "닉네임은 필수입니다.") @Size(max = 20, message = "닉네임은 20자를 넘을 수 없습니다.") String nickname,
         @Schema(description = "휴대폰 번호 — 하이픈 없이 숫자만", example = "01012345678")
                 @NotBlank(message = "휴대폰 번호는 필수입니다.") @Pattern(regexp = "^01[016-9]\\d{7,8}$", message = "휴대폰 번호 형식이 올바르지 않습니다.") String phoneNumber,
+        @Schema(
+                        description = "계좌 등록 결제 세션 ID — 결제 세션 생성 API로 받아 결제창을 통과한 값",
+                        example = "pymt_sess-019f0000-0000-7000-9000-000000000000")
+                @NotBlank(message = "결제 세션 아이디는 필수입니다.") @Size(max = 100, message = "결제 세션 아이디는 100자를 넘을 수 없습니다.") String sessionId,
         @Schema(description = "기본 배송지") @NotNull(message = "주소는 필수입니다.") @Valid AddressRequest address) {
 
     public CustomerOnboardingCommand toCommand(Long userId) {
         return new CustomerOnboardingCommand(
-                userId, name, nickname, phoneNumber, address.toCommand());
-    }
-
-    // 카카오 우편번호 서비스 응답을 그대로 담고, 상세주소만 유저가 입력한다
-    public record AddressRequest(
-            @Schema(description = "우편번호 (zonecode)", example = "06236")
-                    @NotBlank(message = "우편번호는 필수입니다.") @Size(max = 10, message = "우편번호는 10자를 넘을 수 없습니다.") String postalCode,
-            @Schema(
-                            description = "도로명 주소 (roadAddress) — 지번만 있는 주소면 null",
-                            example = "서울 강남구 테헤란로 152")
-                    @Size(max = 255, message = "도로명 주소는 255자를 넘을 수 없습니다.") String roadAddress,
-            @Schema(
-                            description = "지번 주소 (jibunAddress) — 도로명만 있는 주소면 null",
-                            example = "서울 강남구 역삼동 737")
-                    @Size(max = 255, message = "지번 주소는 255자를 넘을 수 없습니다.") String jibunAddress,
-            @Schema(description = "유저가 선택한 주소 종류 (userSelectedType) — R은 도로명, J는 지번", example = "R")
-                    @NotNull(message = "주소 종류는 필수입니다.") AddressType addressType,
-            @Schema(description = "건물명 (buildingName)", example = "강남파이낸스센터")
-                    @Size(max = 100, message = "건물명은 100자를 넘을 수 없습니다.") String buildingName,
-            @Schema(description = "법정동·법정리 이름 (bname)", example = "역삼동")
-                    @Size(max = 50, message = "법정동은 50자를 넘을 수 없습니다.") String legalDong,
-            @Schema(description = "상세주소", example = "10층 1001호")
-                    @Size(max = 255, message = "상세주소는 255자를 넘을 수 없습니다.") String detailAddress) {
-
-        public CustomerOnboardingCommand.AddressCommand toCommand() {
-            return new CustomerOnboardingCommand.AddressCommand(
-                    postalCode,
-                    roadAddress,
-                    jibunAddress,
-                    addressType,
-                    buildingName,
-                    legalDong,
-                    detailAddress);
-        }
+                userId, name, nickname, phoneNumber, sessionId, address.toCommand());
     }
 }

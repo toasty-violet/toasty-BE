@@ -13,10 +13,6 @@ public interface UserRepository extends JpaRepository<User, Long> {
     /** 로그인 시 쓴다. 탈퇴한 유저는 잡히지 않아, 같은 카카오 계정이라도 새 유저로 가입된다. */
     Optional<User> findByKakaoIdAndDeletedAtIsNull(String kakaoId);
 
-    boolean existsByNickname(String nickname);
-
-    boolean existsByNicknameAndIdNot(String nickname, Long id);
-
     /**
      * 유저 인증에 필요한 값(유저 id, 유저 역할, 구매자/판매자 id)을 읽는다.
      *

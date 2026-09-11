@@ -64,9 +64,6 @@ public class ProductService {
     // 첫 페이지는 커서가 없다. id는 양수라 최댓값을 넣으면 맨 앞부터 읽는다.
     private static final long FIRST_PAGE_CURSOR = Long.MAX_VALUE;
 
-    // 재고가 이보다 많아야 살 수 있다.
-    private static final int NO_STOCK = 0;
-
     private final ProductRepository productRepository;
     private final ProductImageRepository productImageRepository;
     private final LiveProductRepository liveProductRepository;
@@ -292,15 +289,7 @@ public class ProductService {
     @Transactional(readOnly = true)
     public SellerProductsResponse findSellerProducts(SellerProductPageCommand command) {
         String keyword = command.keyword() == null ? "" : command.keyword();
-        CursorPage page =
-                toCursorPage(
-                        productRepository
-                                .findBySellerIdAndSalesTypeInAndNameContainingAndIdLessThanOrderByIdDesc(
-                                        command.sellerId(),
-                                        command.filter().salesTypes(),
-                                        keyword,
-                                        cursorOf(command.cursor()),
-                                        oneMoreThanPage()));
+        CursorPage page = toCursorPage(readSellerProducts(command, keyword));
         return new SellerProductsResponse(
                 command.cursor() == null ? countSellerProducts(command.sellerId(), keyword) : null,
                 toCards(page.products(), SellerProductResponse::of),
@@ -308,18 +297,35 @@ public class ProductService {
                 page.hasNext());
     }
 
+    private List<Product> readSellerProducts(SellerProductPageCommand command, String keyword) {
+        if (command.filter().isAll()) {
+            return productRepository
+                    .findBySellerIdAndSalesTypeNotAndNameContainingAndIdLessThanOrderByIdDesc(
+                            command.sellerId(),
+                            SellerProductFilter.EXCLUDED,
+                            keyword,
+                            cursorOf(command.cursor()),
+                            oneMoreThanPage());
+        }
+        return productRepository
+                .findBySellerIdAndSalesTypeAndNameContainingAndIdLessThanOrderByIdDesc(
+                        command.sellerId(),
+                        command.filter().salesType(),
+                        keyword,
+                        cursorOf(command.cursor()),
+                        oneMoreThanPage());
+    }
+
     /** 스토어 화면의 상품 그리드를 채운다. 지금 살 수 있는 상품만 담는다. */
     @Transactional(readOnly = true)
     public StoreProductsResponse findStoreProducts(StoreProductPageCommand command) {
         CursorPage page =
                 toCursorPage(
-                        productRepository
-                                .findBySellerIdAndSalesTypeAndStockQuantityGreaterThanAndIdLessThanOrderByIdDesc(
-                                        command.sellerId(),
-                                        SalesType.GENERAL,
-                                        NO_STOCK,
-                                        cursorOf(command.cursor()),
-                                        oneMoreThanPage()));
+                        productRepository.findBySellerIdAndSalesTypeAndIdLessThanOrderByIdDesc(
+                                command.sellerId(),
+                                SalesType.GENERAL,
+                                cursorOf(command.cursor()),
+                                oneMoreThanPage()));
         return new StoreProductsResponse(
                 toCards(page.products(), StoreProductResponse::of),
                 page.nextCursor(),
@@ -359,7 +365,7 @@ public class ProductService {
     private SellerProductCountsResponse countSellerProducts(Long sellerId, String keyword) {
         Map<SalesType, Integer> counted =
                 productRepository
-                        .countBySalesType(sellerId, SellerProductFilter.ALL.salesTypes(), keyword)
+                        .countBySalesType(sellerId, SellerProductFilter.EXCLUDED, keyword)
                         .stream()
                         .collect(
                                 Collectors.toMap(

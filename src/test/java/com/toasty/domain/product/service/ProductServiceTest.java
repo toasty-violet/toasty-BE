@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willThrow;
@@ -619,7 +618,7 @@ class ProductServiceTest {
         private void givenFound(List<Product> found) {
             given(
                             productRepository
-                                    .findBySellerIdAndSalesTypeInAndNameContainingAndIdLessThanOrderByIdDesc(
+                                    .findBySellerIdAndSalesTypeNotAndNameContainingAndIdLessThanOrderByIdDesc(
                                             any(), any(), any(), any(), any()))
                     .willReturn(found);
             given(productImageRepository.findByProductIdInOrderByDisplayOrder(any()))
@@ -715,7 +714,7 @@ class ProductServiceTest {
                     new SellerProductPageCommand(SELLER_ID, SellerProductFilter.ALL, null, null));
 
             verify(productRepository)
-                    .findBySellerIdAndSalesTypeInAndNameContainingAndIdLessThanOrderByIdDesc(
+                    .findBySellerIdAndSalesTypeNotAndNameContainingAndIdLessThanOrderByIdDesc(
                             any(), any(), eq(""), any(), any());
         }
 
@@ -730,18 +729,19 @@ class ProductServiceTest {
 
             verify(productRepository).countBySalesType(any(), any(), eq("가디건"));
             verify(productRepository)
-                    .findBySellerIdAndSalesTypeInAndNameContainingAndIdLessThanOrderByIdDesc(
+                    .findBySellerIdAndSalesTypeNotAndNameContainingAndIdLessThanOrderByIdDesc(
                             any(), any(), eq("가디건"), any(), any());
         }
 
         @Test
         @DisplayName("어느 칩으로도 다 팔린 상품은 나오지 않는다")
         void 품절은_어디에도_없다() {
+            assertThat(SellerProductFilter.EXCLUDED).isEqualTo(SalesType.SOLD_OUT);
             assertThat(SellerProductFilter.values())
                     .allSatisfy(
                             filter ->
-                                    assertThat(filter.salesTypes())
-                                            .doesNotContain(SalesType.SOLD_OUT));
+                                    assertThat(filter.salesType())
+                                            .isNotEqualTo(SalesType.SOLD_OUT));
         }
 
         private SellerProductCount count(SalesType salesType, int productCount) {
@@ -861,24 +861,23 @@ class ProductServiceTest {
 
         private void givenFound(List<Product> found) {
             given(
-                            productRepository
-                                    .findBySellerIdAndSalesTypeAndStockQuantityGreaterThanAndIdLessThanOrderByIdDesc(
-                                            any(), any(), anyInt(), any(), any()))
+                            productRepository.findBySellerIdAndSalesTypeAndIdLessThanOrderByIdDesc(
+                                    any(), any(), any(), any()))
                     .willReturn(found);
             given(productImageRepository.findByProductIdInOrderByDisplayOrder(any()))
                     .willReturn(List.of());
         }
 
         @Test
-        @DisplayName("살 수 있는 상품만 읽는다")
+        @DisplayName("판매중인 상품만 읽는다")
         void 살_수_있는_것만_읽는다() {
             givenFound(products(2));
 
             productService.findStoreProducts(new StoreProductPageCommand(SELLER_ID, null));
 
             verify(productRepository)
-                    .findBySellerIdAndSalesTypeAndStockQuantityGreaterThanAndIdLessThanOrderByIdDesc(
-                            eq(SELLER_ID), eq(SalesType.GENERAL), eq(0), any(), any());
+                    .findBySellerIdAndSalesTypeAndIdLessThanOrderByIdDesc(
+                            eq(SELLER_ID), eq(SalesType.GENERAL), any(), any());
         }
 
         @Test
@@ -911,9 +910,8 @@ class ProductServiceTest {
         @DisplayName("상품이 없으면 사진도 읽지 않는다")
         void 비어_있으면_사진을_안_읽는다() {
             given(
-                            productRepository
-                                    .findBySellerIdAndSalesTypeAndStockQuantityGreaterThanAndIdLessThanOrderByIdDesc(
-                                            any(), any(), anyInt(), any(), any()))
+                            productRepository.findBySellerIdAndSalesTypeAndIdLessThanOrderByIdDesc(
+                                    any(), any(), any(), any()))
                     .willReturn(List.of());
 
             StoreProductsResponse response =

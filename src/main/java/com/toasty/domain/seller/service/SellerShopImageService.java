@@ -14,6 +14,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.core.exception.SdkException;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
@@ -29,6 +31,7 @@ public class SellerShopImageService {
             Map.of("image/jpeg", "jpg", "image/png", "png", "image/webp", "webp");
 
     private final S3Presigner s3Presigner;
+    private final S3Client s3Client;
     private final SellerS3Properties s3Properties;
 
     /** 샵 이미지를 올릴 주소와, 그 사진이 저장될 위치를 만들어 준다. */
@@ -56,6 +59,23 @@ public class SellerShopImageService {
         } catch (SdkException e) {
             log.error("샵 이미지 업로드 주소 발급 실패. objectKey={}", objectKey, e);
             throw new CustomException(SellerErrorCode.SELLER_UPLOAD_URL_ISSUE_FAILED, e);
+        }
+    }
+
+    /** 샵 이미지를 바꾼 뒤 더 이상 쓰지 않는 사진을 치운다. */
+    // 지우기 실패가 이미 끝난 수정을 되돌리지 않게 한다. 남은 객체는 로그로 추적한다.
+    public void deleteQuietly(String objectKey) {
+        if (objectKey == null || objectKey.isBlank()) {
+            return;
+        }
+        try {
+            s3Client.deleteObject(
+                    DeleteObjectRequest.builder()
+                            .bucket(s3Properties.bucket())
+                            .key(objectKey)
+                            .build());
+        } catch (SdkException e) {
+            log.error("샵 이미지 정리 실패. 버킷에 고아 객체가 남았다 - objectKey={}", objectKey, e);
         }
     }
 

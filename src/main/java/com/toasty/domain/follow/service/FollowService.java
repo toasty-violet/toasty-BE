@@ -69,6 +69,12 @@ public class FollowService {
         followRepository.deleteByCustomerIdAndSellerId(customerId, sellerId);
     }
 
+    /** 다른 도메인이 화면에 판매자의 팔로워 수를 표시할 때 쓴다. */
+    @Transactional(readOnly = true)
+    public long countFollowers(Long sellerId) {
+        return followRepository.countBySellerId(sellerId);
+    }
+
     /** 구매자가 탈퇴할 때 그가 판매자를 팔로우한 관계를 모두 지운다. */
     @Transactional
     public void deleteByCustomerId(Long customerId) {

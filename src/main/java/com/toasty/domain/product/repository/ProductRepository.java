@@ -34,6 +34,9 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     /** 구매자가 여는 상품 상세. 스토어 목록과 같은 조건이라 목록에 없는 상품은 열리지 않는다. */
     Optional<Product> findByIdAndSalesType(Long id, SalesType salesType);
 
+    /** 판매자가 등록해 둔 상품 수. 품절도 함께 센다. */
+    long countBySellerId(Long sellerId);
+
     /** 상품탭 상태 칩에 붙는 건수. 검색 중이면 그 결과 안에서 센다. */
     @Query(
             "select p.salesType as salesType, count(p) as productCount from Product p"

@@ -305,6 +305,12 @@ public class ProductService {
                                 StoreProductCount::getProductCount));
     }
 
+    /** 다른 도메인이 화면에 판매자의 상품 수를 표시할 때 쓴다. 품절도 함께 센다. */
+    @Transactional(readOnly = true)
+    public long countBySeller(Long sellerId) {
+        return productRepository.countBySellerId(sellerId);
+    }
+
     /** 셀러 상품탭 한 묶음을 채운다. */
     // 상품마다 사진을 읽지 않고 한 번에 모아 읽는다. 건수는 스크롤 중에 바뀌지 않아 첫 요청에서만 센다.
     @Transactional(readOnly = true)

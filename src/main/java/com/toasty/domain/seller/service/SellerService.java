@@ -1,10 +1,14 @@
 package com.toasty.domain.seller.service;
 
 import com.toasty.domain.seller.controller.dto.response.SellerProfileResponse;
+import com.toasty.domain.seller.controller.dto.response.ShopDetailResponse;
 import com.toasty.domain.seller.controller.dto.response.ShopNameSearchResponse;
 import com.toasty.domain.seller.controller.dto.response.ShopNameSuggestionResponse;
+import com.toasty.domain.seller.controller.dto.response.ShopSalesSummaryResponse;
+import com.toasty.domain.seller.controller.dto.response.ShopShippingFeeResponse;
 import com.toasty.domain.seller.entity.Seller;
 import com.toasty.domain.seller.entity.SellerOnboardingCommand;
+import com.toasty.domain.seller.entity.ShopUpdateCommand;
 import com.toasty.domain.seller.exception.SellerErrorCode;
 import com.toasty.domain.seller.repository.SellerRepository;
 import com.toasty.global.config.SellerS3Properties;
@@ -12,6 +16,7 @@ import com.toasty.global.exception.CustomException;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
@@ -19,6 +24,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 @RequiredArgsConstructor
@@ -42,6 +48,8 @@ public class SellerService {
 
     private final SellerRepository sellerRepository;
     private final SellerS3Properties s3Properties;
+    private final SellerShopImageService sellerShopImageService;
+    private final TransactionTemplate transactionTemplate;
 
     /** 온보딩 제출로 판매자 정보를 만든다. 유저의 역할 확정과 같은 트랜잭션에서 일어난다. */
     @Transactional
@@ -81,6 +89,55 @@ public class SellerService {
     private SellerProfileResponse toShopProfile(Seller seller) {
         return new SellerProfileResponse(
                 seller.getId(), seller.getShopName(), toImageUrl(seller.getShopImageObjectKey()));
+    }
+
+    /** 스토어 관리 화면에서 판매자 행이 들고 있는 값을 꺼낸다. */
+    // 판매 내역은 아직 주문 도메인이 없어 판매자 행에 쌓아둔 값을 그대로 내보내고, 지금은 늘 0이다.
+    @Transactional(readOnly = true)
+    public ShopDetailResponse findMyShopDetail(Long sellerId) {
+        Seller seller = findSeller(sellerId);
+        return new ShopDetailResponse(
+                seller.getId(),
+                toImageUrl(seller.getShopImageObjectKey()),
+                seller.getShopImageObjectKey(),
+                seller.getShopName(),
+                seller.getDescription(),
+                new ShopSalesSummaryResponse(
+                        seller.getTotalSalesCount(),
+                        seller.getTotalBuyerCount(),
+                        seller.getTotalSalesAmount()),
+                new ShopShippingFeeResponse(
+                        seller.getBaseShippingFee(),
+                        seller.getFreeShippingThreshold(),
+                        seller.getRemoteAreaShippingFee()));
+    }
+
+    /** 판매자가 스토어 정보를 고친다. 보낸 값이 그대로 저장된다. */
+    // 사진을 바꿔 쓰지 않게 된 이전 사진은 커밋된 뒤에 지운다. 먼저 지우면 트랜잭션이 깨졌을 때 사진이 사라진다.
+    public void updateShop(ShopUpdateCommand command) {
+        String shopImageObjectKey = emptyToNull(command.shopImageObjectKey());
+        String obsoleteImageObjectKey =
+                transactionTemplate.execute(
+                        status -> {
+                            Seller seller = findSeller(command.sellerId());
+                            requireShopNameAvailable(command.shopName(), command.sellerId());
+                            if (shopImageObjectKey != null) {
+                                requireShopImageOwnedByUser(command.userId(), shopImageObjectKey);
+                            }
+                            String previous = seller.getShopImageObjectKey();
+                            seller.updateShop(
+                                    command.shopName(),
+                                    shopImageObjectKey,
+                                    command.description(),
+                                    command.baseShippingFee(),
+                                    command.freeShippingThreshold(),
+                                    command.remoteAreaShippingFee());
+                            flushOrThrowDuplicated();
+                            return Objects.equals(previous, shopImageObjectKey) ? null : previous;
+                        });
+
+        // 여기서 실패해도 되돌리지 않는다. 이미 커밋돼서 새 사진은 DB가 참조하고 있다.
+        sellerShopImageService.deleteQuietly(obsoleteImageObjectKey);
     }
 
     /** 입력한 스토어 이름을 이미 다른 판매자가 쓰고 있는지 확인한다. 자기 이름을 그대로 둔 경우는 중복으로 보지 않는다. */
@@ -147,6 +204,20 @@ public class SellerService {
         if (businessNumber != null && sellerRepository.existsByBusinessNumber(businessNumber)) {
             throw new CustomException(SellerErrorCode.SELLER_BUSINESS_NUMBER_DUPLICATED);
         }
+    }
+
+    // 바꾼 값을 DB에 바로 밀어, 검사와 저장 사이에 다른 판매자가 같은 이름을 선점했으면 중복(409)으로 돌려준다.
+    private void flushOrThrowDuplicated() {
+        try {
+            sellerRepository.flush();
+        } catch (DataIntegrityViolationException e) {
+            throw duplicatedOrOriginal(e);
+        }
+    }
+
+    // 사진을 빼는 것과 안 바꾸는 것을 가르려면 빈 값이 하나여야 한다. 지운 사진을 찾을 때도 이 값으로 비교한다.
+    private static String emptyToNull(String objectKey) {
+        return objectKey == null || objectKey.isBlank() ? null : objectKey;
     }
 
     // 판매자를 DB에 바로 넣어, 검사와 저장 사이에 다른 판매자가 같은 값을 선점했으면 중복(409)으로 돌려준다.

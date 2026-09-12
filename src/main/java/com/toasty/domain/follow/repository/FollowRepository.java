@@ -10,6 +10,8 @@ import org.springframework.data.repository.query.Param;
 
 public interface FollowRepository extends JpaRepository<Follow, Long> {
 
+    long countBySellerId(Long sellerId);
+
     void deleteAllByCustomerId(Long customerId);
 
     void deleteAllBySellerId(Long sellerId);

@@ -79,9 +79,19 @@ public class UserSeeder {
         log.info("목 유저 시딩 완료 — 새로 만든 유저 {}명", created);
     }
 
+    /** 다른 시더가 여기서 만든 목 구매자를 찾아 쓸 때 쓴다. */
+    static String customerKakaoId(int index) {
+        return MOCK_KAKAO_ID_PREFIX + "customer_" + index;
+    }
+
+    /** 다른 시더가 여기서 만든 목 판매자를 찾아 쓸 때 쓴다. */
+    static String sellerKakaoId(int index) {
+        return MOCK_KAKAO_ID_PREFIX + "seller_" + index;
+    }
+
     // 온보딩을 마친 구매자를 만든다. 배송지는 만들지 않는다
     private boolean seedCustomer(MockCustomer mock, int index) {
-        String kakaoId = MOCK_KAKAO_ID_PREFIX + "customer_" + index;
+        String kakaoId = customerKakaoId(index);
         if (exists(kakaoId) || nicknameTaken(kakaoId, mock.nickname())) {
             return false;
         }
@@ -101,7 +111,7 @@ public class UserSeeder {
 
     // 온보딩을 마친 판매자를 만든다
     private boolean seedSeller(String shopName, int index) {
-        String kakaoId = MOCK_KAKAO_ID_PREFIX + "seller_" + index;
+        String kakaoId = sellerKakaoId(index);
         if (exists(kakaoId) || shopNameTaken(kakaoId, shopName)) {
             return false;
         }

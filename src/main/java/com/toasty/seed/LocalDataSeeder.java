@@ -15,13 +15,16 @@ import org.springframework.stereotype.Component;
 public class LocalDataSeeder implements ApplicationRunner {
 
     private final UserSeeder userSeeder;
+    private final FollowSeeder followSeeder;
 
     @Override
     public void run(ApplicationArguments args) {
         log.info("로컬 목데이터 시딩 시작");
         // 시더의 트랜잭션 경계 밖이라, 시딩만 롤백되고 기동은 이어진다
         try {
+            // 팔로우는 목 유저를 이어 주므로 유저 시딩이 끝난 뒤에 돈다
             userSeeder.seed();
+            followSeeder.seed();
         } catch (Exception e) {
             log.warn("로컬 목데이터 시딩 실패 — 목데이터 없이 기동을 계속한다", e);
         }

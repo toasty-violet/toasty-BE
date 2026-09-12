@@ -27,6 +27,7 @@ import com.toasty.domain.product.repository.LiveProductRepository;
 import com.toasty.domain.product.repository.ProductImageRepository;
 import com.toasty.domain.product.repository.ProductRepository;
 import com.toasty.domain.product.repository.SellerProductCount;
+import com.toasty.domain.product.repository.StoreProductCount;
 import com.toasty.global.config.S3Properties;
 import com.toasty.global.exception.CustomException;
 import java.time.LocalDateTime;
@@ -286,6 +287,22 @@ public class ProductService {
                 .collect(
                         Collectors.toMap(
                                 LiveProductCount::getLiveId, LiveProductCount::getProductCount));
+    }
+
+    /** 스토어별 상품 수를 한 번에 센다. 상품이 하나도 없는 스토어는 결과에 담기지 않는다. */
+    // 스토어 화면 그리드가 판매중만 보여줘서 카드 숫자도 같은 기준으로 센다.
+    @Transactional(readOnly = true)
+    public Map<Long, Integer> countStoreProducts(Collection<Long> sellerIds) {
+        if (sellerIds.isEmpty()) {
+            return Map.of();
+        }
+        return productRepository
+                .countBySellerIdInAndSalesType(sellerIds, SalesType.GENERAL)
+                .stream()
+                .collect(
+                        Collectors.toMap(
+                                StoreProductCount::getSellerId,
+                                StoreProductCount::getProductCount));
     }
 
     /** 셀러 상품탭 한 묶음을 채운다. */

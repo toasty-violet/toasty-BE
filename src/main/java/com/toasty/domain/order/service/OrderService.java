@@ -1,5 +1,6 @@
 package com.toasty.domain.order.service;
 
+import com.toasty.domain.order.controller.dto.response.CourierResponse;
 import com.toasty.domain.order.controller.dto.response.CustomerOrderDetailResponse;
 import com.toasty.domain.order.controller.dto.response.CustomerOrderResponse;
 import com.toasty.domain.order.controller.dto.response.CustomerOrdersResponse;
@@ -7,8 +8,10 @@ import com.toasty.domain.order.controller.dto.response.OrderCountsResponse;
 import com.toasty.domain.order.controller.dto.response.SellerOrderDetailResponse;
 import com.toasty.domain.order.controller.dto.response.SellerOrderResponse;
 import com.toasty.domain.order.controller.dto.response.SellerOrdersResponse;
+import com.toasty.domain.order.entity.Courier;
 import com.toasty.domain.order.entity.CustomerOrderPageCommand;
 import com.toasty.domain.order.entity.Order;
+import com.toasty.domain.order.entity.OrderShipmentCommand;
 import com.toasty.domain.order.entity.OrderStatus;
 import com.toasty.domain.order.entity.SellerOrderPageCommand;
 import com.toasty.domain.order.exception.OrderErrorCode;
@@ -16,6 +19,7 @@ import com.toasty.domain.order.repository.OrderRepository;
 import com.toasty.domain.order.repository.OrderStatusCount;
 import com.toasty.domain.seller.service.SellerService;
 import com.toasty.global.exception.CustomException;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -24,7 +28,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** 셀러가 자기 주문을 훑고 한 건을 자세히 본다. */
+/** 셀러와 구매자가 주문을 훑고, 셀러가 운송장을 등록한다. */
 @Service
 @RequiredArgsConstructor
 public class OrderService {
@@ -124,12 +128,30 @@ public class OrderService {
     /** 셀러 주문 상세 화면을 채운다. */
     @Transactional(readOnly = true)
     public SellerOrderDetailResponse findSellerOrder(Long orderId, Long sellerId) {
-        Order order =
-                orderRepository
-                        .findById(orderId)
-                        .filter(found -> found.isOwnedBySeller(sellerId))
-                        .orElseThrow(() -> new CustomException(OrderErrorCode.ORDER_NOT_FOUND));
-        return SellerOrderDetailResponse.from(order);
+        return SellerOrderDetailResponse.from(requireSellerOrder(orderId, sellerId));
+    }
+
+    /** 택배사 드롭다운을 채운다. */
+    public List<CourierResponse> findCouriers() {
+        return Arrays.stream(Courier.values()).map(CourierResponse::from).toList();
+    }
+
+    /** 셀러가 운송장을 등록해 주문을 발송완료로 넘긴다. */
+    @Transactional
+    public void registerShipment(OrderShipmentCommand command) {
+        Order order = requireSellerOrder(command.orderId(), command.sellerId());
+        if (order.isShipped()) {
+            throw new CustomException(OrderErrorCode.ORDER_ALREADY_SHIPPED);
+        }
+        order.ship(command.courier(), command.trackingNumber());
+    }
+
+    // 남의 주문 번호로는 통과할 수 없다.
+    private Order requireSellerOrder(Long orderId, Long sellerId) {
+        return orderRepository
+                .findById(orderId)
+                .filter(found -> found.isOwnedBySeller(sellerId))
+                .orElseThrow(() -> new CustomException(OrderErrorCode.ORDER_NOT_FOUND));
     }
 
     // 다음이 있는지는 한 장을 더 읽어서 가린다.

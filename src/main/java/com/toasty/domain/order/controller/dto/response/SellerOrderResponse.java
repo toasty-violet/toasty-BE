@@ -17,8 +17,9 @@ public record SellerOrderResponse(
         @Schema(description = "주문 시점의 대표 사진 주소") String productImageUrl,
         int quantity,
         @Schema(description = "총 결제금액. 원 단위") int totalAmount,
-        @Schema(description = "발송완료가 아니면 null") String courier,
-        @Schema(description = "발송완료가 아니면 null") String trackingNumber) {
+        @Schema(description = "택배사 이름. 발송완료가 아니면 null", example = "CJ 대한통운") String courierName,
+        @Schema(description = "운송장 번호. 발송완료가 아니면 null", example = "394817503811")
+                String trackingNumber) {
 
     public static SellerOrderResponse from(Order order) {
         return new SellerOrderResponse(
@@ -30,7 +31,7 @@ public record SellerOrderResponse(
                 order.getProductImageUrl(),
                 order.getQuantity(),
                 order.getTotalAmount(),
-                order.getCourier(),
+                order.courierName(),
                 order.getTrackingNumber());
     }
 }

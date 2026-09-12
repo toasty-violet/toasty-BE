@@ -8,7 +8,8 @@ import org.springframework.http.HttpStatus;
 @Getter
 @RequiredArgsConstructor
 public enum OrderErrorCode implements ErrorCode {
-    ORDER_NOT_FOUND(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", "주문을 찾을 수 없습니다.");
+    ORDER_NOT_FOUND(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", "주문을 찾을 수 없습니다."),
+    ORDER_ALREADY_SHIPPED(HttpStatus.CONFLICT, "ORDER_ALREADY_SHIPPED", "이미 발송완료된 주문입니다.");
 
     private final HttpStatus status;
     private final String code;

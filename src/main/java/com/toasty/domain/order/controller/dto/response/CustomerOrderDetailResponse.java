@@ -27,8 +27,9 @@ public record CustomerOrderDetailResponse(
         @Schema(description = "상품 금액. 원 단위") int productPrice,
         @Schema(description = "배송비. 원 단위") int shippingFee,
         @Schema(description = "총 결제금액. 원 단위") int totalAmount,
-        @Schema(description = "발송완료가 아니면 null") String courier,
-        @Schema(description = "발송완료가 아니면 null") String trackingNumber) {
+        @Schema(description = "택배사 이름. 발송완료가 아니면 null", example = "CJ 대한통운") String courierName,
+        @Schema(description = "운송장 번호. 발송완료가 아니면 null", example = "394817503811")
+                String trackingNumber) {
 
     public static CustomerOrderDetailResponse of(Order order, String shopName) {
         return new CustomerOrderDetailResponse(
@@ -49,7 +50,7 @@ public record CustomerOrderDetailResponse(
                 order.getProductPrice(),
                 order.getShippingFee(),
                 order.getTotalAmount(),
-                order.getCourier(),
+                order.courierName(),
                 order.getTrackingNumber());
     }
 }

@@ -279,12 +279,15 @@ public class ProductService {
     }
 
     /** 스토어별 상품 수를 한 번에 센다. 상품이 하나도 없는 스토어는 결과에 담기지 않는다. */
+    // 스토어 화면 그리드가 판매중만 보여줘서 카드 숫자도 같은 기준으로 센다.
     @Transactional(readOnly = true)
     public Map<Long, Integer> countStoreProducts(Collection<Long> sellerIds) {
         if (sellerIds.isEmpty()) {
             return Map.of();
         }
-        return productRepository.countBySellerIdIn(sellerIds).stream()
+        return productRepository
+                .countBySellerIdInAndSalesType(sellerIds, SalesType.GENERAL)
+                .stream()
                 .collect(
                         Collectors.toMap(
                                 StoreProductCount::getSellerId,

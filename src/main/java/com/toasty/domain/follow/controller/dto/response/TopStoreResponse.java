@@ -13,7 +13,7 @@ public record TopStoreResponse(
         @Schema(description = "스토어 이름") String shopName,
         @Schema(description = "스토어 대표 이미지 주소") String shopImageUrl,
         @Schema(description = "팔로워 수") long followerCount,
-        @Schema(description = "스토어가 등록한 상품 수") int productCount,
+        @Schema(description = "스토어가 판매중인 상품 수") int productCount,
         @Schema(description = "요청한 유저가 이 스토어를 팔로우 중인지. 비로그인이면 항상 false") boolean following) {
 
     public static TopStoreResponse of(

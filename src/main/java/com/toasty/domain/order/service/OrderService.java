@@ -1,15 +1,20 @@
 package com.toasty.domain.order.service;
 
-import com.toasty.domain.order.controller.dto.response.SellerOrderCountsResponse;
+import com.toasty.domain.order.controller.dto.response.CustomerOrderDetailResponse;
+import com.toasty.domain.order.controller.dto.response.CustomerOrderResponse;
+import com.toasty.domain.order.controller.dto.response.CustomerOrdersResponse;
+import com.toasty.domain.order.controller.dto.response.OrderCountsResponse;
 import com.toasty.domain.order.controller.dto.response.SellerOrderDetailResponse;
 import com.toasty.domain.order.controller.dto.response.SellerOrderResponse;
 import com.toasty.domain.order.controller.dto.response.SellerOrdersResponse;
+import com.toasty.domain.order.entity.CustomerOrderPageCommand;
 import com.toasty.domain.order.entity.Order;
 import com.toasty.domain.order.entity.OrderStatus;
 import com.toasty.domain.order.entity.SellerOrderPageCommand;
 import com.toasty.domain.order.exception.OrderErrorCode;
 import com.toasty.domain.order.repository.OrderRepository;
-import com.toasty.domain.order.repository.SellerOrderCount;
+import com.toasty.domain.order.repository.OrderStatusCount;
+import com.toasty.domain.seller.service.SellerService;
 import com.toasty.global.exception.CustomException;
 import java.util.List;
 import java.util.Map;
@@ -31,24 +36,89 @@ public class OrderService {
     private static final long FIRST_PAGE_CURSOR = Long.MAX_VALUE;
 
     private final OrderRepository orderRepository;
+    private final SellerService sellerService;
 
     /** 셀러 주문탭 한 묶음을 채운다. */
     // 건수는 스크롤 중에 바뀌지 않아 첫 요청에서만 센다.
     @Transactional(readOnly = true)
     public SellerOrdersResponse findSellerOrders(SellerOrderPageCommand command) {
-        List<Order> found =
-                orderRepository.findBySellerIdAndStatusInAndIdLessThanOrderByIdDesc(
-                        command.sellerId(),
-                        command.filter().statuses(),
-                        command.cursor() == null ? FIRST_PAGE_CURSOR : command.cursor(),
-                        oneMoreThanPage());
-        boolean hasNext = found.size() > ORDER_PAGE_SIZE;
-        List<Order> orders = hasNext ? found.subList(0, ORDER_PAGE_SIZE) : found;
+        CursorPage page =
+                toCursorPage(
+                        orderRepository.findBySellerIdAndStatusInAndIdLessThanOrderByIdDesc(
+                                command.sellerId(),
+                                command.filter().statuses(),
+                                cursorOf(command.cursor()),
+                                oneMoreThanPage()));
         return new SellerOrdersResponse(
                 command.cursor() == null ? countSellerOrders(command.sellerId()) : null,
-                orders.stream().map(SellerOrderResponse::from).toList(),
-                hasNext ? orders.get(orders.size() - 1).getId() : null,
-                hasNext);
+                page.orders().stream().map(SellerOrderResponse::from).toList(),
+                page.nextCursor(),
+                page.hasNext());
+    }
+
+    /** 구매자 주문내역 한 묶음을 채운다. */
+    // 스토어 이름은 주문마다 읽지 않고 한 번에 모아 읽는다.
+    @Transactional(readOnly = true)
+    public CustomerOrdersResponse findCustomerOrders(CustomerOrderPageCommand command) {
+        CursorPage page =
+                toCursorPage(
+                        orderRepository.findByCustomerIdAndStatusInAndIdLessThanOrderByIdDesc(
+                                command.customerId(),
+                                command.filter().statuses(),
+                                cursorOf(command.cursor()),
+                                oneMoreThanPage()));
+        Map<Long, String> shopNames = findShopNames(page.orders());
+        return new CustomerOrdersResponse(
+                command.cursor() == null ? countCustomerOrders(command.customerId()) : null,
+                page.orders().stream()
+                        .map(
+                                order ->
+                                        CustomerOrderResponse.of(
+                                                order, shopNames.get(order.getSellerId())))
+                        .toList(),
+                page.nextCursor(),
+                page.hasNext());
+    }
+
+    /** 구매자 주문 상세 화면을 채운다. */
+    @Transactional(readOnly = true)
+    public CustomerOrderDetailResponse findCustomerOrder(Long orderId, Long customerId) {
+        Order order =
+                orderRepository
+                        .findById(orderId)
+                        .filter(found -> found.isOwnedByCustomer(customerId))
+                        .orElseThrow(() -> new CustomException(OrderErrorCode.ORDER_NOT_FOUND));
+        return CustomerOrderDetailResponse.of(
+                order, sellerService.findShopProfile(order.getSellerId()).shopName());
+    }
+
+    private Map<Long, String> findShopNames(List<Order> orders) {
+        if (orders.isEmpty()) {
+            return Map.of();
+        }
+        return sellerService
+                .findShopProfiles(orders.stream().map(Order::getSellerId).distinct().toList())
+                .entrySet()
+                .stream()
+                .collect(Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue().shopName()));
+    }
+
+    private record CursorPage(List<Order> orders, Long nextCursor, boolean hasNext) {}
+
+    // oneMoreThanPage가 더 읽어둔 한 장으로 다음이 있는지 가린다.
+    private CursorPage toCursorPage(List<Order> found) {
+        boolean hasNext = found.size() > ORDER_PAGE_SIZE;
+        List<Order> orders = hasNext ? found.subList(0, ORDER_PAGE_SIZE) : found;
+        return new CursorPage(
+                orders, hasNext ? orders.get(orders.size() - 1).getId() : null, hasNext);
+    }
+
+    private Long cursorOf(Long cursor) {
+        return cursor == null ? FIRST_PAGE_CURSOR : cursor;
+    }
+
+    private OrderCountsResponse countCustomerOrders(Long customerId) {
+        return toCounts(orderRepository.countByCustomerIdGroupByStatus(customerId));
     }
 
     /** 셀러 주문 상세 화면을 채운다. */
@@ -67,15 +137,19 @@ public class OrderService {
         return PageRequest.of(0, ORDER_PAGE_SIZE + 1);
     }
 
-    private SellerOrderCountsResponse countSellerOrders(Long sellerId) {
+    private OrderCountsResponse countSellerOrders(Long sellerId) {
+        return toCounts(orderRepository.countBySellerIdGroupByStatus(sellerId));
+    }
+
+    private OrderCountsResponse toCounts(List<OrderStatusCount> counts) {
         Map<OrderStatus, Integer> counted =
-                orderRepository.countBySellerIdGroupByStatus(sellerId).stream()
+                counts.stream()
                         .collect(
                                 Collectors.toMap(
-                                        SellerOrderCount::getStatus,
-                                        SellerOrderCount::getOrderCount));
+                                        OrderStatusCount::getStatus,
+                                        OrderStatusCount::getOrderCount));
         int shippingPending = counted.getOrDefault(OrderStatus.SHIPPING_PENDING, 0);
         int shipped = counted.getOrDefault(OrderStatus.SHIPPED, 0);
-        return new SellerOrderCountsResponse(shippingPending + shipped, shippingPending, shipped);
+        return new OrderCountsResponse(shippingPending + shipped, shippingPending, shipped);
     }
 }

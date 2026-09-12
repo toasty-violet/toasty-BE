@@ -17,4 +17,18 @@ public record ShopResponse(
         @Schema(description = "등록한 상품 수. 품절도 포함한다", example = "0") long productCount,
         @Schema(description = "스토어 소개") String description,
         @Schema(description = "판매 내역") ShopSalesSummaryResponse salesSummary,
-        @Schema(description = "배송비 정책") ShopShippingFeeResponse shippingFee) {}
+        @Schema(description = "배송비 정책") ShopShippingFeeResponse shippingFee) {
+
+    public static ShopResponse of(ShopDetailResponse shop, long followerCount, long productCount) {
+        return new ShopResponse(
+                shop.sellerId(),
+                shop.shopImageUrl(),
+                shop.shopImageObjectKey(),
+                shop.shopName(),
+                followerCount,
+                productCount,
+                shop.description(),
+                shop.salesSummary(),
+                shop.shippingFee());
+    }
+}

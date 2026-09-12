@@ -1,11 +1,9 @@
 package com.toasty.domain.seller.service;
 
-import com.toasty.domain.follow.service.FollowService;
-import com.toasty.domain.product.service.ProductService;
 import com.toasty.domain.seller.controller.dto.response.SellerProfileResponse;
+import com.toasty.domain.seller.controller.dto.response.ShopDetailResponse;
 import com.toasty.domain.seller.controller.dto.response.ShopNameSearchResponse;
 import com.toasty.domain.seller.controller.dto.response.ShopNameSuggestionResponse;
-import com.toasty.domain.seller.controller.dto.response.ShopResponse;
 import com.toasty.domain.seller.controller.dto.response.ShopSalesSummaryResponse;
 import com.toasty.domain.seller.controller.dto.response.ShopShippingFeeResponse;
 import com.toasty.domain.seller.entity.Seller;
@@ -47,8 +45,6 @@ public class SellerService {
 
     private final SellerRepository sellerRepository;
     private final SellerS3Properties s3Properties;
-    private final FollowService followService;
-    private final ProductService productService;
     private final SellerShopImageService sellerShopImageService;
     private final TransactionTemplate transactionTemplate;
 
@@ -70,18 +66,16 @@ public class SellerService {
                 seller.getId(), seller.getShopName(), toImageUrl(seller.getShopImageObjectKey()));
     }
 
-    /** 판매자 본인의 스토어 관리 화면을 채운다. */
+    /** 스토어 관리 화면에서 판매자 행이 들고 있는 값을 꺼낸다. */
     // 판매 내역은 아직 주문 도메인이 없어 판매자 행에 쌓아둔 값을 그대로 내보내고, 지금은 늘 0이다.
     @Transactional(readOnly = true)
-    public ShopResponse findMyShop(Long sellerId) {
+    public ShopDetailResponse findMyShopDetail(Long sellerId) {
         Seller seller = findSeller(sellerId);
-        return new ShopResponse(
+        return new ShopDetailResponse(
                 seller.getId(),
                 toImageUrl(seller.getShopImageObjectKey()),
                 seller.getShopImageObjectKey(),
                 seller.getShopName(),
-                followService.countFollowers(sellerId),
-                productService.countBySeller(sellerId),
                 seller.getDescription(),
                 new ShopSalesSummaryResponse(
                         seller.getTotalSalesCount(),

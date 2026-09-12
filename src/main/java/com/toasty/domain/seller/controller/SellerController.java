@@ -12,6 +12,7 @@ import com.toasty.domain.seller.controller.dto.response.ShopNameSuggestionRespon
 import com.toasty.domain.seller.controller.dto.response.ShopResponse;
 import com.toasty.domain.seller.service.SellerService;
 import com.toasty.domain.seller.service.SellerShopImageService;
+import com.toasty.domain.seller.service.SellerShopService;
 import com.toasty.global.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -35,6 +36,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class SellerController {
 
     private final SellerService sellerService;
+    private final SellerShopService sellerShopService;
     private final SellerShopImageService sellerShopImageService;
 
     @Operation(
@@ -50,7 +52,7 @@ public class SellerController {
     @SellerOnly
     @GetMapping("/shop")
     public ApiResponse<ShopResponse> findMyShop(@LoginUser AuthUser seller) {
-        return ApiResponse.ok(sellerService.findMyShop(seller.sellerId()));
+        return ApiResponse.ok(sellerShopService.findMyShop(seller.sellerId()));
     }
 
     @Operation(

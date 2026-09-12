@@ -7,6 +7,7 @@ import com.toasty.domain.live.controller.dto.request.LiveCreateRequest;
 import com.toasty.domain.live.controller.dto.request.LiveProductUpdateRequest;
 import com.toasty.domain.live.controller.dto.request.LiveUpdateRequest;
 import com.toasty.domain.live.controller.dto.response.BroadcastCredentialResponse;
+import com.toasty.domain.live.controller.dto.response.HomeLiveResponse;
 import com.toasty.domain.live.controller.dto.response.LiveChatTokenResponse;
 import com.toasty.domain.live.controller.dto.response.LiveDetailResponse;
 import com.toasty.domain.live.controller.dto.response.LivePlaybackResponse;
@@ -23,6 +24,7 @@ import com.toasty.global.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -196,6 +198,19 @@ public class LiveController {
     public ApiResponse<LiveStreamStatusResponse> getStreamStatus(
             @PathVariable Long liveId, @LoginUser AuthUser seller) {
         return ApiResponse.ok(liveService.getStreamStatus(liveId, seller.sellerId()));
+    }
+
+    @Operation(
+            summary = "홈 라이브 목록 조회",
+            description =
+                    "홈 첫 화면의 라이브 섹션을 채웁니다. 인증이 필요 없어 비로그인 유저도 호출할 수 있습니다."
+                            + " 방송 중인 라이브가 시청자 많은 순으로 먼저 오고, 그 뒤에 방송 예정이 임박한 순으로"
+                            + " 붙어 최대 5개를 내려줍니다. 방송 중 카드는 playbackUrl로 썸네일을 자동 재생하고,"
+                            + " 예정 카드는 scheduledAt을 배지에 띄우면 됩니다. 시각이 지났는데 시작하지 않은"
+                            + " 예정은 담기지 않습니다.")
+    @GetMapping("/public")
+    public ApiResponse<List<HomeLiveResponse>> findHomeLives() {
+        return ApiResponse.ok(liveService.findHomeLives());
     }
 
     @Operation(

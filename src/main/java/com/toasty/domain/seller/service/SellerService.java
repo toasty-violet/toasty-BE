@@ -13,10 +13,13 @@ import com.toasty.domain.seller.exception.SellerErrorCode;
 import com.toasty.domain.seller.repository.SellerRepository;
 import com.toasty.global.config.SellerS3Properties;
 import com.toasty.global.exception.CustomException;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -61,7 +64,29 @@ public class SellerService {
     // seller_name은 대표자 실명이라 내보내지 않는다. 화면에 뜨는 이름은 shop_name이다.
     @Transactional(readOnly = true)
     public SellerProfileResponse findShopProfile(Long sellerId) {
-        Seller seller = findSeller(sellerId);
+        return toShopProfile(findSeller(sellerId));
+    }
+
+    /** 다른 도메인이 밖에서 받은 셀러 번호를 쓰기 전에 실제로 있는 스토어인지 확인한다. */
+    @Transactional(readOnly = true)
+    public void requireSellerExists(Long sellerId) {
+        if (!sellerRepository.existsById(sellerId)) {
+            throw new CustomException(SellerErrorCode.SELLER_NOT_FOUND);
+        }
+    }
+
+    /** 목록 화면이 셀러마다 조회하지 않도록 여러 스토어를 한 번에 모아 준다. */
+    @Transactional(readOnly = true)
+    public Map<Long, SellerProfileResponse> findShopProfiles(Collection<Long> sellerIds) {
+        if (sellerIds.isEmpty()) {
+            return Map.of();
+        }
+        return sellerRepository.findAllById(sellerIds).stream()
+                .collect(Collectors.toMap(Seller::getId, this::toShopProfile));
+    }
+
+    // 단건과 다건이 같은 규칙으로 스토어를 표시하도록 조립을 한 곳에 둔다.
+    private SellerProfileResponse toShopProfile(Seller seller) {
         return new SellerProfileResponse(
                 seller.getId(), seller.getShopName(), toImageUrl(seller.getShopImageObjectKey()));
     }

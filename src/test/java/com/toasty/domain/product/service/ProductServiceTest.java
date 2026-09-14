@@ -12,6 +12,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
+import com.toasty.domain.product.controller.dto.response.BestProductResponse;
 import com.toasty.domain.product.controller.dto.response.LiveProductResponse;
 import com.toasty.domain.product.controller.dto.response.LiveProductsResponse;
 import com.toasty.domain.product.controller.dto.response.ProductDetailResponse;
@@ -36,6 +37,8 @@ import com.toasty.domain.product.repository.LiveProductRepository;
 import com.toasty.domain.product.repository.ProductImageRepository;
 import com.toasty.domain.product.repository.ProductRepository;
 import com.toasty.domain.product.repository.SellerProductCount;
+import com.toasty.domain.seller.controller.dto.response.SellerProfileResponse;
+import com.toasty.domain.seller.service.SellerService;
 import com.toasty.global.config.S3Properties;
 import com.toasty.global.exception.CustomException;
 import java.util.List;
@@ -62,6 +65,7 @@ class ProductServiceTest {
     private ProductImageRepository productImageRepository;
     private LiveProductRepository liveProductRepository;
     private S3Client s3Client;
+    private SellerService sellerService;
     private ProductService productService;
 
     @BeforeEach
@@ -70,6 +74,7 @@ class ProductServiceTest {
         productImageRepository = mock(ProductImageRepository.class);
         liveProductRepository = mock(LiveProductRepository.class);
         s3Client = mock(S3Client.class);
+        sellerService = mock(SellerService.class);
         productService =
                 new ProductService(
                         productRepository,
@@ -82,7 +87,8 @@ class ProductServiceTest {
                                 "products/pending/",
                                 "products/images/",
                                 300,
-                                "https://cdn.example.com"));
+                                "https://cdn.example.com"),
+                        sellerService);
 
         given(productRepository.save(any(Product.class))).willAnswer(c -> c.getArgument(0));
         given(productImageRepository.save(any(ProductImage.class)))
@@ -921,6 +927,29 @@ class ProductServiceTest {
         }
 
         @Test
+        @DisplayName("열 때마다 조회수를 올린다")
+        void 조회수를_올린다() {
+            Product self = product(PRODUCT_ID, SalesType.GENERAL, 1);
+            givenProduct(self);
+            givenSellerHas(self);
+
+            productService.findProductDetail(PRODUCT_ID);
+
+            verify(productRepository).increaseViewCount(PRODUCT_ID);
+        }
+
+        @Test
+        @DisplayName("열리지 않는 상품은 조회수를 올리지 않는다")
+        void 안_열리면_조회수도_그대로다() {
+            given(productRepository.findByIdAndSalesType(PRODUCT_ID, SalesType.GENERAL))
+                    .willReturn(java.util.Optional.empty());
+
+            assertThatThrownBy(() -> productService.findProductDetail(PRODUCT_ID))
+                    .isInstanceOf(CustomException.class);
+            verify(productRepository, never()).increaseViewCount(any());
+        }
+
+        @Test
         @DisplayName("판매중이 아니면 열리지 않는다")
         void 판매중이_아니면_안_열린다() {
             given(productRepository.findByIdAndSalesType(PRODUCT_ID, SalesType.GENERAL))
@@ -942,6 +971,101 @@ class ProductServiceTest {
                     .isInstanceOf(CustomException.class)
                     .extracting(e -> ((CustomException) e).getErrorCode())
                     .isEqualTo(ProductErrorCode.PRODUCT_NOT_FOUND);
+        }
+    }
+
+    @Nested
+    @DisplayName("홈 베스트 아이템")
+    class FindBestProducts {
+
+        private static final Long OTHER_SELLER_ID = 8L;
+
+        private Product product(Long productId, Long sellerId) {
+            Product product =
+                    Product.createForLive(
+                            sellerId,
+                            new ProductCreateCommand("상품" + productId, 41000, 1, null, "k.jpg"));
+            org.springframework.test.util.ReflectionTestUtils.setField(product, "id", productId);
+            org.springframework.test.util.ReflectionTestUtils.setField(
+                    product, "salesType", SalesType.GENERAL);
+            return product;
+        }
+
+        private void givenFound(Product... products) {
+            given(productRepository.findBySalesTypeOrderByViewCountDescIdDesc(any(), any()))
+                    .willReturn(List.of(products));
+            given(productImageRepository.findByProductIdInOrderByDisplayOrder(any()))
+                    .willReturn(List.of(ProductImage.createMain(1L, "https://cdn/1.jpg")));
+        }
+
+        @Test
+        @DisplayName("판매중인 상품을 조회수 순으로 열 개까지 읽는다")
+        void 판매중_열_개를_읽는다() {
+            givenFound();
+
+            productService.findBestProducts();
+
+            verify(productRepository)
+                    .findBySalesTypeOrderByViewCountDescIdDesc(
+                            eq(SalesType.GENERAL),
+                            eq(org.springframework.data.domain.PageRequest.of(0, 10)));
+        }
+
+        @Test
+        @DisplayName("읽은 순서를 지키고 스토어 이름과 대표 사진을 붙인다")
+        void 스토어_이름과_사진을_붙인다() {
+            givenFound(product(1L, SELLER_ID), product(2L, OTHER_SELLER_ID));
+            given(sellerService.findShopProfiles(any()))
+                    .willReturn(
+                            java.util.Map.of(
+                                    SELLER_ID,
+                                    new SellerProfileResponse(SELLER_ID, "오민", null),
+                                    OTHER_SELLER_ID,
+                                    new SellerProfileResponse(OTHER_SELLER_ID, "if.ing", null)));
+
+            List<BestProductResponse> best = productService.findBestProducts();
+
+            assertThat(best).extracting(BestProductResponse::productId).containsExactly(1L, 2L);
+            assertThat(best)
+                    .extracting(BestProductResponse::shopName)
+                    .containsExactly("오민", "if.ing");
+            assertThat(best.get(0).imageUrl()).isEqualTo("https://cdn/1.jpg");
+            assertThat(best.get(1).imageUrl()).isNull();
+        }
+
+        @Test
+        @DisplayName("같은 스토어 상품이 여러 개여도 스토어는 한 번에 모아 읽는다")
+        void 스토어를_모아_읽는다() {
+            givenFound(
+                    product(1L, SELLER_ID), product(2L, SELLER_ID), product(3L, OTHER_SELLER_ID));
+            given(sellerService.findShopProfiles(any())).willReturn(java.util.Map.of());
+
+            productService.findBestProducts();
+
+            verify(sellerService).findShopProfiles(List.of(SELLER_ID, OTHER_SELLER_ID));
+        }
+
+        @Test
+        @DisplayName("스토어를 못 찾으면 스토어 이름만 비운다")
+        void 스토어가_없으면_이름만_비운다() {
+            givenFound(product(1L, SELLER_ID));
+            given(sellerService.findShopProfiles(any())).willReturn(java.util.Map.of());
+
+            List<BestProductResponse> best = productService.findBestProducts();
+
+            assertThat(best).hasSize(1);
+            assertThat(best.get(0).shopName()).isNull();
+        }
+
+        @Test
+        @DisplayName("판매중인 상품이 없으면 스토어도 사진도 읽지 않는다")
+        void 비어_있으면_아무것도_안_읽는다() {
+            given(productRepository.findBySalesTypeOrderByViewCountDescIdDesc(any(), any()))
+                    .willReturn(List.of());
+
+            assertThat(productService.findBestProducts()).isEmpty();
+            verify(sellerService, never()).findShopProfiles(any());
+            verify(productImageRepository, never()).findByProductIdInOrderByDisplayOrder(any());
         }
     }
 

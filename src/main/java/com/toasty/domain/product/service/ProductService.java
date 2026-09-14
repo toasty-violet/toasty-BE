@@ -1,5 +1,6 @@
 package com.toasty.domain.product.service;
 
+import com.toasty.domain.product.controller.dto.response.BestProductResponse;
 import com.toasty.domain.product.controller.dto.response.LiveProductResponse;
 import com.toasty.domain.product.controller.dto.response.LiveProductsResponse;
 import com.toasty.domain.product.controller.dto.response.ProductDetailResponse;
@@ -28,6 +29,8 @@ import com.toasty.domain.product.repository.ProductImageRepository;
 import com.toasty.domain.product.repository.ProductRepository;
 import com.toasty.domain.product.repository.SellerProductCount;
 import com.toasty.domain.product.repository.StoreProductCount;
+import com.toasty.domain.seller.controller.dto.response.SellerProfileResponse;
+import com.toasty.domain.seller.service.SellerService;
 import com.toasty.global.config.S3Properties;
 import com.toasty.global.exception.CustomException;
 import java.time.LocalDateTime;
@@ -69,11 +72,15 @@ public class ProductService {
     // 상품 상세 아래에 함께 걸어 주는 같은 스토어의 다른 상품 수.
     private static final int OTHER_PRODUCTS_LIMIT = 3;
 
+    // 홈 베스트 아이템에 거는 상품 수.
+    private static final int BEST_PRODUCTS_LIMIT = 10;
+
     private final ProductRepository productRepository;
     private final ProductImageRepository productImageRepository;
     private final LiveProductRepository liveProductRepository;
     private final S3Client s3Client;
     private final S3Properties s3Properties;
+    private final SellerService sellerService;
 
     /** 라이브를 저장하기 전에 사진을 영구 경로로 복사하고 그 키를 보낸 순서대로 돌려준다. */
     // 트랜잭션 밖에서 돌아야 한다. S3 왕복이 상품 수만큼 반복돼 DB 커넥션을 잡고 있으면 안 된다.
@@ -345,12 +352,13 @@ public class ProductService {
 
     /** 구매자가 보는 상품 상세 화면을 채운다. */
     // 스토어 목록과 같은 조건으로 읽어, 목록에 걸리지 않는 상품은 링크를 직접 열어도 없는 상품이 된다.
-    @Transactional(readOnly = true)
+    @Transactional
     public ProductDetailResponse findProductDetail(Long productId) {
         Product product =
                 productRepository
                         .findByIdAndSalesType(productId, SalesType.GENERAL)
                         .orElseThrow(() -> new CustomException(ProductErrorCode.PRODUCT_NOT_FOUND));
+        productRepository.increaseViewCount(productId);
         List<String> imageUrls =
                 productImageRepository.findByProductIdOrderByDisplayOrder(productId).stream()
                         .map(ProductImage::getImageUrl)
@@ -372,6 +380,30 @@ public class ProductService {
                         .limit(OTHER_PRODUCTS_LIMIT)
                         .toList();
         return toCards(others, StoreProductResponse::of);
+    }
+
+    /** 홈 베스트 아이템을 채운다. 스토어와 상관없이 조회수가 높은 판매중 상품이다. */
+    // 스토어 이름은 상품마다 읽지 않고 한 번에 모아 읽는다.
+    @Transactional(readOnly = true)
+    public List<BestProductResponse> findBestProducts() {
+        List<Product> products =
+                productRepository.findBySalesTypeOrderByViewCountDescIdDesc(
+                        SalesType.GENERAL, PageRequest.of(0, BEST_PRODUCTS_LIMIT));
+        if (products.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, SellerProfileResponse> shops =
+                sellerService.findShopProfiles(
+                        products.stream().map(Product::getSellerId).distinct().toList());
+        return toCards(
+                products,
+                (product, imageUrl) ->
+                        BestProductResponse.of(
+                                product, shopNameOf(shops.get(product.getSellerId())), imageUrl));
+    }
+
+    private String shopNameOf(SellerProfileResponse shop) {
+        return shop == null ? null : shop.shopName();
     }
 
     /** 스토어 화면의 상품 그리드를 채운다. 지금 살 수 있는 상품만 담는다. */

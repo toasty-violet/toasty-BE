@@ -89,6 +89,11 @@ public class UserSeeder {
         return MOCK_KAKAO_ID_PREFIX + "seller_" + index;
     }
 
+    /** 다른 시더가 목 판매자를 번호로 훑을 때 쓴다. */
+    static int sellerCount() {
+        return SELLER_SHOP_NAMES.size();
+    }
+
     // 온보딩을 마친 구매자를 만든다. 배송지는 만들지 않는다
     private boolean seedCustomer(MockCustomer mock, int index) {
         String kakaoId = customerKakaoId(index);

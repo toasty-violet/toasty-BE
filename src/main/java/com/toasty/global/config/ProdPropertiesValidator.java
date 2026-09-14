@@ -19,6 +19,7 @@ public class ProdPropertiesValidator {
     private final KakaoProperties kakaoProperties;
     private final S3Properties s3Properties;
     private final AccessTokenProperties accessTokenProperties;
+    private final SolapiProperties solapiProperties;
 
     @PostConstruct
     void validate() {
@@ -29,6 +30,9 @@ public class ProdPropertiesValidator {
         requireInjected("AWS_S3_BUCKET", s3Properties.bucket());
         requireInjected("AWS_S3_PUBLIC_BASE_URL", s3Properties.publicBaseUrl());
         requireInjected("JWT_SECRET", accessTokenProperties.secret());
+        requireInjected("SOLAPI_API_KEY", solapiProperties.apiKey());
+        requireInjected("SOLAPI_API_SECRET", solapiProperties.apiSecret());
+        requireInjected("SOLAPI_SENDER_NUMBER", solapiProperties.senderNumber());
     }
 
     private void requireInjected(String name, List<String> values) {

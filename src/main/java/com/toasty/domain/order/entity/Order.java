@@ -64,8 +64,9 @@ public class Order extends BaseTimeEntity {
     @Column(name = "paid_at", nullable = false)
     private LocalDateTime paidAt;
 
+    @Enumerated(EnumType.STRING)
     @Column(length = 30)
-    private String courier;
+    private Courier courier;
 
     @Column(name = "tracking_number", length = 50)
     private String trackingNumber;
@@ -94,5 +95,22 @@ public class Order extends BaseTimeEntity {
 
     public boolean isOwnedByCustomer(Long customerId) {
         return this.customerId.equals(customerId);
+    }
+
+    /** 화면에 그대로 찍는 택배사 이름. 등록 전이면 null이다. */
+    public String courierName() {
+        return courier == null ? null : courier.displayName();
+    }
+
+    public boolean isShipped() {
+        return status == OrderStatus.SHIPPED;
+    }
+
+    /** 운송장을 달아 발송완료로 넘긴다. */
+    public void ship(Courier courier, String trackingNumber) {
+        this.courier = courier;
+        this.trackingNumber = trackingNumber;
+        this.shippedAt = LocalDateTime.now();
+        this.status = OrderStatus.SHIPPED;
     }
 }

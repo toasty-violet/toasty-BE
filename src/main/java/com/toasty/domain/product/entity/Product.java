@@ -43,6 +43,9 @@ public class Product extends BaseTimeEntity {
     @Column(columnDefinition = "text")
     private String description;
 
+    @Column(name = "view_count", nullable = false)
+    private int viewCount;
+
     private Product(Long sellerId, String name, int price, int stockQuantity, String description) {
         this.sellerId = sellerId;
         this.name = name;

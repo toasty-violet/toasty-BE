@@ -32,6 +32,14 @@ spring:
         # N+1을 in절로 묶어 완화한다.
         default_batch_fetch_size: 100
 
+  # 배송 시작 문자처럼 뒤에서 도는 작업이 배포 재시작에 끊기지 않도록 끝날 때까지 잠깐 기다린다.
+  # docker가 종료 신호 후 10초면 강제로 내리므로 그보다 짧게 둔다.
+  task:
+    execution:
+      shutdown:
+        await-termination: true
+        await-termination-period: 8s
+
   flyway:
     enabled: true
     locations: classpath:db/migration
@@ -86,6 +94,13 @@ point3:
   base-url: https://api.point3.io
   # 프론트가 쓰는 client_id와 다른 값이다. 대시보드 개발정보 관리에서 발급받아 .env에 채운다.
   api-token: ${POINT3_API_TOKEN}
+
+solapi:
+  base-url: https://api.solapi.com
+  # 로컬은 비워두면 문자를 보내지 않고 로그만 남긴다. 배포에서는 ProdPropertiesValidator가 막는다.
+  api-key: ${SOLAPI_API_KEY:}
+  api-secret: ${SOLAPI_API_SECRET:}
+  sender-number: ${SOLAPI_SENDER_NUMBER:}
 
 auth:
   # 만료시간은 30m, 14d 처럼 단위를 붙여 쓴다.

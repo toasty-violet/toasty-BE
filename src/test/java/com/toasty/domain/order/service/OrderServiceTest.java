@@ -8,12 +8,16 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+import com.toasty.domain.order.controller.dto.response.CourierResponse;
 import com.toasty.domain.order.controller.dto.response.CustomerOrderResponse;
 import com.toasty.domain.order.controller.dto.response.CustomerOrdersResponse;
 import com.toasty.domain.order.controller.dto.response.SellerOrderDetailResponse;
 import com.toasty.domain.order.controller.dto.response.SellerOrdersResponse;
+import com.toasty.domain.order.entity.Courier;
 import com.toasty.domain.order.entity.CustomerOrderPageCommand;
 import com.toasty.domain.order.entity.Order;
+import com.toasty.domain.order.entity.OrderShipmentCommand;
+import com.toasty.domain.order.entity.OrderShippedEvent;
 import com.toasty.domain.order.entity.OrderStatus;
 import com.toasty.domain.order.entity.OrderStatusFilter;
 import com.toasty.domain.order.entity.SellerOrderPageCommand;
@@ -29,9 +33,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
-@DisplayName("셀러 주문탭")
+@DisplayName("주문")
 class OrderServiceTest {
 
     private static final Long SELLER_ID = 7L;
@@ -39,13 +44,15 @@ class OrderServiceTest {
 
     private OrderRepository orderRepository;
     private com.toasty.domain.seller.service.SellerService sellerService;
+    private ApplicationEventPublisher eventPublisher;
     private OrderService orderService;
 
     @BeforeEach
     void setUp() {
         orderRepository = mock(OrderRepository.class);
         sellerService = mock(com.toasty.domain.seller.service.SellerService.class);
-        orderService = new OrderService(orderRepository, sellerService);
+        eventPublisher = mock(ApplicationEventPublisher.class);
+        orderService = new OrderService(orderRepository, sellerService, eventPublisher);
     }
 
     // 주문을 만드는 것은 결제 흐름의 몫이라 이 도메인에 팩터리가 없다. 테스트에서만 빈 인스턴스를 세운다.
@@ -303,6 +310,127 @@ class OrderServiceTest {
                     .isInstanceOf(CustomException.class)
                     .extracting(e -> ((CustomException) e).getErrorCode())
                     .isEqualTo(OrderErrorCode.ORDER_NOT_FOUND);
+        }
+    }
+
+    @Nested
+    @DisplayName("운송장 등록")
+    class RegisterShipment {
+
+        private OrderShipmentCommand command(Long orderId, Long sellerId) {
+            return new OrderShipmentCommand(
+                    orderId, sellerId, Courier.CJ_LOGISTICS, "394817503811");
+        }
+
+        @Test
+        @DisplayName("등록하면 발송완료로 넘어가고 운송장이 남는다")
+        void 발송완료로_넘어간다() {
+            Order found = order(31L, SELLER_ID, OrderStatus.SHIPPING_PENDING);
+            given(orderRepository.findForUpdateById(31L)).willReturn(Optional.of(found));
+
+            orderService.registerShipment(command(31L, SELLER_ID));
+
+            assertThat(found.getStatus()).isEqualTo(OrderStatus.SHIPPED);
+            assertThat(found.getCourier()).isEqualTo(Courier.CJ_LOGISTICS);
+            assertThat(found.getTrackingNumber()).isEqualTo("394817503811");
+            assertThat(found.getShippedAt()).isNotNull();
+        }
+
+        @Test
+        @DisplayName("등록하면 받는사람 번호와 운송장을 담아 발송 사실을 알린다")
+        void 발송_사실을_알린다() {
+            given(orderRepository.findForUpdateById(31L))
+                    .willReturn(Optional.of(order(31L, SELLER_ID, OrderStatus.SHIPPING_PENDING)));
+
+            orderService.registerShipment(command(31L, SELLER_ID));
+
+            verify(eventPublisher)
+                    .publishEvent(
+                            new OrderShippedEvent(
+                                    31L,
+                                    "010-2345-6789",
+                                    "아이보리 골지 가디건",
+                                    "CJ 대한통운",
+                                    "394817503811"));
+        }
+
+        @Test
+        @DisplayName("이미 발송완료면 ORDER_ALREADY_SHIPPED다")
+        void 두_번_등록할_수_없다() {
+            Order found = order(31L, SELLER_ID, OrderStatus.SHIPPED);
+            ReflectionTestUtils.setField(found, "courier", Courier.HANJIN);
+            ReflectionTestUtils.setField(found, "trackingNumber", "111111111111");
+            given(orderRepository.findForUpdateById(31L)).willReturn(Optional.of(found));
+
+            assertThatThrownBy(() -> orderService.registerShipment(command(31L, SELLER_ID)))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(OrderErrorCode.ORDER_ALREADY_SHIPPED);
+            assertThat(found.getTrackingNumber()).isEqualTo("111111111111");
+            verify(eventPublisher, never()).publishEvent(any());
+        }
+
+        @Test
+        @DisplayName("남의 주문에는 등록할 수 없다")
+        void 남의_주문은_못_건드린다() {
+            Order found = order(31L, 99L, OrderStatus.SHIPPING_PENDING);
+            given(orderRepository.findForUpdateById(31L)).willReturn(Optional.of(found));
+
+            assertThatThrownBy(() -> orderService.registerShipment(command(31L, SELLER_ID)))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(OrderErrorCode.ORDER_NOT_FOUND);
+            assertThat(found.getStatus()).isEqualTo(OrderStatus.SHIPPING_PENDING);
+            verify(eventPublisher, never()).publishEvent(any());
+        }
+
+        @Test
+        @DisplayName("없는 주문이면 ORDER_NOT_FOUND다")
+        void 없으면_못_등록한다() {
+            given(orderRepository.findForUpdateById(31L)).willReturn(Optional.empty());
+
+            assertThatThrownBy(() -> orderService.registerShipment(command(31L, SELLER_ID)))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(OrderErrorCode.ORDER_NOT_FOUND);
+        }
+
+        @Test
+        @DisplayName("상세는 택배사를 코드가 아니라 이름으로 준다")
+        void 택배사를_이름으로_준다() {
+            Order found = order(31L, SELLER_ID, OrderStatus.SHIPPING_PENDING);
+            given(orderRepository.findForUpdateById(31L)).willReturn(Optional.of(found));
+            given(orderRepository.findById(31L)).willReturn(Optional.of(found));
+            orderService.registerShipment(command(31L, SELLER_ID));
+
+            SellerOrderDetailResponse detail = orderService.findSellerOrder(31L, SELLER_ID);
+
+            assertThat(detail.courierName()).isEqualTo("CJ 대한통운");
+            assertThat(detail.trackingNumber()).isEqualTo("394817503811");
+        }
+
+        @Test
+        @DisplayName("배송대기 주문의 택배사 자리는 비어 있다")
+        void 등록_전에는_비어_있다() {
+            given(orderRepository.findById(31L))
+                    .willReturn(Optional.of(order(31L, SELLER_ID, OrderStatus.SHIPPING_PENDING)));
+
+            SellerOrderDetailResponse detail = orderService.findSellerOrder(31L, SELLER_ID);
+
+            assertThat(detail.courierName()).isNull();
+            assertThat(detail.trackingNumber()).isNull();
+        }
+
+        @Test
+        @DisplayName("택배사 목록은 등록에 넣을 코드와 화면에 쓸 이름을 함께 준다")
+        void 택배사_목록을_준다() {
+            List<CourierResponse> couriers = orderService.findCouriers();
+
+            assertThat(couriers).hasSize(Courier.values().length);
+            assertThat(couriers)
+                    .extracting(CourierResponse::code)
+                    .containsExactly("CJ_LOGISTICS", "HANJIN", "LOTTE", "LOGEN", "POST_OFFICE");
+            assertThat(couriers.get(0).name()).isEqualTo("CJ 대한통운");
         }
     }
 }

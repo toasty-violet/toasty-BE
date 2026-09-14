@@ -29,6 +29,11 @@ public interface FollowRepository extends JpaRepository<Follow, Long> {
                     + " order by count(f) desc, f.sellerId desc")
     List<FollowerCount> findSellerIdsOrderByFollowerCountDesc(Pageable pageable);
 
+    /** 구매자가 팔로우 중인 스토어 목록. 최근 팔로우한 순으로 준다. */
+    // 구매자로 걸러내기는 (customer_id, seller_id) 유니크 인덱스가 받고, 최근 순은 id로 맞춘다.
+    @Query("select f.sellerId from Follow f where f.customerId = :customerId order by f.id desc")
+    List<Long> findFollowingSellerIds(@Param("customerId") Long customerId, Pageable pageable);
+
     /** 목록 화면이 스토어마다 조회하지 않도록 요청한 유저가 팔로우 중인 스토어를 한 번에 가려낸다. */
     @Query(
             "select f.sellerId from Follow f"

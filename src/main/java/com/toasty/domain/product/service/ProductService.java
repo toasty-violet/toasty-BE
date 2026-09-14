@@ -75,6 +75,9 @@ public class ProductService {
     // 홈 베스트 아이템에 거는 상품 수.
     private static final int BEST_PRODUCTS_LIMIT = 10;
 
+    // 스토어 카드에 미리 걸어 주는 상품 수.
+    private static final int STORE_PREVIEW_PRODUCTS_LIMIT = 3;
+
     private final ProductRepository productRepository;
     private final ProductImageRepository productImageRepository;
     private final LiveProductRepository liveProductRepository;
@@ -420,6 +423,38 @@ public class ProductService {
                 toCards(page.products(), StoreProductResponse::of),
                 page.nextCursor(),
                 page.hasNext());
+    }
+
+    /** 스토어 카드에 미리 걸어 줄 상품을 스토어별로 모은다. 판매중 상품이 없는 스토어는 결과에 담기지 않는다. */
+    // 스토어 그리드와 같은 조건으로 최신순 몇 개만 읽는다. 사진은 스토어를 다 읽고 한 번에 모아 붙인다.
+    // 스토어마다 한 번씩 읽으므로 스토어가 몇 개로 정해진 화면에만 쓴다.
+    @Transactional(readOnly = true)
+    public Map<Long, List<StoreProductResponse>> findStoreProductPreviews(
+            Collection<Long> sellerIds) {
+        List<Product> products = new ArrayList<>();
+        for (Long sellerId : sellerIds) {
+            products.addAll(
+                    productRepository.findBySellerIdAndSalesTypeAndIdLessThanOrderByIdDesc(
+                            sellerId,
+                            SalesType.GENERAL,
+                            FIRST_PAGE_CURSOR,
+                            PageRequest.of(0, STORE_PREVIEW_PRODUCTS_LIMIT)));
+        }
+        if (products.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, String> mainImageUrls =
+                findMainImageUrls(products.stream().map(Product::getId).toList());
+        return products.stream()
+                .collect(
+                        Collectors.groupingBy(
+                                Product::getSellerId,
+                                Collectors.mapping(
+                                        product ->
+                                                StoreProductResponse.of(
+                                                        product,
+                                                        mainImageUrls.get(product.getId())),
+                                        Collectors.toList())));
     }
 
     private record CursorPage(List<Product> products, Long nextCursor, boolean hasNext) {}

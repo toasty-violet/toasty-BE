@@ -17,17 +17,21 @@ public record HomeLiveResponse(
         @Schema(description = "방송 예정 시각. 예정 카드의 배지에 쓴다") LocalDateTime scheduledAt,
         @Schema(description = "IVS Player SDK에 넘길 재생 URL. 방송 중 카드의 썸네일 자동 재생에 쓴다")
                 String playbackUrl,
+        @Schema(description = "카드 배경으로 쓸 썸네일 주소. 방송 전에는 비어 있다") String thumbnailUrl,
         @Schema(description = "시청자 수. 방송 중이 아니면 0") int viewerCount,
-        @Schema(description = "방송을 진행하는 셀러") SellerProfileResponse seller) {
+        @Schema(description = "방송을 진행하는 셀러") SellerProfileResponse seller,
+        @Schema(description = "요청한 유저가 이 스토어를 팔로우 중인지. 비로그인이면 항상 false") boolean following) {
 
-    public static HomeLiveResponse of(Live live, SellerProfileResponse seller) {
+    public static HomeLiveResponse of(Live live, SellerProfileResponse seller, boolean following) {
         return new HomeLiveResponse(
                 live.getPublicId(),
                 live.getStatus(),
                 live.getTitle(),
                 live.getScheduledAt(),
                 live.getPlaybackUrl(),
+                live.getThumbnailUrl(),
                 live.getViewerCount(),
-                seller);
+                seller,
+                following);
     }
 }

@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -56,4 +57,13 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     List<StoreProductCount> countBySellerIdInAndSalesType(
             @Param("sellerIds") Collection<Long> sellerIds,
             @Param("salesType") SalesType salesType);
+
+    /** 홈 베스트 아이템. 조회수가 같으면 최신 상품이 앞선다. */
+    List<Product> findBySalesTypeOrderByViewCountDescIdDesc(SalesType salesType, Pageable pageable);
+
+    /** 상품 상세를 연 만큼 조회수를 올린다. */
+    // 읽어서 더하면 동시에 연 요청끼리 덮어써 조회수가 빠진다.
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("update Product p set p.viewCount = p.viewCount + 1 where p.id = :productId")
+    void increaseViewCount(@Param("productId") Long productId);
 }

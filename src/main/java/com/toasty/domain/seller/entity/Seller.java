@@ -63,6 +63,33 @@ public class Seller extends BaseTimeEntity {
     @Column(name = "account_number", length = 30)
     private String accountNumber;
 
+    // 기본 배송비
+    @Column(name = "base_shipping_fee", nullable = false)
+    private int baseShippingFee;
+
+    // 이 금액 이상 사면 배송비를 받지 않는다. 0이면 무료배송 기준이 없다
+    @Column(name = "free_shipping_threshold", nullable = false)
+    private int freeShippingThreshold;
+
+    // 도서 산간 지역에 기본 배송비와 별도로 더 받는 금액
+    @Column(name = "remote_area_shipping_fee", nullable = false)
+    private int remoteAreaShippingFee;
+
+    // 누적 판매 건수
+    // TODO: 주문 도메인이 생기면 주문 확정 시점에 갱신한다
+    @Column(name = "total_sales_count", nullable = false)
+    private int totalSalesCount;
+
+    // 이 스토어에서 한 번이라도 산 구매자 수
+    // TODO: 주문 도메인이 생기면 주문 확정 시점에 갱신한다
+    @Column(name = "total_buyer_count", nullable = false)
+    private int totalBuyerCount;
+
+    // 누적 판매액. 원 단위 합계라 int 상한을 넘길 수 있어 long으로 둔다
+    // TODO: 주문 도메인이 생기면 주문 확정 시점에 갱신한다
+    @Column(name = "total_sales_amount", nullable = false)
+    private long totalSalesAmount;
+
     private Seller(
             Long userId,
             String shopName,
@@ -96,6 +123,23 @@ public class Seller extends BaseTimeEntity {
                 command.businessNumber(),
                 command.bank(),
                 command.accountNumber());
+    }
+
+    /** 스토어 정보 수정으로 상점명과 대표 이미지, 소개와 배송비를 바꾼다. */
+    // 판매 내역은 주문이 쌓여 만들어지는 값이라 여기서 건드리지 않는다.
+    public void updateShop(
+            String shopName,
+            String shopImageObjectKey,
+            String description,
+            int baseShippingFee,
+            int freeShippingThreshold,
+            int remoteAreaShippingFee) {
+        this.shopName = shopName;
+        this.shopImageObjectKey = shopImageObjectKey;
+        this.description = description;
+        this.baseShippingFee = baseShippingFee;
+        this.freeShippingThreshold = freeShippingThreshold;
+        this.remoteAreaShippingFee = remoteAreaShippingFee;
     }
 
     /**

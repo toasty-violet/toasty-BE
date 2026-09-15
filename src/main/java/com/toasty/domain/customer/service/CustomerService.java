@@ -57,6 +57,12 @@ public class CustomerService {
         return findCustomer(customerId).getNickname();
     }
 
+    /** 다른 도메인이 결제창 인증 URL에 실어 보낼 결제자 식별자를 읽는다. 계좌 등록 전 구매자는 값이 없다. */
+    @Transactional(readOnly = true)
+    public String findPayerId(Long customerId) {
+        return findCustomer(customerId).getPayerId();
+    }
+
     /** 주문이 복사할 받는사람과 기본 배송지를 모은다. 주문 시점 값이라 나중에 바뀌어도 주문에는 그대로 남는다. */
     @Transactional(readOnly = true)
     public ShippingDestination findShippingDestination(Long customerId) {

@@ -174,9 +174,13 @@ public class OrderService {
      * 주문하기. 재고를 먼저 선점해 주문을 만들고, 그 주문에 결제 세션을 붙여 결제창을 열 수 있게 한다.
      *
      * <p>재고가 모자라면 결제창을 열기 전에 거절한다. 재고가 2개인 상품을 3명이 동시에 사면 마지막 한 명은 여기서 실패한다.
+     *
+     * <p>payerId는 프론트가 결제창 인증 URL에 실어 보낸다. point3 세션 생성 본문은 이 값을 받지 않는다.
      */
     // point3를 호출하므로 트랜잭션 밖에서 쓴다. 세션을 만들지 못하면 주문을 결제실패로 남기고 재고를 되돌린다.
     public OrderCreateResponse createOrder(OrderCreateCommand command) {
+        // 재고를 잡기 전에 읽어 둔다. 여기서 실패하면 되돌릴 선점이 없다.
+        String payerId = customerService.findPayerId(command.customerId());
         ReservedProduct product =
                 productService.reserveForOrder(command.productId(), command.quantity());
         Order order = savePendingOrder(command, product);
@@ -191,7 +195,11 @@ public class OrderService {
             transactionTemplate.executeWithoutResult(
                     status -> readOrder(order.getId()).linkSession(sessionId));
             return new OrderCreateResponse(
-                    order.getId(), order.getOrderNumber(), sessionId, order.getTotalAmount());
+                    order.getId(),
+                    order.getOrderNumber(),
+                    sessionId,
+                    order.getTotalAmount(),
+                    payerId);
         } catch (RuntimeException e) {
             failPayment(order.getId(), SESSION_CREATE_FAILED_REASON);
             throw e;

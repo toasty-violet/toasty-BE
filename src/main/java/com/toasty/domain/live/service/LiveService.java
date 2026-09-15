@@ -2,6 +2,7 @@ package com.toasty.domain.live.service;
 
 import com.toasty.domain.auth.entity.AuthUser;
 import com.toasty.domain.customer.service.CustomerService;
+import com.toasty.domain.follow.service.FollowService;
 import com.toasty.domain.live.client.LiveChatClient;
 import com.toasty.domain.live.client.LiveStreamingClient;
 import com.toasty.domain.live.client.dto.ChatRole;
@@ -39,6 +40,7 @@ import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import lombok.RequiredArgsConstructor;
@@ -81,6 +83,7 @@ public class LiveService {
     private final ProductService productService;
     private final SellerService sellerService;
     private final CustomerService customerService;
+    private final FollowService followService;
     private final TransactionTemplate transactionTemplate;
 
     // 라이브별로 송출이 연속 몇 번 끊겨 있었는지. 서버가 한 대라 메모리에 둔다.
@@ -435,9 +438,9 @@ public class LiveService {
     }
 
     /** 홈 화면의 라이브 섹션을 채운다. */
-    // 셀러 정보는 라이브마다 조회하지 않고 한 번에 모아 읽는다.
+    // 셀러 정보와 팔로우 여부는 라이브마다 조회하지 않고 각각 한 번에 모아 읽는다.
     @Transactional(readOnly = true)
-    public List<HomeLiveResponse> findHomeLives() {
+    public List<HomeLiveResponse> findHomeLives(Long customerId) {
         List<Live> lives = new ArrayList<>(broadcastingForHome());
         if (lives.size() < HOME_LIVE_LIMIT) {
             lives.addAll(scheduledForHome(HOME_LIVE_LIMIT - lives.size()));
@@ -445,11 +448,18 @@ public class LiveService {
         if (lives.isEmpty()) {
             return List.of();
         }
-        Map<Long, SellerProfileResponse> sellers =
-                sellerService.findShopProfiles(
-                        lives.stream().map(Live::getSellerId).distinct().toList());
+        List<Long> sellerIds = lives.stream().map(Live::getSellerId).distinct().toList();
+
+        Map<Long, SellerProfileResponse> sellers = sellerService.findShopProfiles(sellerIds);
+        Set<Long> followed = followService.findFollowedSellerIds(customerId, sellerIds);
+
         return lives.stream()
-                .map(live -> HomeLiveResponse.of(live, sellers.get(live.getSellerId())))
+                .map(
+                        live ->
+                                HomeLiveResponse.of(
+                                        live,
+                                        sellers.get(live.getSellerId()),
+                                        followed.contains(live.getSellerId())))
                 .toList();
     }
 

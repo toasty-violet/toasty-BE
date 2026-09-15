@@ -62,6 +62,10 @@ public class Live extends BaseTimeEntity {
     @Column(name = "viewer_count", nullable = false)
     private int viewerCount;
 
+    // 홈 카드의 배경으로 쓴다. 방송 전에는 찍어둘 화면이 없어 비어 있다.
+    @Column(name = "thumbnail_url", length = 500)
+    private String thumbnailUrl;
+
     // 라이브마다 IVS Chat 방을 하나 둔다. 이 기능 이전에 만들어진 라이브에는 없어 null이다.
     @Column(name = "ivs_chat_room_arn", length = 200)
     private String ivsChatRoomArn;
@@ -162,6 +166,11 @@ public class Live extends BaseTimeEntity {
     /** 배치가 읽어온 시청자 수를 반영한다. */
     public void updateViewerCount(int viewerCount) {
         this.viewerCount = viewerCount;
+    }
+
+    /** 방송 화면에서 딴 썸네일을 최신 것으로 바꾼다. */
+    public void updateThumbnailUrl(String thumbnailUrl) {
+        this.thumbnailUrl = thumbnailUrl;
     }
 
     /** 채팅방을 회수한 뒤 자리를 비운다. */

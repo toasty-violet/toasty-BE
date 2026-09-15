@@ -300,6 +300,12 @@ public class ProductService {
                                 LiveProductCount::getLiveId, LiveProductCount::getProductCount));
     }
 
+    /** 라이브에 편성된 상품에 지금 남아 있는 재고 합. 판매율의 분모를 구하는 데 쓴다. */
+    @Transactional(readOnly = true)
+    public long sumScheduledStock(Long liveId) {
+        return liveProductRepository.sumScheduledStock(liveId);
+    }
+
     /** 스토어별 상품 수를 한 번에 센다. 상품이 하나도 없는 스토어는 결과에 담기지 않는다. */
     // 스토어 화면 그리드가 판매중만 보여줘서 카드 숫자도 같은 기준으로 센다.
     @Transactional(readOnly = true)

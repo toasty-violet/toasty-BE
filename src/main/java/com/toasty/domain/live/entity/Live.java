@@ -62,6 +62,10 @@ public class Live extends BaseTimeEntity {
     @Column(name = "viewer_count", nullable = false)
     private int viewerCount;
 
+    // 방송이 끝나면 viewerCount가 0으로 돌아가, 지난 방송 집계에 쓸 최고 기록을 따로 남긴다.
+    @Column(name = "peak_viewer_count", nullable = false)
+    private int peakViewerCount;
+
     // 홈 카드의 배경으로 쓴다. 방송 전에는 찍어둘 화면이 없어 비어 있다.
     @Column(name = "thumbnail_url", length = 500)
     private String thumbnailUrl;
@@ -163,9 +167,10 @@ public class Live extends BaseTimeEntity {
         this.activeSellerId = sellerId;
     }
 
-    /** 배치가 읽어온 시청자 수를 반영한다. */
+    /** 배치가 읽어온 시청자 수를 반영한다. 최고 기록은 방송이 끝난 뒤에도 남는다. */
     public void updateViewerCount(int viewerCount) {
         this.viewerCount = viewerCount;
+        this.peakViewerCount = Math.max(this.peakViewerCount, viewerCount);
     }
 
     /** 방송 화면에서 딴 썸네일을 최신 것으로 바꾼다. */

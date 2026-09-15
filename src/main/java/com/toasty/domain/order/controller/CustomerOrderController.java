@@ -39,7 +39,8 @@ public class CustomerOrderController {
                     "상품 번호와 수량만 보내면 서버가 상품 가격과 스토어 배송비로 결제금액을 계산해 주문을 만듭니다."
                             + " 배송지는 내 기본 배송지를 주문 시점 값으로 복사합니다. 이 시점에 재고를 선점하므로,"
                             + " 남은 재고보다 많이 주문하면 결제창을 열기 전에 409로 거절됩니다. 응답의 sessionId로"
-                            + " 결제창을 열고, 결제창이 POINT3_CAPTURE_READY를 보내면 결제 승인 API를 부르세요.")
+                            + " 결제창을 열고, 결제창이 POINT3_CAPTURE_READY를 보내면 결제 승인 API를 부르세요."
+                            + " 라이브 시청 화면에서 구매하면 liveId를 함께 보내세요. 셀러 라이브탭의 방송별 판매 집계에 쓰입니다.")
     @CustomerOnly
     @PostMapping
     public ApiResponse<OrderCreateResponse> createOrder(

@@ -3,6 +3,7 @@ package com.toasty.domain.seller.service;
 import com.toasty.domain.follow.service.FollowService;
 import com.toasty.domain.product.service.ProductService;
 import com.toasty.domain.seller.controller.dto.response.ShopResponse;
+import com.toasty.domain.seller.controller.dto.response.StoreResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,5 +25,15 @@ public class SellerShopService {
                 sellerService.findMyShopDetail(sellerId),
                 followService.countFollowers(sellerId),
                 productService.countBySeller(sellerId));
+    }
+
+    /** 구매자가 보는 스토어 화면의 머리말을 채운다. */
+    @Transactional(readOnly = true)
+    public StoreResponse findStore(Long sellerId, Long customerId) {
+        return StoreResponse.of(
+                sellerService.findStoreDetail(sellerId),
+                followService.countFollowers(sellerId),
+                productService.countBySeller(sellerId),
+                followService.isFollowing(customerId, sellerId));
     }
 }

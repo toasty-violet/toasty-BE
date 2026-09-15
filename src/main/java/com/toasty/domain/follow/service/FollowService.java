@@ -120,6 +120,16 @@ public class FollowService {
         return followRepository.countBySellerId(sellerId);
     }
 
+    /** 다른 도메인이 목록 화면에서 카드마다 팔로우 버튼의 초기 상태를 채울 때 쓴다. */
+    // 비로그인 유저와 판매자 계정은 customerId가 없어 팔로우한 스토어를 조회하지 않는다.
+    @Transactional(readOnly = true)
+    public Set<Long> findFollowedSellerIds(Long customerId, List<Long> sellerIds) {
+        if (customerId == null || sellerIds.isEmpty()) {
+            return Set.of();
+        }
+        return Set.copyOf(followRepository.findFollowedSellerIds(customerId, sellerIds));
+    }
+
     /** 구매자가 탈퇴할 때 그가 판매자를 팔로우한 관계를 모두 지운다. */
     @Transactional
     public void deleteByCustomerId(Long customerId) {
@@ -130,14 +140,6 @@ public class FollowService {
     @Transactional
     public void deleteBySellerId(Long sellerId) {
         followRepository.deleteAllBySellerId(sellerId);
-    }
-
-    // 비로그인 유저와 판매자 계정은 customerId가 없어 팔로우한 스토어를 조회하지 않는다.
-    private Set<Long> findFollowedSellerIds(Long customerId, List<Long> sellerIds) {
-        if (customerId == null) {
-            return Set.of();
-        }
-        return Set.copyOf(followRepository.findFollowedSellerIds(customerId, sellerIds));
     }
 
     // 팔로우 버튼을 연타하면 검사와 저장 사이에 같은 쌍이 먼저 들어갈 수 있다.

@@ -207,10 +207,11 @@ public class LiveController {
                             + " 방송 중인 라이브가 시청자 많은 순으로 먼저 오고, 그 뒤에 방송 예정이 임박한 순으로"
                             + " 붙어 최대 5개를 내려줍니다. 방송 중 카드는 playbackUrl로 썸네일을 자동 재생하고,"
                             + " 예정 카드는 scheduledAt을 배지에 띄우면 됩니다. 시각이 지났는데 시작하지 않은"
-                            + " 예정은 담기지 않습니다.")
+                            + " 예정은 담기지 않습니다. 카드마다 팔로우 버튼의 초기 상태로 쓸 following이 함께"
+                            + " 오며, 토큰을 보내지 않았거나 구매자가 아니면 항상 false입니다.")
     @GetMapping("/public")
-    public ApiResponse<List<HomeLiveResponse>> findHomeLives() {
-        return ApiResponse.ok(liveService.findHomeLives());
+    public ApiResponse<List<HomeLiveResponse>> findHomeLives(@LoginUser AuthUser user) {
+        return ApiResponse.ok(liveService.findHomeLives(user == null ? null : user.customerId()));
     }
 
     @Operation(

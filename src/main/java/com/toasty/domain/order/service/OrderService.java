@@ -12,6 +12,7 @@ import com.toasty.domain.order.entity.Courier;
 import com.toasty.domain.order.entity.CustomerOrderPageCommand;
 import com.toasty.domain.order.entity.Order;
 import com.toasty.domain.order.entity.OrderShipmentCommand;
+import com.toasty.domain.order.entity.OrderShippedEvent;
 import com.toasty.domain.order.entity.OrderStatus;
 import com.toasty.domain.order.entity.SellerOrderPageCommand;
 import com.toasty.domain.order.exception.OrderErrorCode;
@@ -22,13 +23,15 @@ import com.toasty.global.exception.CustomException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** 셀러와 구매자가 주문을 훑고, 셀러가 운송장을 등록한다. */
+/** 셀러와 구매자가 주문을 훑고, 셀러가 운송장을 등록하면 배송 시작을 알린다. */
 @Service
 @RequiredArgsConstructor
 public class OrderService {
@@ -41,6 +44,7 @@ public class OrderService {
 
     private final OrderRepository orderRepository;
     private final SellerService sellerService;
+    private final ApplicationEventPublisher eventPublisher;
 
     /** 셀러 주문탭 한 묶음을 채운다. */
     // 건수는 스크롤 중에 바뀌지 않아 첫 요청에서만 센다.
@@ -139,18 +143,23 @@ public class OrderService {
     /** 셀러가 운송장을 등록해 주문을 발송완료로 넘긴다. */
     @Transactional
     public void registerShipment(OrderShipmentCommand command) {
-        Order order = requireSellerOrder(command.orderId(), command.sellerId());
+        Order order =
+                ownedBySeller(
+                        orderRepository.findForUpdateById(command.orderId()), command.sellerId());
         if (order.isShipped()) {
             throw new CustomException(OrderErrorCode.ORDER_ALREADY_SHIPPED);
         }
         order.ship(command.courier(), command.trackingNumber());
+        eventPublisher.publishEvent(OrderShippedEvent.from(order));
+    }
+
+    private Order requireSellerOrder(Long orderId, Long sellerId) {
+        return ownedBySeller(orderRepository.findById(orderId), sellerId);
     }
 
     // 남의 주문 번호로는 통과할 수 없다.
-    private Order requireSellerOrder(Long orderId, Long sellerId) {
-        return orderRepository
-                .findById(orderId)
-                .filter(found -> found.isOwnedBySeller(sellerId))
+    private Order ownedBySeller(Optional<Order> found, Long sellerId) {
+        return found.filter(order -> order.isOwnedBySeller(sellerId))
                 .orElseThrow(() -> new CustomException(OrderErrorCode.ORDER_NOT_FOUND));
     }
 

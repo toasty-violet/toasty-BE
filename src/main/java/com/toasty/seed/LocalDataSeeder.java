@@ -16,6 +16,7 @@ public class LocalDataSeeder implements ApplicationRunner {
 
     private final UserSeeder userSeeder;
     private final FollowSeeder followSeeder;
+    private final LiveSeeder liveSeeder;
     private final ProductSeeder productSeeder;
 
     @Override
@@ -23,9 +24,10 @@ public class LocalDataSeeder implements ApplicationRunner {
         log.info("로컬 목데이터 시딩 시작");
         // 시더의 트랜잭션 경계 밖이라, 시딩만 롤백되고 기동은 이어진다
         try {
-            // 팔로우와 상품은 목 유저에 붙으므로 유저 시딩이 끝난 뒤에 돈다
+            // 팔로우·라이브·상품은 목 유저에 붙으므로 유저 시딩이 끝난 뒤에 돈다
             userSeeder.seed();
             followSeeder.seed();
+            liveSeeder.seed();
             productSeeder.seed();
         } catch (Exception e) {
             log.warn("로컬 목데이터 시딩 실패 — 목데이터 없이 기동을 계속한다", e);

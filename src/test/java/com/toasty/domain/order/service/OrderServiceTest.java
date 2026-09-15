@@ -8,6 +8,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+import com.toasty.domain.customer.service.CustomerService;
 import com.toasty.domain.order.controller.dto.response.CourierResponse;
 import com.toasty.domain.order.controller.dto.response.CustomerOrderResponse;
 import com.toasty.domain.order.controller.dto.response.CustomerOrdersResponse;
@@ -24,6 +25,8 @@ import com.toasty.domain.order.entity.SellerOrderPageCommand;
 import com.toasty.domain.order.exception.OrderErrorCode;
 import com.toasty.domain.order.repository.OrderRepository;
 import com.toasty.domain.order.repository.OrderStatusCount;
+import com.toasty.domain.payment.service.PaymentService;
+import com.toasty.domain.product.service.ProductService;
 import com.toasty.global.exception.CustomException;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -35,6 +38,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @DisplayName("주문")
 class OrderServiceTest {
@@ -52,10 +56,18 @@ class OrderServiceTest {
         orderRepository = mock(OrderRepository.class);
         sellerService = mock(com.toasty.domain.seller.service.SellerService.class);
         eventPublisher = mock(ApplicationEventPublisher.class);
-        orderService = new OrderService(orderRepository, sellerService, eventPublisher);
+        orderService =
+                new OrderService(
+                        orderRepository,
+                        sellerService,
+                        mock(ProductService.class),
+                        mock(CustomerService.class),
+                        mock(PaymentService.class),
+                        mock(TransactionTemplate.class),
+                        eventPublisher);
     }
 
-    // 주문을 만드는 것은 결제 흐름의 몫이라 이 도메인에 팩터리가 없다. 테스트에서만 빈 인스턴스를 세운다.
+    // 조회와 운송장 등록만 확인하므로 주문은 저장된 상태를 세워 쓴다.
     private Order order(Long orderId, Long sellerId, OrderStatus status) {
         Order order = org.springframework.beans.BeanUtils.instantiateClass(Order.class);
         ReflectionTestUtils.setField(order, "id", orderId);

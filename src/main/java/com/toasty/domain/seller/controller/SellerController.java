@@ -10,6 +10,7 @@ import com.toasty.domain.seller.controller.dto.response.ShopImageUploadUrlRespon
 import com.toasty.domain.seller.controller.dto.response.ShopNameSearchResponse;
 import com.toasty.domain.seller.controller.dto.response.ShopNameSuggestionResponse;
 import com.toasty.domain.seller.controller.dto.response.ShopResponse;
+import com.toasty.domain.seller.controller.dto.response.StoreResponse;
 import com.toasty.domain.seller.service.SellerService;
 import com.toasty.domain.seller.service.SellerShopImageService;
 import com.toasty.domain.seller.service.SellerShopService;
@@ -22,6 +23,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -106,6 +108,23 @@ public class SellerController {
     @GetMapping("/shop-name/suggestion")
     public ApiResponse<ShopNameSuggestionResponse> suggestShopName() {
         return ApiResponse.ok(sellerService.suggestShopName());
+    }
+
+    @Operation(
+            summary = "스토어 정보 조회",
+            description =
+                    """
+                    구매자가 보는 스토어 화면의 머리말을 채웁니다. 인증이 필요 없어 비로그인 유저도 호출할 수 있습니다.
+                    팔로우 버튼의 초기 상태로 쓸 following이 함께 오며, 토큰을 보내지 않았거나 구매자가 아니면 항상 false입니다.
+                    상품 수는 품절과 라이브에서 팔 상품까지 포함한 등록 상품 전체라, 아래 상품 그리드에 보이는 개수와 다를 수 있습니다.
+                    그리드는 스토어 상품 목록 조회로 따로 받습니다.
+                    """)
+    @GetMapping("/{sellerId}")
+    public ApiResponse<StoreResponse> findStore(
+            @Parameter(description = "조회할 스토어의 셀러 번호", required = true) @PathVariable Long sellerId,
+            @LoginUser AuthUser user) {
+        return ApiResponse.ok(
+                sellerShopService.findStore(sellerId, user == null ? null : user.customerId()));
     }
 
     @Operation(

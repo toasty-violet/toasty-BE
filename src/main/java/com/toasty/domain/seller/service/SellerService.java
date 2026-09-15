@@ -6,6 +6,7 @@ import com.toasty.domain.seller.controller.dto.response.ShopNameSearchResponse;
 import com.toasty.domain.seller.controller.dto.response.ShopNameSuggestionResponse;
 import com.toasty.domain.seller.controller.dto.response.ShopSalesSummaryResponse;
 import com.toasty.domain.seller.controller.dto.response.ShopShippingFeeResponse;
+import com.toasty.domain.seller.controller.dto.response.StoreDetailResponse;
 import com.toasty.domain.seller.entity.Seller;
 import com.toasty.domain.seller.entity.SellerOnboardingCommand;
 import com.toasty.domain.seller.entity.ShopUpdateCommand;
@@ -130,6 +131,18 @@ public class SellerService {
                         seller.getBaseShippingFee(),
                         seller.getFreeShippingThreshold(),
                         seller.getRemoteAreaShippingFee()));
+    }
+
+    /** 구매자가 보는 스토어 화면에서 판매자 행이 들고 있는 값을 꺼낸다. */
+    // 판매 내역과 배송비 정책, 대표자 실명은 판매자 본인만 보는 값이라 내보내지 않는다.
+    @Transactional(readOnly = true)
+    public StoreDetailResponse findStoreDetail(Long sellerId) {
+        Seller seller = findSeller(sellerId);
+        return new StoreDetailResponse(
+                seller.getId(),
+                toImageUrl(seller.getShopImageObjectKey()),
+                seller.getShopName(),
+                seller.getDescription());
     }
 
     /** 판매자가 스토어 정보를 고친다. 보낸 값이 그대로 저장된다. */

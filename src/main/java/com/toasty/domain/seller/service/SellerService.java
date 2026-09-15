@@ -22,6 +22,7 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -94,6 +95,14 @@ public class SellerService {
         }
         return sellerRepository.findAllById(sellerIds).stream()
                 .collect(Collectors.toMap(Seller::getId, this::toShopProfile));
+    }
+
+    /** 다른 도메인이 보여줄 스토어를 고르지 못했을 때 화면을 채울 기본 목록. 먼저 만들어진 순으로 준다. */
+    @Transactional(readOnly = true)
+    public List<SellerProfileResponse> findEarliestShopProfiles(int limit) {
+        return sellerRepository.findAllByOrderByIdAsc(PageRequest.of(0, limit)).stream()
+                .map(this::toShopProfile)
+                .toList();
     }
 
     // 단건과 다건이 같은 규칙으로 스토어를 표시하도록 조립을 한 곳에 둔다.

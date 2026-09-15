@@ -56,6 +56,7 @@ class LiveServiceTest {
     private com.toasty.domain.seller.service.SellerService sellerService;
     private com.toasty.domain.customer.service.CustomerService customerService;
     private com.toasty.domain.follow.service.FollowService followService;
+    private com.toasty.domain.order.service.OrderService orderService;
     private org.springframework.transaction.support.TransactionTemplate transactionTemplate;
     private LiveService liveService;
 
@@ -68,6 +69,9 @@ class LiveServiceTest {
         sellerService = mock(com.toasty.domain.seller.service.SellerService.class);
         customerService = mock(com.toasty.domain.customer.service.CustomerService.class);
         followService = mock(com.toasty.domain.follow.service.FollowService.class);
+        orderService = mock(com.toasty.domain.order.service.OrderService.class);
+        given(orderService.findLiveSalesStat(any(), any()))
+                .willReturn(com.toasty.domain.order.entity.LiveSalesStat.empty());
         transactionTemplate = passthroughTransaction();
         liveService =
                 new LiveService(
@@ -77,6 +81,7 @@ class LiveServiceTest {
                         productService,
                         sellerService,
                         customerService,
+                        orderService,
                         followService,
                         transactionTemplate);
     }
@@ -387,6 +392,7 @@ class LiveServiceTest {
                             productService,
                             sellerService,
                             customerService,
+                            orderService,
                             followService,
                             passthroughTransaction());
 

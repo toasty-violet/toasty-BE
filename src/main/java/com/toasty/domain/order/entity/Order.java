@@ -46,6 +46,10 @@ public class Order extends BaseTimeEntity {
     @Column(name = "seller_id", nullable = false)
     private Long sellerId;
 
+    // 라이브 시청 화면에서 산 주문만 방송 번호를 남긴다. 스토어나 상품 상세에서 산 주문은 null이다.
+    @Column(name = "live_id")
+    private Long liveId;
+
     // 선점한 재고를 되돌릴 상품. 상품이 지워질 수 있어 외래키는 걸지 않는다
     @Column(name = "product_id")
     private Long productId;
@@ -119,6 +123,7 @@ public class Order extends BaseTimeEntity {
         this.orderNumber = orderNumber;
         this.customerId = command.customerId();
         this.sellerId = product.sellerId();
+        this.liveId = command.liveId();
         this.productId = product.productId();
         this.productName = product.name();
         this.productImageUrl = product.imageUrl();

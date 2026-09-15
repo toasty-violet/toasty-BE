@@ -21,6 +21,13 @@ public interface LiveProductRepository extends JpaRepository<LiveProduct, Long> 
                     + " where lp.liveId in :liveIds group by lp.liveId")
     List<LiveProductCount> countByLiveIdIn(@Param("liveIds") Collection<Long> liveIds);
 
+    /** 라이브에 편성된 상품에 지금 남아 있는 재고를 모두 더한다. */
+    @Query(
+            "select coalesce(sum(p.stockQuantity), 0) from LiveProduct lp"
+                    + " join Product p on p.id = lp.productId"
+                    + " where lp.liveId = :liveId")
+    long sumScheduledStock(@Param("liveId") Long liveId);
+
     /** 이 상품이 어느 라이브에든 고정돼 지금 살 수 있는지. 한 번 고정한 상품은 계속 구매할 수 있다. */
     @Query(
             "select count(lp) > 0 from LiveProduct lp"

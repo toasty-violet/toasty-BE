@@ -13,6 +13,7 @@ import com.toasty.domain.order.controller.dto.response.SellerOrderResponse;
 import com.toasty.domain.order.controller.dto.response.SellerOrdersResponse;
 import com.toasty.domain.order.entity.Courier;
 import com.toasty.domain.order.entity.CustomerOrderPageCommand;
+import com.toasty.domain.order.entity.LiveSalesStat;
 import com.toasty.domain.order.entity.Order;
 import com.toasty.domain.order.entity.OrderCreateCommand;
 import com.toasty.domain.order.entity.OrderShipmentCommand;
@@ -65,6 +66,10 @@ public class OrderService {
             DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final int ORDER_NUMBER_SUFFIX_LENGTH = 8;
 
+    // 판매 집계에 담는 주문. 결제가 끝난 주문만 세고, 결제실패와 취소는 뺀다.
+    private static final List<OrderStatus> PAID_STATUSES =
+            List.of(OrderStatus.SHIPPING_PENDING, OrderStatus.SHIPPED);
+
     private static final String SESSION_CREATE_FAILED_REASON = "결제 세션을 만들지 못했습니다.";
     private static final String REVERTED_ORDER_REFUND_REASON = "되돌린 주문에 결제가 승인돼 취소합니다.";
 
@@ -92,6 +97,12 @@ public class OrderService {
                 page.orders().stream().map(SellerOrderResponse::from).toList(),
                 page.nextCursor(),
                 page.hasNext());
+    }
+
+    /** 다른 도메인이 라이브 한 건의 판매 집계를 읽는다. */
+    @Transactional(readOnly = true)
+    public LiveSalesStat findLiveSalesStat(Long liveId, Long sellerId) {
+        return orderRepository.findLiveSalesStat(liveId, sellerId, PAID_STATUSES);
     }
 
     /** 구매자 주문내역 한 묶음을 채운다. */

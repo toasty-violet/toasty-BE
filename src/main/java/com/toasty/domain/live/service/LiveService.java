@@ -25,6 +25,8 @@ import com.toasty.domain.live.entity.LiveStatus;
 import com.toasty.domain.live.entity.LiveUpdateCommand;
 import com.toasty.domain.live.exception.LiveErrorCode;
 import com.toasty.domain.live.repository.LiveRepository;
+import com.toasty.domain.order.entity.LiveSalesStat;
+import com.toasty.domain.order.service.OrderService;
 import com.toasty.domain.product.controller.dto.response.LiveProductResponse;
 import com.toasty.domain.product.controller.dto.response.LiveProductsResponse;
 import com.toasty.domain.product.entity.LiveProductPinCommand;
@@ -83,6 +85,7 @@ public class LiveService {
     private final ProductService productService;
     private final SellerService sellerService;
     private final CustomerService customerService;
+    private final OrderService orderService;
     private final FollowService followService;
     private final TransactionTemplate transactionTemplate;
 
@@ -287,13 +290,44 @@ public class LiveService {
                 productService.countScheduledProducts(scheduled.stream().map(Live::getId).toList());
 
         return SellerLiveTabResponse.of(
+                latestStatOf(sellerId),
                 broadcasting,
+                broadcasting == null ? 0 : sellThroughRateOf(broadcasting),
                 scheduled.stream()
                         .map(
                                 live ->
                                         SellerLiveTabResponse.Scheduled.of(
                                                 live, productCounts.getOrDefault(live.getId(), 0)))
                         .toList());
+    }
+
+    // 끝낸 방송이 없으면 화면이 현황 구역을 통째로 감춘다.
+    private SellerLiveTabResponse.LatestStat latestStatOf(Long sellerId) {
+        return liveRepository
+                .findFirstBySellerIdAndStatusOrderByEndedAtDesc(sellerId, LiveStatus.ENDED)
+                .map(
+                        live -> {
+                            LiveSalesStat stat =
+                                    orderService.findLiveSalesStat(live.getId(), sellerId);
+                            return new SellerLiveTabResponse.LatestStat(
+                                    live.getPeakViewerCount(),
+                                    stat.orderCount(),
+                                    stat.salesAmount());
+                        })
+                .orElse(null);
+    }
+
+    // 방송을 켠 뒤 재고를 더 채우면 분모가 함께 늘어 판매율은 내려간다.
+    private int sellThroughRateOf(Live broadcasting) {
+        long soldQuantity =
+                orderService
+                        .findLiveSalesStat(broadcasting.getId(), broadcasting.getSellerId())
+                        .soldQuantity();
+        long total = productService.sumScheduledStock(broadcasting.getId()) + soldQuantity;
+        if (total == 0) {
+            return 0;
+        }
+        return Math.toIntExact(Math.round(soldQuantity * 100.0 / total));
     }
 
     @Transactional(readOnly = true)

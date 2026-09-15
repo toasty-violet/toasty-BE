@@ -18,6 +18,7 @@ public class LocalDataSeeder implements ApplicationRunner {
     private final FollowSeeder followSeeder;
     private final LiveSeeder liveSeeder;
     private final ProductSeeder productSeeder;
+    private final LiveProductSeeder liveProductSeeder;
 
     @Override
     public void run(ApplicationArguments args) {
@@ -29,6 +30,8 @@ public class LocalDataSeeder implements ApplicationRunner {
             followSeeder.seed();
             liveSeeder.seed();
             productSeeder.seed();
+            // 라이브 편성 상품은 목 라이브에 붙으므로 라이브 시딩이 끝난 뒤에 돈다
+            liveProductSeeder.seed();
         } catch (Exception e) {
             log.warn("로컬 목데이터 시딩 실패 — 목데이터 없이 기동을 계속한다", e);
         }

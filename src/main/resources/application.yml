@@ -94,6 +94,9 @@ point3:
   base-url: https://api.point3.io
   # 프론트가 쓰는 client_id와 다른 값이다. 대시보드 개발정보 관리에서 발급받아 .env에 채운다.
   api-token: ${POINT3_API_TOKEN}
+  # 주문 요청이 승인 응답을 동기로 기다린다. 읽기 한도를 넘기면 재시도로 결과를 다시 확인한다.
+  connect-timeout: 3s
+  read-timeout: 10s
 
 solapi:
   base-url: https://api.solapi.com

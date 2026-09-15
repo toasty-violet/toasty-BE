@@ -67,6 +67,17 @@ public class SellerService {
         return toShopProfile(findSeller(sellerId));
     }
 
+    /** 주문 금액에 붙일 배송비. 스토어가 정한 무료배송 기준을 넘으면 받지 않는다. */
+    // 도서 산간 추가 배송비는 우편번호로 지역을 가리는 규칙이 없어 아직 붙이지 않는다.
+    @Transactional(readOnly = true)
+    public int calculateShippingFee(Long sellerId, int productAmount) {
+        Seller seller = findSeller(sellerId);
+        boolean freeShipping =
+                seller.getFreeShippingThreshold() > 0
+                        && productAmount >= seller.getFreeShippingThreshold();
+        return freeShipping ? 0 : seller.getBaseShippingFee();
+    }
+
     /** 다른 도메인이 밖에서 받은 셀러 번호를 쓰기 전에 실제로 있는 스토어인지 확인한다. */
     @Transactional(readOnly = true)
     public void requireSellerExists(Long sellerId) {

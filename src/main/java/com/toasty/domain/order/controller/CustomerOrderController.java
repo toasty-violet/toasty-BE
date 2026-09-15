@@ -3,8 +3,11 @@ package com.toasty.domain.order.controller;
 import com.toasty.domain.auth.annotation.CustomerOnly;
 import com.toasty.domain.auth.annotation.LoginUser;
 import com.toasty.domain.auth.entity.AuthUser;
+import com.toasty.domain.order.controller.dto.request.OrderCreateRequest;
 import com.toasty.domain.order.controller.dto.response.CustomerOrderDetailResponse;
 import com.toasty.domain.order.controller.dto.response.CustomerOrdersResponse;
+import com.toasty.domain.order.controller.dto.response.OrderCreateResponse;
+import com.toasty.domain.order.controller.dto.response.OrderPaymentResponse;
 import com.toasty.domain.order.entity.CustomerOrderPageCommand;
 import com.toasty.domain.order.entity.OrderStatusFilter;
 import com.toasty.domain.order.service.OrderService;
@@ -12,9 +15,12 @@ import com.toasty.global.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -26,6 +32,36 @@ import org.springframework.web.bind.annotation.RestController;
 public class CustomerOrderController {
 
     private final OrderService orderService;
+
+    @Operation(
+            summary = "주문하기",
+            description =
+                    "상품 번호와 수량만 보내면 서버가 상품 가격과 스토어 배송비로 결제금액을 계산해 주문을 만듭니다."
+                            + " 배송지는 내 기본 배송지를 주문 시점 값으로 복사합니다. 이 시점에 재고를 선점하므로,"
+                            + " 남은 재고보다 많이 주문하면 결제창을 열기 전에 409로 거절됩니다. 응답의 sessionId로"
+                            + " 결제창을 열고, 결제창이 POINT3_CAPTURE_READY를 보내면 결제 승인 API를 부르세요.")
+    @CustomerOnly
+    @PostMapping
+    public ApiResponse<OrderCreateResponse> createOrder(
+            @Valid @RequestBody OrderCreateRequest request, @LoginUser AuthUser customer) {
+        return ApiResponse.ok(
+                orderService.createOrder(
+                        request.toCommand(customer.userId(), customer.customerId())));
+    }
+
+    @Operation(
+            summary = "결제 승인",
+            description =
+                    "주문에 붙은 결제 세션을 승인해 결제를 끝냅니다. 결제창에서 POINT3_CAPTURE_READY를 받은 뒤에"
+                            + " 부르세요. 승인이 끝나면 주문이 배송대기로 넘어갑니다. 승인이 거절되면 409이고 주문은"
+                            + " 결제실패로 남습니다. 결과를 확인하지 못하면 503이며, 이때는 실패가 아니므로 잠시 후"
+                            + " 다시 부르거나 주문내역에서 확인하세요. 이미 결제가 끝난 주문은 그대로 성공합니다.")
+    @CustomerOnly
+    @PostMapping("/{orderId}/payment")
+    public ApiResponse<OrderPaymentResponse> payOrder(
+            @PathVariable Long orderId, @LoginUser AuthUser customer) {
+        return ApiResponse.ok(orderService.payOrder(orderId, customer.customerId()));
+    }
 
     @Operation(
             summary = "구매자 주문내역 조회",

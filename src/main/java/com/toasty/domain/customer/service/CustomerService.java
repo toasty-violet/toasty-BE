@@ -7,6 +7,7 @@ import com.toasty.domain.customer.entity.Address;
 import com.toasty.domain.customer.entity.Customer;
 import com.toasty.domain.customer.entity.CustomerOnboardingCommand;
 import com.toasty.domain.customer.entity.CustomerProfileUpdateCommand;
+import com.toasty.domain.customer.entity.ShippingDestination;
 import com.toasty.domain.customer.exception.CustomerErrorCode;
 import com.toasty.domain.customer.repository.AddressRepository;
 import com.toasty.domain.customer.repository.CustomerRepository;
@@ -54,6 +55,19 @@ public class CustomerService {
     @Transactional(readOnly = true)
     public String findNickname(Long customerId) {
         return findCustomer(customerId).getNickname();
+    }
+
+    /** 주문이 복사할 받는사람과 기본 배송지를 모은다. 주문 시점 값이라 나중에 바뀌어도 주문에는 그대로 남는다. */
+    @Transactional(readOnly = true)
+    public ShippingDestination findShippingDestination(Long customerId) {
+        Customer customer = findCustomer(customerId);
+        Address address = findDefaultAddress(customerId);
+        return new ShippingDestination(
+                customer.getName(),
+                customer.getPhoneNumber(),
+                address.getPostalCode(),
+                address.selectedAddress(),
+                address.getDetailAddress());
     }
 
     /** 구매자 내 정보 화면에 쓸 닉네임·이름·연락처와 기본 배송지를 모은다. */

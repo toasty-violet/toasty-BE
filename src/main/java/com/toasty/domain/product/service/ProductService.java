@@ -17,6 +17,7 @@ import com.toasty.domain.product.entity.Product;
 import com.toasty.domain.product.entity.ProductCreateCommand;
 import com.toasty.domain.product.entity.ProductImage;
 import com.toasty.domain.product.entity.ProductUpsertCommand;
+import com.toasty.domain.product.entity.ReservedProduct;
 import com.toasty.domain.product.entity.SalesType;
 import com.toasty.domain.product.entity.SellerProductFilter;
 import com.toasty.domain.product.entity.SellerProductPageCommand;
@@ -364,6 +365,64 @@ public class ProductService {
                         .map(ProductImage::getImageUrl)
                         .toList();
         return ProductDetailResponse.of(product, imageUrls, otherProductsOf(product));
+    }
+
+    /**
+     * 주문이 상품을 선점한다. 지금 살 수 있는 상품인지 보고 재고를 깎아, 주문에 복사할 값을 돌려준다.
+     *
+     * <p>같은 상품을 동시에 사면 행을 잠근 순서대로 처리돼 재고가 모자란 요청만 거절된다.
+     */
+    @Transactional
+    public ReservedProduct reserveForOrder(Long productId, int quantity) {
+        Product product =
+                productRepository
+                        .findForUpdateById(productId)
+                        .orElseThrow(() -> new CustomException(ProductErrorCode.PRODUCT_NOT_FOUND));
+        requirePurchasable(product);
+        if (!product.hasEnoughStock(quantity)) {
+            throw new CustomException(ProductErrorCode.PRODUCT_STOCK_NOT_ENOUGH);
+        }
+        product.decreaseStock(quantity);
+        return new ReservedProduct(
+                product.getId(),
+                product.getSellerId(),
+                product.getName(),
+                product.getPrice(),
+                mainImageUrlOf(productId));
+    }
+
+    /** 결제가 실패하거나 취소돼 선점했던 재고를 되돌린다. */
+    // 지워진 상품은 되돌릴 재고가 없다. 주문을 실패로 넘기는 일을 막지 않도록 로그만 남긴다.
+    @Transactional
+    public void releaseForOrder(Long productId, int quantity) {
+        productRepository
+                .findForUpdateById(productId)
+                .ifPresentOrElse(
+                        product -> product.increaseStock(quantity),
+                        () ->
+                                log.warn(
+                                        "재고를 되돌릴 상품이 없다 - productId={}, quantity={}",
+                                        productId,
+                                        quantity));
+    }
+
+    // 라이브 상품은 방송에서 고정된 뒤부터 살 수 있고, 라이브가 끝나면 일반판매로 넘어가 스토어에서 산다.
+    private void requirePurchasable(Product product) {
+        if (product.isSoldOut()) {
+            throw new CustomException(ProductErrorCode.PRODUCT_STOCK_NOT_ENOUGH);
+        }
+        if (product.getSalesType() == SalesType.GENERAL) {
+            return;
+        }
+        if (product.getSalesType() == SalesType.LIVE
+                && liveProductRepository.existsPinnedByProductId(product.getId())) {
+            return;
+        }
+        throw new CustomException(ProductErrorCode.PRODUCT_NOT_PURCHASABLE);
+    }
+
+    private String mainImageUrlOf(Long productId) {
+        return findMainImageUrls(List.of(productId)).get(productId);
     }
 
     // 자기 자신이 섞여 나오므로 한 칸 더 읽어 빼낸다.

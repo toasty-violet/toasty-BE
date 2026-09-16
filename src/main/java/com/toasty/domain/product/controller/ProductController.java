@@ -41,7 +41,8 @@ public class ProductController {
                             + " otherProducts에는 같은 스토어의 다른 상품이 최대 3개 담깁니다."
                             + " 지금 살 수 있는 상품만 열립니다. 라이브에서 팔 상품이나 다 팔린 상품은"
                             + " 링크를 직접 열어도 404입니다. 상세가 열릴 때마다 조회수가 1 올라 베스트 아이템 순서에"
-                            + " 반영되므로, 화면을 한 번 열 때 한 번만 부르세요.")
+                            + " 반영되므로, 화면을 한 번 열 때 한 번만 부르세요. 결제 화면에 띄울 배송비도 함께 옵니다."
+                            + " 상품 금액이 무료배송 기준 이상이면 배송비를 받지 않고, 기준이 0이면 그런 기준이 없다는 뜻입니다.")
     @GetMapping("/{productId}")
     public ApiResponse<ProductDetailResponse> getProduct(@PathVariable Long productId) {
         return ApiResponse.ok(productService.findProductDetail(productId));

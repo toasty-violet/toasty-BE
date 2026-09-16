@@ -20,6 +20,7 @@ import com.toasty.domain.order.entity.OrderShipmentCommand;
 import com.toasty.domain.order.entity.OrderShippedEvent;
 import com.toasty.domain.order.entity.OrderStatus;
 import com.toasty.domain.order.entity.SellerOrderPageCommand;
+import com.toasty.domain.order.entity.SellerSalesStat;
 import com.toasty.domain.order.exception.OrderErrorCode;
 import com.toasty.domain.order.repository.OrderRepository;
 import com.toasty.domain.order.repository.OrderStatusCount;
@@ -103,6 +104,12 @@ public class OrderService {
     @Transactional(readOnly = true)
     public LiveSalesStat findLiveSalesStat(Long liveId, Long sellerId) {
         return orderRepository.findLiveSalesStat(liveId, sellerId, PAID_STATUSES);
+    }
+
+    /** 다른 도메인이 스토어탭 판매 내역 요약을 읽는다. */
+    @Transactional(readOnly = true)
+    public SellerSalesStat findSellerSalesStat(Long sellerId) {
+        return orderRepository.findSellerSalesStat(sellerId, PAID_STATUSES);
     }
 
     /** 구매자 주문내역 한 묶음을 채운다. */

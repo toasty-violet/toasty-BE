@@ -1087,19 +1087,19 @@ class LiveServiceTest {
     class IssueChatToken {
 
         @Test
-        @DisplayName("비로그인 시청자는 읽기 전용으로 받는다")
-        void 비로그인은_읽기_전용이다() {
+        @DisplayName("비로그인 시청자도 게스트 이름으로 쓸 수 있다")
+        void 비로그인도_쓸_수_있다() {
             givenLiveByPublicId("abc");
 
             LiveChatTokenResponse response = liveService.issueChatToken("abc", null);
 
-            assertThat(response.writable()).isFalse();
+            assertThat(response.writable()).isTrue();
             com.toasty.domain.live.client.dto.ChatTokenCommand issued =
                     chatClient.issuedTokenCommands().get(0);
-            assertThat(issued.writable()).isFalse();
+            assertThat(issued.writable()).isTrue();
             assertThat(issued.role()).isEqualTo(com.toasty.domain.live.client.dto.ChatRole.GUEST);
             assertThat(issued.chatUserId()).startsWith("guest-");
-            assertThat(issued.displayName()).isNull();
+            assertThat(issued.displayName()).startsWith("게스트");
         }
 
         @Test

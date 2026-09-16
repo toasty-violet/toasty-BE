@@ -35,6 +35,7 @@ import com.toasty.domain.product.entity.LiveProductUpdateCommand;
 import com.toasty.domain.product.service.ProductService;
 import com.toasty.domain.seller.controller.dto.response.SellerProfileResponse;
 import com.toasty.domain.seller.service.SellerService;
+import com.toasty.global.config.CacheConfig;
 import com.toasty.global.exception.CustomException;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -49,6 +50,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -363,6 +365,8 @@ public class LiveService {
 
     /** 시청 화면과 방송 화면이 시청자 수와 판매율을 주기적으로 읽는다. */
     // 시청자 수는 배치가 적어둔 값을 읽기만 한다. 시청자가 몇 명이든 IVS 호출은 늘지 않는다.
+    // 판매율은 부를 때마다 집계라, 시청자가 늘면 그만큼 DB를 때린다. 잠깐 캐시해 한 번만 센다.
+    @Cacheable(cacheNames = CacheConfig.PUBLIC_LIVE, key = "'viewerCount:' + #publicId")
     @Transactional(readOnly = true)
     public LiveViewerCountResponse getViewerCount(String publicId) {
         Live live = findByPublicId(publicId);
@@ -532,12 +536,15 @@ public class LiveService {
     }
 
     /** 시청자가 라이브 화면에서 상품 바와 전체 상품 시트를 채운다. */
+    // 시청자마다 같은 목록을 읽어 가므로 잠깐 캐시한다. 재고는 몇 초 늦어도 구매는 서버가 다시 막는다.
+    @Cacheable(cacheNames = CacheConfig.PUBLIC_LIVE, key = "'products:' + #publicId")
     @Transactional(readOnly = true)
     public LiveProductsResponse getPublicLiveProducts(String publicId) {
         Long liveId = findByPublicId(publicId).getId();
         return productService.findLiveProducts(liveId);
     }
 
+    @Cacheable(cacheNames = CacheConfig.PUBLIC_LIVE, key = "'playback:' + #publicId")
     @Transactional(readOnly = true)
     public LivePlaybackResponse getPlayback(String publicId) {
         return LivePlaybackResponse.from(findByPublicId(publicId));

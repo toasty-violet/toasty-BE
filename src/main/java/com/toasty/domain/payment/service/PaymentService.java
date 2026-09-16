@@ -19,6 +19,7 @@ import com.toasty.domain.payment.repository.PaymentRepository;
 import com.toasty.domain.payment.repository.RefundRepository;
 import com.toasty.global.exception.CustomException;
 import java.time.LocalDateTime;
+import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -121,6 +122,27 @@ public class PaymentService {
         PaymentCaptureResult result = captureOrConfirm(sessionId, payment.getId());
         transactionTemplate.executeWithoutResult(status -> recordCapture(sessionId, result));
         return result;
+    }
+
+    /**
+     * 승인을 보냈는지도 알 수 없는 세션의 실제 결과를 point3에 물어 가린다.
+     *
+     * <p>아직 결제창을 통과하지 않았거나 처리 중이면 비어 있다. 그 결과를 실패로 확정하면 안 된다.
+     */
+    // point3를 호출하므로 트랜잭션 밖에서 쓴다. 가려낸 결과는 원장에도 남긴다.
+    public Optional<PaymentCaptureResult> resolveSession(String sessionId) {
+        PaymentSessionResponse session = point3PaymentClient.getSession(sessionId);
+        if (!session.isCaptured() && !session.isFailed()) {
+            log.info("결제 결과가 아직 정해지지 않았다 - sessionId={}, status={}", sessionId, session.status());
+            return Optional.empty();
+        }
+        // 세션 조회는 승인 시각을 주지 않아 확인한 시각으로 남긴다.
+        PaymentCaptureResult result =
+                session.isCaptured()
+                        ? PaymentCaptureResult.captured(LocalDateTime.now(), null)
+                        : PaymentCaptureResult.rejected(null, session.status());
+        transactionTemplate.executeWithoutResult(status -> recordCapture(sessionId, result));
+        return Optional.of(result);
     }
 
     /**

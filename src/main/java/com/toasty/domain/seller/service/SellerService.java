@@ -98,10 +98,22 @@ public class SellerService {
                 .collect(Collectors.toMap(Seller::getId, this::toShopProfile));
     }
 
+    /** 목록 화면이 거는 스토어. 탈퇴한 스토어는 결과에 담기지 않는다. */
+    @Transactional(readOnly = true)
+    public Map<Long, SellerProfileResponse> findActiveShopProfiles(Collection<Long> sellerIds) {
+        if (sellerIds.isEmpty()) {
+            return Map.of();
+        }
+        return sellerRepository.findByIdInAndWithdrawnAtIsNull(sellerIds).stream()
+                .collect(Collectors.toMap(Seller::getId, this::toShopProfile));
+    }
+
     /** 다른 도메인이 보여줄 스토어를 고르지 못했을 때 화면을 채울 기본 목록. 먼저 만들어진 순으로 준다. */
     @Transactional(readOnly = true)
     public List<SellerProfileResponse> findEarliestShopProfiles(int limit) {
-        return sellerRepository.findAllByOrderByIdAsc(PageRequest.of(0, limit)).stream()
+        return sellerRepository
+                .findAllByWithdrawnAtIsNullOrderByIdAsc(PageRequest.of(0, limit))
+                .stream()
                 .map(this::toShopProfile)
                 .toList();
     }

@@ -40,7 +40,11 @@ public class CustomerOrderController {
                             + " 배송지는 내 기본 배송지를 주문 시점 값으로 복사합니다. 이 시점에 재고를 선점하므로,"
                             + " 남은 재고보다 많이 주문하면 결제창을 열기 전에 409로 거절됩니다. 응답의 sessionId로"
                             + " 결제창을 열고, 결제창이 POINT3_CAPTURE_READY를 보내면 결제 승인 API를 부르세요."
-                            + " 라이브 시청 화면에서 구매하면 liveId를 함께 보내세요. 셀러 라이브탭의 방송별 판매 집계에 쓰입니다.")
+                            + " 라이브 시청 화면에서 구매하면 liveId를 함께 보내세요. 셀러 라이브탭의 방송별 판매 집계에 쓰입니다."
+                            + " 주문하면 holdExpiresAt까지 그 재고를 이 구매자가 잡아 둡니다. 결제를 끝내지 않고 화면을"
+                            + " 벗어났다가 다시 주문하기를 누르면 새 주문을 만들지 않고 잡아 둔 주문과 같은 sessionId를"
+                            + " 그대로 돌려주니, 받은 값으로 결제창을 다시 열면 됩니다. 시간이 지나면 선점이 풀려 기다리던"
+                            + " 다른 사람이 살 수 있게 되고, 그 뒤에는 새 주문으로 다시 다퉈야 합니다.")
     @CustomerOnly
     @PostMapping
     public ApiResponse<OrderCreateResponse> createOrder(

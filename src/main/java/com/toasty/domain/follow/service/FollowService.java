@@ -43,11 +43,12 @@ public class FollowService {
         }
         List<Long> sellerIds = ranked.stream().map(FollowerCount::getSellerId).toList();
 
-        Map<Long, SellerProfileResponse> shops = sellerService.findShopProfiles(sellerIds);
+        Map<Long, SellerProfileResponse> shops = sellerService.findActiveShopProfiles(sellerIds);
         Map<Long, Integer> productCounts = productService.countStoreProducts(sellerIds);
         Set<Long> followed = findFollowedSellerIds(customerId, sellerIds);
 
         return ranked.stream()
+                .filter(count -> shops.containsKey(count.getSellerId()))
                 .map(
                         count ->
                                 TopStoreResponse.of(
@@ -93,8 +94,8 @@ public class FollowService {
             return sellerService.findEarliestShopProfiles(FOLLOWING_STORE_LIMIT);
         }
 
-        // 최근 팔로우한 순서를 지켜 다시 세운다. 조회 사이에 탈퇴한 스토어는 자리에서 뺀다.
-        Map<Long, SellerProfileResponse> shops = sellerService.findShopProfiles(sellerIds);
+        // 최근 팔로우한 순서를 지켜 다시 세운다. 탈퇴한 스토어는 자리에서 뺀다.
+        Map<Long, SellerProfileResponse> shops = sellerService.findActiveShopProfiles(sellerIds);
         return sellerIds.stream().map(shops::get).filter(Objects::nonNull).toList();
     }
 

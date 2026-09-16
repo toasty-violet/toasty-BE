@@ -45,6 +45,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadLocalRandom;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -78,6 +79,10 @@ public class LiveService {
 
     // 송출이 이만큼 연속으로 끊겨 있으면 셀러가 종료를 누르지 않은 것으로 본다. 배치가 30초 주기라 1분 30초다.
     private static final int DROPPED_STREAM_CHECKS = 3;
+
+    // 비로그인 시청자가 채팅에 쓸 이름. 뒤에 붙는 숫자로 같은 방의 다른 게스트와 구분한다.
+    private static final String GUEST_DISPLAY_NAME_PREFIX = "게스트";
+    private static final int GUEST_DISPLAY_NAME_BOUND = 10000;
 
     private final LiveRepository liveRepository;
     private final LiveStreamingClient liveStreamingClient;
@@ -615,9 +620,9 @@ public class LiveService {
             return new ChatTokenCommand(
                     live.getIvsChatRoomArn(),
                     "guest-" + UUID.randomUUID(),
-                    null,
+                    generateGuestDisplayName(),
                     ChatRole.GUEST,
-                    false);
+                    !live.isEnded());
         }
         boolean owner = live.isOwnedBy(viewer.sellerId());
         return new ChatTokenCommand(
@@ -626,6 +631,12 @@ public class LiveService {
                 findChatDisplayName(viewer),
                 owner ? ChatRole.SELLER : ChatRole.CUSTOMER,
                 !live.isEnded());
+    }
+
+    // 비로그인 시청자는 채팅에 쓸 이름이 없어 방마다 새로 지어 준다. 같은 방에서 겹쳐도 참여자 번호가 달라 섞이지 않는다.
+    private String generateGuestDisplayName() {
+        return GUEST_DISPLAY_NAME_PREFIX
+                + ThreadLocalRandom.current().nextInt(GUEST_DISPLAY_NAME_BOUND);
     }
 
     // 채팅에 뜨는 이름은 역할에 따라 다른 곳에 있다. 판매자는 스토어 이름, 구매자는 닉네임을 쓴다.

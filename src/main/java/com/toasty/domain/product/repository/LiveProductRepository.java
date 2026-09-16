@@ -4,6 +4,7 @@ import com.toasty.domain.product.entity.LiveProduct;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -33,6 +34,13 @@ public interface LiveProductRepository extends JpaRepository<LiveProduct, Long> 
             "select count(lp) > 0 from LiveProduct lp"
                     + " where lp.productId = :productId and lp.pinnedAt is not null")
     boolean existsPinnedByProductId(@Param("productId") Long productId);
+
+    /** 이 상품을 지금 팔고 있는 라이브. 여러 라이브에 편성됐으면 가장 나중에 고정한 쪽이다. */
+    @Query(
+            "select lp.liveId from LiveProduct lp"
+                    + " where lp.productId = :productId and lp.pinnedAt is not null"
+                    + " order by lp.pinnedAt desc")
+    List<Long> findPinnedLiveIds(@Param("productId") Long productId, Pageable pageable);
 
     /** 이 상품이 편성된 라이브. 상품탭이 방송 중인지, 지우면 빈 방송이 남는지 보는 데 쓴다. */
     @Query("select lp.liveId from LiveProduct lp where lp.productId = :productId")

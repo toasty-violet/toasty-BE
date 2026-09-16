@@ -14,7 +14,8 @@ public record StoreResponse(
         @Schema(description = "팔로워 수", example = "0") long followerCount,
         @Schema(description = "등록한 상품 수. 품절과 라이브에서 팔 상품도 포함한다", example = "0") long productCount,
         @Schema(description = "스토어 소개") String description,
-        @Schema(description = "요청한 유저가 이 스토어를 팔로우 중인지. 비로그인이면 항상 false") boolean following) {
+        @Schema(description = "요청한 유저가 이 스토어를 팔로우 중인지. 비로그인이면 항상 false") boolean following,
+        @Schema(description = "이 스토어의 배송비") StoreShippingFeeResponse shippingFee) {
 
     public static StoreResponse of(
             StoreDetailResponse store, long followerCount, long productCount, boolean following) {
@@ -25,6 +26,7 @@ public record StoreResponse(
                 followerCount,
                 productCount,
                 store.description(),
-                following);
+                following,
+                store.shippingFee());
     }
 }

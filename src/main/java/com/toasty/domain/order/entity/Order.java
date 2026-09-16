@@ -123,7 +123,8 @@ public class Order extends BaseTimeEntity {
         this.orderNumber = orderNumber;
         this.customerId = command.customerId();
         this.sellerId = product.sellerId();
-        this.liveId = command.liveId();
+        // 방송에서 팔린 상품이면 서버가 가려낸 라이브를 쓴다. 프론트가 보낸 값은 그때 말고만 쓴다.
+        this.liveId = product.liveId() == null ? command.liveId() : product.liveId();
         this.productId = product.productId();
         this.productName = product.name();
         this.productImageUrl = product.imageUrl();

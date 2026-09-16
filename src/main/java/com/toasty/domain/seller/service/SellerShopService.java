@@ -1,6 +1,7 @@
 package com.toasty.domain.seller.service;
 
 import com.toasty.domain.follow.service.FollowService;
+import com.toasty.domain.order.service.OrderService;
 import com.toasty.domain.product.service.ProductService;
 import com.toasty.domain.seller.controller.dto.response.ShopResponse;
 import com.toasty.domain.seller.controller.dto.response.StoreResponse;
@@ -17,6 +18,7 @@ public class SellerShopService {
     private final SellerService sellerService;
     private final FollowService followService;
     private final ProductService productService;
+    private final OrderService orderService;
 
     /** 판매자 본인의 스토어 관리 화면을 채운다. */
     @Transactional(readOnly = true)
@@ -24,7 +26,8 @@ public class SellerShopService {
         return ShopResponse.of(
                 sellerService.findMyShopDetail(sellerId),
                 followService.countFollowers(sellerId),
-                productService.countBySeller(sellerId));
+                productService.countBySeller(sellerId),
+                orderService.findSellerSalesStat(sellerId));
     }
 
     /** 구매자가 보는 스토어 화면의 머리말을 채운다. */

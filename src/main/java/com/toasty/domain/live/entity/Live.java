@@ -165,6 +165,8 @@ public class Live extends BaseTimeEntity {
         this.status = LiveStatus.LIVE;
         this.startedAt = LocalDateTime.now();
         this.activeSellerId = sellerId;
+        // 썸네일 주소에 방송 세션이 들어 있어, 지난 방송 것을 그대로 두면 옛 화면이 걸린다.
+        this.thumbnailUrl = null;
     }
 
     /** 배치가 읽어온 시청자 수를 반영한다. 최고 기록은 방송이 끝난 뒤에도 남는다. */

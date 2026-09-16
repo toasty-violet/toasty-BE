@@ -60,6 +60,8 @@ aws:
   ivs:
     region: ap-northeast-2
     channel-type: BASIC
+    # 방송 화면을 주기적으로 S3에 저장해 홈 카드 썸네일로 쓴다. 비우면 썸네일 없이 방송만 나간다.
+    recording-configuration-arn: ${AWS_IVS_RECORDING_CONFIGURATION_ARN:}
   s3:
     region: ap-northeast-2
     # 개발·운영 버킷이 갈리므로 기본값을 두지 않는다. .env에 반드시 채운다.

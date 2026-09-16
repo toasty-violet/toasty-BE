@@ -56,6 +56,7 @@ import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.CopyObjectRequest;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.MetadataDirective;
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 
 /** 셀러가 라이브에서 판매할 상품을 등록하고 그 라이브에 편성한다. */
@@ -78,6 +79,13 @@ public class ProductService {
 
     // 스토어 카드에 미리 걸어 주는 상품 수.
     private static final int STORE_PREVIEW_PRODUCTS_LIMIT = 3;
+
+    // 사진 주소는 사진마다 새로 만들어져 같은 주소의 내용이 바뀌지 않는다. 브라우저가 오래 들고 있어도 안전하다.
+    private static final String IMAGE_CACHE_CONTROL = "public, max-age=31536000, immutable";
+
+    // 캐시 헤더를 새로 쓰면 원본 메타데이터가 함께 지워져, 사진 형식도 다시 지정해야 한다.
+    private static final Map<String, String> CONTENT_TYPES =
+            Map.of("jpg", "image/jpeg", "png", "image/png", "webp", "image/webp");
 
     private final ProductRepository productRepository;
     private final ProductImageRepository productImageRepository;
@@ -863,6 +871,9 @@ public class ProductService {
                             .sourceKey(objectKey)
                             .destinationBucket(s3Properties.bucket())
                             .destinationKey(destinationKey)
+                            .metadataDirective(MetadataDirective.REPLACE)
+                            .cacheControl(IMAGE_CACHE_CONTROL)
+                            .contentType(contentTypeOf(destinationKey))
                             .build());
             return destinationKey;
         } catch (NoSuchKeyException e) {
@@ -871,6 +882,12 @@ public class ProductService {
             log.error("상품 사진 복사 실패. objectKey={}", objectKey, e);
             throw new CustomException(ProductErrorCode.PRODUCT_IMAGE_SAVE_FAILED, e);
         }
+    }
+
+    // 업로드 주소를 발급할 때 허용한 형식으로만 확장자가 붙는다. 그 밖의 키는 브라우저가 형식을 알아서 가리게 둔다.
+    private String contentTypeOf(String objectKey) {
+        String extension = objectKey.substring(objectKey.lastIndexOf('.') + 1).toLowerCase();
+        return CONTENT_TYPES.getOrDefault(extension, "application/octet-stream");
     }
 
     // 셀러·날짜·uuid를 그대로 두고 접두어만 바꾼다. 이미 pending 접두어로 시작하는지 검증한 뒤라 안전하다.

@@ -381,7 +381,11 @@ public class ProductService {
                 productImageRepository.findByProductIdOrderByDisplayOrder(productId).stream()
                         .map(ProductImage::getImageUrl)
                         .toList();
-        return ProductDetailResponse.of(product, imageUrls, otherProductsOf(product));
+        return ProductDetailResponse.of(
+                product,
+                imageUrls,
+                otherProductsOf(product),
+                sellerService.findStoreShippingFee(product.getSellerId()));
     }
 
     /**
@@ -405,7 +409,8 @@ public class ProductService {
                 product.getSellerId(),
                 product.getName(),
                 product.getPrice(),
-                mainImageUrlOf(productId));
+                mainImageUrlOf(productId),
+                sellingLiveIdOf(product));
     }
 
     /** 결제가 실패하거나 취소돼 선점했던 재고를 되돌린다. */
@@ -436,6 +441,18 @@ public class ProductService {
             return;
         }
         throw new CustomException(ProductErrorCode.PRODUCT_NOT_PURCHASABLE);
+    }
+
+    // 방송이 끝나면 상품이 일반판매로 넘어가므로, 아직 라이브에 걸려 있는 상품만 방송에서 팔린 것으로 본다.
+    private Long sellingLiveIdOf(Product product) {
+        if (product.getSalesType() != SalesType.LIVE) {
+            return null;
+        }
+        return liveProductRepository
+                .findPinnedLiveIds(product.getId(), PageRequest.of(0, 1))
+                .stream()
+                .findFirst()
+                .orElse(null);
     }
 
     private String mainImageUrlOf(Long productId) {

@@ -4,9 +4,9 @@ import com.toasty.domain.seller.controller.dto.response.SellerProfileResponse;
 import com.toasty.domain.seller.controller.dto.response.ShopDetailResponse;
 import com.toasty.domain.seller.controller.dto.response.ShopNameSearchResponse;
 import com.toasty.domain.seller.controller.dto.response.ShopNameSuggestionResponse;
-import com.toasty.domain.seller.controller.dto.response.ShopSalesSummaryResponse;
 import com.toasty.domain.seller.controller.dto.response.ShopShippingFeeResponse;
 import com.toasty.domain.seller.controller.dto.response.StoreDetailResponse;
+import com.toasty.domain.seller.controller.dto.response.StoreShippingFeeResponse;
 import com.toasty.domain.seller.entity.Seller;
 import com.toasty.domain.seller.entity.SellerOnboardingCommand;
 import com.toasty.domain.seller.entity.ShopUpdateCommand;
@@ -123,10 +123,6 @@ public class SellerService {
                 seller.getShopImageObjectKey(),
                 seller.getShopName(),
                 seller.getDescription(),
-                new ShopSalesSummaryResponse(
-                        seller.getTotalSalesCount(),
-                        seller.getTotalBuyerCount(),
-                        seller.getTotalSalesAmount()),
                 new ShopShippingFeeResponse(
                         seller.getBaseShippingFee(),
                         seller.getFreeShippingThreshold(),
@@ -134,7 +130,8 @@ public class SellerService {
     }
 
     /** 구매자가 보는 스토어 화면에서 판매자 행이 들고 있는 값을 꺼낸다. */
-    // 판매 내역과 배송비 정책, 대표자 실명은 판매자 본인만 보는 값이라 내보내지 않는다.
+    // 판매 내역과 대표자 실명은 판매자 본인만 보는 값이라 내보내지 않는다.
+    // 배송비는 구매자가 결제 전에 알아야 해서, 도서 산간을 뺀 값만 함께 내보낸다.
     @Transactional(readOnly = true)
     public StoreDetailResponse findStoreDetail(Long sellerId) {
         Seller seller = findSeller(sellerId);
@@ -142,7 +139,14 @@ public class SellerService {
                 seller.getId(),
                 toImageUrl(seller.getShopImageObjectKey()),
                 seller.getShopName(),
-                seller.getDescription());
+                seller.getDescription(),
+                toStoreShippingFee(seller));
+    }
+
+    /** 다른 도메인이 결제 전 화면에 배송비를 표시할 때 쓴다. */
+    @Transactional(readOnly = true)
+    public StoreShippingFeeResponse findStoreShippingFee(Long sellerId) {
+        return toStoreShippingFee(findSeller(sellerId));
     }
 
     /** 판매자가 스토어 정보를 고친다. 보낸 값이 그대로 저장된다. */
@@ -196,6 +200,11 @@ public class SellerService {
     @Transactional
     public void withdraw(Long sellerId) {
         findSeller(sellerId).withdraw();
+    }
+
+    private StoreShippingFeeResponse toStoreShippingFee(Seller seller) {
+        return new StoreShippingFeeResponse(
+                seller.getBaseShippingFee(), seller.getFreeShippingThreshold());
     }
 
     private Seller findSeller(Long sellerId) {

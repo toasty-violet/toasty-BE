@@ -3,6 +3,7 @@ package com.toasty.domain.order.repository;
 import com.toasty.domain.order.entity.LiveSalesStat;
 import com.toasty.domain.order.entity.Order;
 import com.toasty.domain.order.entity.OrderStatus;
+import com.toasty.domain.order.entity.SellerSalesStat;
 import jakarta.persistence.LockModeType;
 import java.util.Collection;
 import java.util.List;
@@ -41,6 +42,16 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             @Param("liveId") Long liveId,
             @Param("sellerId") Long sellerId,
             @Param("statuses") Collection<OrderStatus> statuses);
+
+    /** 스토어탭 판매 내역 요약. 누적 구매자는 같은 사람이 여러 번 사도 한 명으로 센다. */
+    @Query(
+            "select new com.toasty.domain.order.entity.SellerSalesStat("
+                    + " count(o), count(distinct o.customerId),"
+                    + " coalesce(sum(o.productPrice * o.quantity), 0))"
+                    + " from Order o"
+                    + " where o.sellerId = :sellerId and o.status in :statuses")
+    SellerSalesStat findSellerSalesStat(
+            @Param("sellerId") Long sellerId, @Param("statuses") Collection<OrderStatus> statuses);
 
     /** 셀러 주문탭 상태 칩에 붙는 건수. */
     @Query(

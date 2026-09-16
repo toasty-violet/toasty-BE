@@ -16,11 +16,20 @@ spring:
       file: docker/local/docker-compose.yml
       lifecycle-management: start-only
 
+  cache:
+    type: caffeine
+    # 라이브 시청 화면은 모두에게 같은 값을 보여준다. 몇 초 늦어도 화면이 어긋나지 않는다.
+    caffeine:
+      spec: expireAfterWrite=3s,maximumSize=500
+
   datasource:
     url: ${DB_URL:jdbc:mysql://localhost:3306/toasty?serverTimezone=Asia/Seoul&characterEncoding=UTF-8}
     username: ${DB_USERNAME:toasty}
     password: ${DB_PASSWORD:toasty}
     driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      # 라이브 시청 화면이 시청자마다 4초 주기로 세 API를 부른다. 기본값 10으로는 대기가 생긴다.
+      maximum-pool-size: 30
 
   jpa:
     hibernate:

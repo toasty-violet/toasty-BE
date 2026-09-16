@@ -354,11 +354,12 @@ public class LiveService {
         return LiveStreamStatusResponse.of(live, streamStatus.state());
     }
 
-    /** 시청 화면이 시청자 수를 주기적으로 읽는다. */
-    // 배치가 적어둔 값을 읽기만 한다. 시청자가 몇 명이든 IVS 호출은 늘지 않는다.
+    /** 시청 화면과 방송 화면이 시청자 수와 판매율을 주기적으로 읽는다. */
+    // 시청자 수는 배치가 적어둔 값을 읽기만 한다. 시청자가 몇 명이든 IVS 호출은 늘지 않는다.
     @Transactional(readOnly = true)
     public LiveViewerCountResponse getViewerCount(String publicId) {
-        return new LiveViewerCountResponse(findByPublicId(publicId).getViewerCount());
+        Live live = findByPublicId(publicId);
+        return new LiveViewerCountResponse(live.getViewerCount(), sellThroughRateOf(live));
     }
 
     /** 아직 끝나지 않은 라이브를 IVS에 물어 방송 상태와 시청자 수를 맞춘다. */

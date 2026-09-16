@@ -11,6 +11,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -31,6 +32,9 @@ public class Order extends BaseTimeEntity {
 
     // 실패 사유는 화면에 그대로 뿌리지 않고 주문에만 남기므로 컬럼 길이에서 자른다.
     private static final int FAILURE_REASON_MAX_LENGTH = 255;
+
+    /** 결제창을 열어 둔 채 자리를 비워도 이 시간까지는 이 주문을 만든 사람만 살 수 있다. */
+    public static final Duration CHECKOUT_HOLD = Duration.ofMinutes(5);
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -169,6 +173,16 @@ public class Order extends BaseTimeEntity {
 
     public boolean isPaymentPending() {
         return status == OrderStatus.PAYMENT_PENDING;
+    }
+
+    /** 결제를 이어서 할 수 있는 주문인지. 시간이 지나면 선점이 풀려 다른 사람에게 넘어간다. */
+    public boolean isHoldAlive(LocalDateTime now) {
+        return isPaymentPending() && now.isBefore(holdExpiresAt());
+    }
+
+    /** 이 주문이 재고를 붙잡아 두는 마지막 시각. */
+    public LocalDateTime holdExpiresAt() {
+        return getCreatedAt().plus(CHECKOUT_HOLD);
     }
 
     /** 결제가 끝나 판매자가 보내야 하는 주문인지 판단한다. */

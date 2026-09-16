@@ -72,6 +72,7 @@ public class OrderService {
             List.of(OrderStatus.SHIPPING_PENDING, OrderStatus.SHIPPED);
 
     private static final String SESSION_CREATE_FAILED_REASON = "결제 세션을 만들지 못했습니다.";
+    private static final String CHECKOUT_HOLD_EXPIRED_REASON = "결제를 끝내지 않아 선점을 풀었습니다.";
     private static final String REVERTED_ORDER_REFUND_REASON = "되돌린 주문에 결제가 승인돼 취소합니다.";
 
     private final OrderRepository orderRepository;
@@ -199,6 +200,12 @@ public class OrderService {
     public OrderCreateResponse createOrder(OrderCreateCommand command) {
         // 재고를 잡기 전에 읽어 둔다. 여기서 실패하면 되돌릴 선점이 없다.
         String payerId = customerService.findPayerId(command.customerId());
+
+        OrderCreateResponse holding = resumeHoldingOrder(command, payerId);
+        if (holding != null) {
+            return holding;
+        }
+
         ReservedProduct product =
                 productService.reserveForOrder(command.productId(), command.quantity());
         Order order = savePendingOrder(command, product);
@@ -217,10 +224,48 @@ public class OrderService {
                     order.getOrderNumber(),
                     sessionId,
                     order.getTotalAmount(),
-                    payerId);
+                    payerId,
+                    order.holdExpiresAt());
         } catch (RuntimeException e) {
             failPayment(order.getId(), SESSION_CREATE_FAILED_REASON);
             throw e;
+        }
+    }
+
+    /** 결제하다 자리를 비운 사람이 다시 눌렀을 때, 잡아 둔 주문을 그대로 이어서 결제하게 한다. */
+    // 재고를 또 선점하지 않는다. 선점이 풀린 뒤라면 새 주문으로 넘겨 다른 사람과 같은 선에서 다투게 한다.
+    private OrderCreateResponse resumeHoldingOrder(OrderCreateCommand command, String payerId) {
+        return orderRepository
+                .findFirstByCustomerIdAndProductIdAndStatusOrderByIdDesc(
+                        command.customerId(), command.productId(), OrderStatus.PAYMENT_PENDING)
+                .filter(order -> order.isHoldAlive(LocalDateTime.now()))
+                .filter(order -> order.getSessionId() != null)
+                .map(
+                        order ->
+                                new OrderCreateResponse(
+                                        order.getId(),
+                                        order.getOrderNumber(),
+                                        order.getSessionId(),
+                                        order.getTotalAmount(),
+                                        payerId,
+                                        order.holdExpiresAt()))
+                .orElse(null);
+    }
+
+    /** 결제창만 열어 두고 끝내지 않은 주문의 선점을 풀어, 기다리던 다른 사람이 살 수 있게 한다. */
+    // 한 건이 실패해도 나머지는 푼다. 푼 뒤에 결제가 승인되면 승인 쪽에서 취소로 되돌린다.
+    public void releaseExpiredCheckoutHolds() {
+        List<Order> expired =
+                orderRepository.findByStatusAndCreatedAtBefore(
+                        OrderStatus.PAYMENT_PENDING,
+                        LocalDateTime.now().minus(Order.CHECKOUT_HOLD));
+        for (Order order : expired) {
+            try {
+                failPayment(order.getId(), CHECKOUT_HOLD_EXPIRED_REASON);
+                log.info("결제를 끝내지 않아 선점을 풀었다 - orderId={}", order.getId());
+            } catch (RuntimeException e) {
+                log.warn("선점을 풀지 못했다 - orderId={}", order.getId(), e);
+            }
         }
     }
 

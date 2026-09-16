@@ -1,6 +1,7 @@
 package com.toasty.domain.order.controller.dto.response;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import java.time.LocalDateTime;
 
 /** 주문하기 응답. 이 세션으로 결제창을 열고, 결제창이 준비되면 결제 승인 API를 부른다. */
 public record OrderCreateResponse(
@@ -12,4 +13,6 @@ public record OrderCreateResponse(
                         description =
                                 "인증 URL의 payer_id로 넘기면 일부 인증 과정이 생략된다. 계좌 등록을 마치지 않은 구매자는 값이 없다",
                         example = "payer:01M23CH34X3XPRDKVE5V5P50JP")
-                String payerId) {}
+                String payerId,
+        @Schema(description = "이 시각까지 이 주문으로만 살 수 있다. 지나면 선점이 풀려 다른 사람에게 넘어간다")
+                LocalDateTime holdExpiresAt) {}

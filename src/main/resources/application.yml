@@ -111,9 +111,11 @@ auth:
   # 만료시간은 30m, 14d 처럼 단위를 붙여 쓴다.
   access-token:
     secret: ${JWT_SECRET}
-    expiration: 30m
+    expiration: 1h
   refresh-token:
     expiration: 14d
+    # 화면 여러 곳이 동시에 재발급을 부르면 같은 토큰이 두 번 온다. 이 시간 안이면 유출로 보지 않는다.
+    rotation-grace: 30s
 
 management:
   endpoints:

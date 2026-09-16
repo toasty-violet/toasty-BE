@@ -2,6 +2,7 @@ package com.toasty.domain.live.service;
 
 import com.toasty.domain.auth.entity.AuthUser;
 import com.toasty.domain.customer.service.CustomerService;
+import com.toasty.domain.follow.service.FollowService;
 import com.toasty.domain.live.client.LiveChatClient;
 import com.toasty.domain.live.client.LiveStreamingClient;
 import com.toasty.domain.live.client.dto.ChatRole;
@@ -24,6 +25,8 @@ import com.toasty.domain.live.entity.LiveStatus;
 import com.toasty.domain.live.entity.LiveUpdateCommand;
 import com.toasty.domain.live.exception.LiveErrorCode;
 import com.toasty.domain.live.repository.LiveRepository;
+import com.toasty.domain.order.entity.LiveSalesStat;
+import com.toasty.domain.order.service.OrderService;
 import com.toasty.domain.product.controller.dto.response.LiveProductResponse;
 import com.toasty.domain.product.controller.dto.response.LiveProductsResponse;
 import com.toasty.domain.product.entity.LiveProductPinCommand;
@@ -39,6 +42,7 @@ import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import lombok.RequiredArgsConstructor;
@@ -81,6 +85,8 @@ public class LiveService {
     private final ProductService productService;
     private final SellerService sellerService;
     private final CustomerService customerService;
+    private final OrderService orderService;
+    private final FollowService followService;
     private final TransactionTemplate transactionTemplate;
 
     // 라이브별로 송출이 연속 몇 번 끊겨 있었는지. 서버가 한 대라 메모리에 둔다.
@@ -284,13 +290,44 @@ public class LiveService {
                 productService.countScheduledProducts(scheduled.stream().map(Live::getId).toList());
 
         return SellerLiveTabResponse.of(
+                latestStatOf(sellerId),
                 broadcasting,
+                broadcasting == null ? 0 : sellThroughRateOf(broadcasting),
                 scheduled.stream()
                         .map(
                                 live ->
                                         SellerLiveTabResponse.Scheduled.of(
                                                 live, productCounts.getOrDefault(live.getId(), 0)))
                         .toList());
+    }
+
+    // 끝낸 방송이 없으면 화면이 현황 구역을 통째로 감춘다.
+    private SellerLiveTabResponse.LatestStat latestStatOf(Long sellerId) {
+        return liveRepository
+                .findFirstBySellerIdAndStatusOrderByEndedAtDesc(sellerId, LiveStatus.ENDED)
+                .map(
+                        live -> {
+                            LiveSalesStat stat =
+                                    orderService.findLiveSalesStat(live.getId(), sellerId);
+                            return new SellerLiveTabResponse.LatestStat(
+                                    live.getPeakViewerCount(),
+                                    stat.orderCount(),
+                                    stat.salesAmount());
+                        })
+                .orElse(null);
+    }
+
+    // 방송을 켠 뒤 재고를 더 채우면 분모가 함께 늘어 판매율은 내려간다.
+    private int sellThroughRateOf(Live broadcasting) {
+        long soldQuantity =
+                orderService
+                        .findLiveSalesStat(broadcasting.getId(), broadcasting.getSellerId())
+                        .soldQuantity();
+        long total = productService.sumScheduledStock(broadcasting.getId()) + soldQuantity;
+        if (total == 0) {
+            return 0;
+        }
+        return Math.toIntExact(Math.round(soldQuantity * 100.0 / total));
     }
 
     @Transactional(readOnly = true)
@@ -435,9 +472,9 @@ public class LiveService {
     }
 
     /** 홈 화면의 라이브 섹션을 채운다. */
-    // 셀러 정보는 라이브마다 조회하지 않고 한 번에 모아 읽는다.
+    // 셀러 정보와 팔로우 여부는 라이브마다 조회하지 않고 각각 한 번에 모아 읽는다.
     @Transactional(readOnly = true)
-    public List<HomeLiveResponse> findHomeLives() {
+    public List<HomeLiveResponse> findHomeLives(Long customerId) {
         List<Live> lives = new ArrayList<>(broadcastingForHome());
         if (lives.size() < HOME_LIVE_LIMIT) {
             lives.addAll(scheduledForHome(HOME_LIVE_LIMIT - lives.size()));
@@ -445,11 +482,18 @@ public class LiveService {
         if (lives.isEmpty()) {
             return List.of();
         }
-        Map<Long, SellerProfileResponse> sellers =
-                sellerService.findShopProfiles(
-                        lives.stream().map(Live::getSellerId).distinct().toList());
+        List<Long> sellerIds = lives.stream().map(Live::getSellerId).distinct().toList();
+
+        Map<Long, SellerProfileResponse> sellers = sellerService.findShopProfiles(sellerIds);
+        Set<Long> followed = followService.findFollowedSellerIds(customerId, sellerIds);
+
         return lives.stream()
-                .map(live -> HomeLiveResponse.of(live, sellers.get(live.getSellerId())))
+                .map(
+                        live ->
+                                HomeLiveResponse.of(
+                                        live,
+                                        sellers.get(live.getSellerId()),
+                                        followed.contains(live.getSellerId())))
                 .toList();
     }
 

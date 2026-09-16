@@ -64,8 +64,9 @@ public class LiveController {
             description =
                     "셀러가 라이브탭에 들어올 때 자기 라이브 상황을 한 번에 가져옵니다. 화면 진입 시 한 번 호출하세요. 지금 방송 중인"
                             + " 라이브(없으면 null), 예정된 라이브 목록(방송 예정 시각 오름차순), 최신 라이브 현황 세 가지를 함께"
-                            + " 내려줍니다. 종료된 라이브는 담기지 않습니다. latestStat은 주문·시청자 집계가 아직 없어 항상"
-                            + " null이니 값이 없는 화면을 그리세요. 방송 중 라이브의 판매율도 같은 이유로 0으로 나갑니다.")
+                            + " 내려줍니다. 종료된 라이브는 담기지 않습니다. latestStat은 가장 최근에 끝난 방송의 집계라,"
+                            + " 끝낸 방송이 없으면 null이니 현황 구역을 감추세요. 시청자 수는 그 방송의 최고 동시 시청자이고,"
+                            + " 판매 금액은 배송비를 뺀 상품 금액입니다. 주문 수와 판매율은 결제까지 끝난 주문만 셉니다.")
     @SellerOnly
     @GetMapping("/me")
     public ApiResponse<SellerLiveTabResponse> getMyLiveTab(@LoginUser AuthUser seller) {
@@ -207,10 +208,11 @@ public class LiveController {
                             + " 방송 중인 라이브가 시청자 많은 순으로 먼저 오고, 그 뒤에 방송 예정이 임박한 순으로"
                             + " 붙어 최대 5개를 내려줍니다. 방송 중 카드는 playbackUrl로 썸네일을 자동 재생하고,"
                             + " 예정 카드는 scheduledAt을 배지에 띄우면 됩니다. 시각이 지났는데 시작하지 않은"
-                            + " 예정은 담기지 않습니다.")
+                            + " 예정은 담기지 않습니다. 카드마다 팔로우 버튼의 초기 상태로 쓸 following이 함께"
+                            + " 오며, 토큰을 보내지 않았거나 구매자가 아니면 항상 false입니다.")
     @GetMapping("/public")
-    public ApiResponse<List<HomeLiveResponse>> findHomeLives() {
-        return ApiResponse.ok(liveService.findHomeLives());
+    public ApiResponse<List<HomeLiveResponse>> findHomeLives(@LoginUser AuthUser user) {
+        return ApiResponse.ok(liveService.findHomeLives(user == null ? null : user.customerId()));
     }
 
     @Operation(

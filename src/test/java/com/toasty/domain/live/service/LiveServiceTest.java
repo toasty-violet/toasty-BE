@@ -55,6 +55,8 @@ class LiveServiceTest {
     private com.toasty.domain.product.service.ProductService productService;
     private com.toasty.domain.seller.service.SellerService sellerService;
     private com.toasty.domain.customer.service.CustomerService customerService;
+    private com.toasty.domain.follow.service.FollowService followService;
+    private com.toasty.domain.order.service.OrderService orderService;
     private org.springframework.transaction.support.TransactionTemplate transactionTemplate;
     private LiveService liveService;
 
@@ -66,6 +68,10 @@ class LiveServiceTest {
         productService = mock(com.toasty.domain.product.service.ProductService.class);
         sellerService = mock(com.toasty.domain.seller.service.SellerService.class);
         customerService = mock(com.toasty.domain.customer.service.CustomerService.class);
+        followService = mock(com.toasty.domain.follow.service.FollowService.class);
+        orderService = mock(com.toasty.domain.order.service.OrderService.class);
+        given(orderService.findLiveSalesStat(any(), any()))
+                .willReturn(com.toasty.domain.order.entity.LiveSalesStat.empty());
         transactionTemplate = passthroughTransaction();
         liveService =
                 new LiveService(
@@ -75,6 +81,8 @@ class LiveServiceTest {
                         productService,
                         sellerService,
                         customerService,
+                        orderService,
+                        followService,
                         transactionTemplate);
     }
 
@@ -384,6 +392,8 @@ class LiveServiceTest {
                             productService,
                             sellerService,
                             customerService,
+                            orderService,
+                            followService,
                             passthroughTransaction());
 
             assertThatThrownBy(() -> service.create(command()))
@@ -433,7 +443,7 @@ class LiveServiceTest {
                                     new SellerProfileResponse(
                                             SELLER_ID, "토스티샵", "https://cdn.example.com/s.jpg")));
 
-            java.util.List<HomeLiveResponse> home = liveService.findHomeLives();
+            java.util.List<HomeLiveResponse> home = liveService.findHomeLives(null);
 
             assertThat(home).extracting(HomeLiveResponse::title).containsExactly("방송 중", "방송 예정");
             assertThat(home.get(0).viewerCount()).isEqualTo(132);
@@ -450,7 +460,7 @@ class LiveServiceTest {
                     .willReturn(java.util.List.of());
             given(sellerService.findShopProfiles(any())).willReturn(java.util.Map.of());
 
-            liveService.findHomeLives();
+            liveService.findHomeLives(null);
 
             verify(sellerService).findShopProfiles(java.util.List.of(SELLER_ID));
         }
@@ -468,7 +478,7 @@ class LiveServiceTest {
                                     homeLive(5L, "5")));
             given(sellerService.findShopProfiles(any())).willReturn(java.util.Map.of());
 
-            assertThat(liveService.findHomeLives()).hasSize(5);
+            assertThat(liveService.findHomeLives(null)).hasSize(5);
 
             verify(liveRepository, never())
                     .findByStatusAndScheduledAtGreaterThanEqual(any(), any(), any());
@@ -482,7 +492,7 @@ class LiveServiceTest {
             given(liveRepository.findByStatusAndScheduledAtGreaterThanEqual(any(), any(), any()))
                     .willReturn(java.util.List.of());
 
-            assertThat(liveService.findHomeLives()).isEmpty();
+            assertThat(liveService.findHomeLives(null)).isEmpty();
 
             verify(sellerService, never()).findShopProfiles(any());
         }

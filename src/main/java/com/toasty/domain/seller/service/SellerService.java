@@ -6,6 +6,7 @@ import com.toasty.domain.seller.controller.dto.response.ShopNameSearchResponse;
 import com.toasty.domain.seller.controller.dto.response.ShopNameSuggestionResponse;
 import com.toasty.domain.seller.controller.dto.response.ShopSalesSummaryResponse;
 import com.toasty.domain.seller.controller.dto.response.ShopShippingFeeResponse;
+import com.toasty.domain.seller.controller.dto.response.StoreDetailResponse;
 import com.toasty.domain.seller.entity.Seller;
 import com.toasty.domain.seller.entity.SellerOnboardingCommand;
 import com.toasty.domain.seller.entity.ShopUpdateCommand;
@@ -22,6 +23,7 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -67,6 +69,17 @@ public class SellerService {
         return toShopProfile(findSeller(sellerId));
     }
 
+    /** 주문 금액에 붙일 배송비. 스토어가 정한 무료배송 기준을 넘으면 받지 않는다. */
+    // 도서 산간 추가 배송비는 우편번호로 지역을 가리는 규칙이 없어 아직 붙이지 않는다.
+    @Transactional(readOnly = true)
+    public int calculateShippingFee(Long sellerId, int productAmount) {
+        Seller seller = findSeller(sellerId);
+        boolean freeShipping =
+                seller.getFreeShippingThreshold() > 0
+                        && productAmount >= seller.getFreeShippingThreshold();
+        return freeShipping ? 0 : seller.getBaseShippingFee();
+    }
+
     /** 다른 도메인이 밖에서 받은 셀러 번호를 쓰기 전에 실제로 있는 스토어인지 확인한다. */
     @Transactional(readOnly = true)
     public void requireSellerExists(Long sellerId) {
@@ -83,6 +96,14 @@ public class SellerService {
         }
         return sellerRepository.findAllById(sellerIds).stream()
                 .collect(Collectors.toMap(Seller::getId, this::toShopProfile));
+    }
+
+    /** 다른 도메인이 보여줄 스토어를 고르지 못했을 때 화면을 채울 기본 목록. 먼저 만들어진 순으로 준다. */
+    @Transactional(readOnly = true)
+    public List<SellerProfileResponse> findEarliestShopProfiles(int limit) {
+        return sellerRepository.findAllByOrderByIdAsc(PageRequest.of(0, limit)).stream()
+                .map(this::toShopProfile)
+                .toList();
     }
 
     // 단건과 다건이 같은 규칙으로 스토어를 표시하도록 조립을 한 곳에 둔다.
@@ -110,6 +131,18 @@ public class SellerService {
                         seller.getBaseShippingFee(),
                         seller.getFreeShippingThreshold(),
                         seller.getRemoteAreaShippingFee()));
+    }
+
+    /** 구매자가 보는 스토어 화면에서 판매자 행이 들고 있는 값을 꺼낸다. */
+    // 판매 내역과 배송비 정책, 대표자 실명은 판매자 본인만 보는 값이라 내보내지 않는다.
+    @Transactional(readOnly = true)
+    public StoreDetailResponse findStoreDetail(Long sellerId) {
+        Seller seller = findSeller(sellerId);
+        return new StoreDetailResponse(
+                seller.getId(),
+                toImageUrl(seller.getShopImageObjectKey()),
+                seller.getShopName(),
+                seller.getDescription());
     }
 
     /** 판매자가 스토어 정보를 고친다. 보낸 값이 그대로 저장된다. */

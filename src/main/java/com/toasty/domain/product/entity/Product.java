@@ -73,6 +73,27 @@ public class Product extends BaseTimeEntity {
         return stockQuantity <= 0;
     }
 
+    public boolean hasEnoughStock(int quantity) {
+        return stockQuantity >= quantity;
+    }
+
+    /** 주문이 재고를 선점한다. 일반판매 상품이 다 팔리면 판매를 닫는다. */
+    // 재고가 남아 있는지는 부르는 쪽이 행을 잠근 뒤에 확인한다.
+    public void decreaseStock(int quantity) {
+        this.stockQuantity -= quantity;
+        if (salesType == SalesType.GENERAL && isSoldOut()) {
+            this.salesType = SalesType.SOLD_OUT;
+        }
+    }
+
+    /** 결제가 실패하거나 취소돼 선점했던 재고를 되돌린다. 다 팔려 닫았던 판매도 함께 되돌린다. */
+    public void increaseStock(int quantity) {
+        this.stockQuantity += quantity;
+        if (salesType == SalesType.SOLD_OUT && !isSoldOut()) {
+            this.salesType = SalesType.GENERAL;
+        }
+    }
+
     /** 라이브가 끝나면 재고가 남은 상품은 일반판매로 넘기고, 다 팔린 상품은 판매를 닫는다. */
     // 이미 넘어간 상품은 다시 라이브로 되돌리지 않는다.
     public void closeLiveSales() {

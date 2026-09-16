@@ -360,6 +360,7 @@ class OrderServiceTest {
                     .publishEvent(
                             new OrderShippedEvent(
                                     31L,
+                                    "20260915-1002331",
                                     "010-2345-6789",
                                     "아이보리 골지 가디건",
                                     "CJ 대한통운",

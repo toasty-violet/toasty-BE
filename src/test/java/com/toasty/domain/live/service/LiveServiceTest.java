@@ -57,6 +57,7 @@ class LiveServiceTest {
     private com.toasty.domain.customer.service.CustomerService customerService;
     private com.toasty.domain.follow.service.FollowService followService;
     private com.toasty.domain.order.service.OrderService orderService;
+    private com.toasty.domain.live.client.LiveThumbnailClient liveThumbnailClient;
     private org.springframework.transaction.support.TransactionTemplate transactionTemplate;
     private LiveService liveService;
 
@@ -70,6 +71,9 @@ class LiveServiceTest {
         customerService = mock(com.toasty.domain.customer.service.CustomerService.class);
         followService = mock(com.toasty.domain.follow.service.FollowService.class);
         orderService = mock(com.toasty.domain.order.service.OrderService.class);
+        liveThumbnailClient = mock(com.toasty.domain.live.client.LiveThumbnailClient.class);
+        given(liveThumbnailClient.findLatestThumbnailUrl(any()))
+                .willReturn(java.util.Optional.empty());
         given(orderService.findLiveSalesStat(any(), any()))
                 .willReturn(com.toasty.domain.order.entity.LiveSalesStat.empty());
         transactionTemplate = passthroughTransaction();
@@ -78,6 +82,7 @@ class LiveServiceTest {
                         liveRepository,
                         streamingClient,
                         chatClient,
+                        liveThumbnailClient,
                         productService,
                         sellerService,
                         customerService,
@@ -389,6 +394,7 @@ class LiveServiceTest {
                             liveRepository,
                             failing,
                             chatClient,
+                            liveThumbnailClient,
                             productService,
                             sellerService,
                             customerService,

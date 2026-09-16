@@ -5,6 +5,7 @@ import com.toasty.domain.customer.service.CustomerService;
 import com.toasty.domain.follow.service.FollowService;
 import com.toasty.domain.live.client.LiveChatClient;
 import com.toasty.domain.live.client.LiveStreamingClient;
+import com.toasty.domain.live.client.LiveThumbnailClient;
 import com.toasty.domain.live.client.dto.ChatRole;
 import com.toasty.domain.live.client.dto.ChatTokenCommand;
 import com.toasty.domain.live.client.dto.StreamStatus;
@@ -87,6 +88,7 @@ public class LiveService {
     private final LiveRepository liveRepository;
     private final LiveStreamingClient liveStreamingClient;
     private final LiveChatClient liveChatClient;
+    private final LiveThumbnailClient liveThumbnailClient;
     private final ProductService productService;
     private final SellerService sellerService;
     private final CustomerService customerService;
@@ -374,6 +376,7 @@ public class LiveService {
         Map<Long, Integer> viewerCounts = new LinkedHashMap<>();
         List<Long> startedLiveIds = new ArrayList<>();
         List<Live> droppedLives = new ArrayList<>();
+        List<Live> thumbnaillessLives = new ArrayList<>();
         List<Live> unfinished = liveRepository.findByStatusIn(UNFINISHED_STATUSES);
         for (Live live : unfinished) {
             StreamStatus streamStatus = readStreamStatus(live);
@@ -382,6 +385,9 @@ public class LiveService {
             }
             if (streamStatus.isBroadcasting()) {
                 droppedStreamChecks.remove(live.getId());
+                if (live.getThumbnailUrl() == null) {
+                    thumbnaillessLives.add(live);
+                }
                 if (!live.isBroadcasting()) {
                     startedLiveIds.add(live.getId());
                     viewerCounts.put(live.getId(), streamStatus.viewerCount());
@@ -402,6 +408,7 @@ public class LiveService {
             }
         }
         forgetFinishedLives(unfinished);
+        thumbnaillessLives.forEach(this::fillThumbnail);
         if (!viewerCounts.isEmpty()) {
             transactionTemplate.executeWithoutResult(
                     status -> applyViewerCounts(viewerCounts, startedLiveIds));
@@ -412,6 +419,16 @@ public class LiveService {
     // 한 번 끊긴 것만으로는 끝내지 않는다. 잠깐 끊겼다 돌아오는 송출이 있다.
     private int countDroppedStream(Long liveId) {
         return droppedStreamChecks.merge(liveId, 1, Integer::sum);
+    }
+
+    // IVS가 첫 썸네일을 찍기 전에는 찾을 것이 없어, 찾을 때까지 주기마다 다시 본다.
+    private void fillThumbnail(Live live) {
+        liveThumbnailClient
+                .findLatestThumbnailUrl(live.getIvsChannelArn())
+                .ifPresent(
+                        url ->
+                                transactionTemplate.executeWithoutResult(
+                                        status -> findById(live.getId()).updateThumbnailUrl(url)));
     }
 
     // 끝난 라이브의 기록까지 들고 있지 않도록, 이번에 살펴본 라이브만 남긴다.

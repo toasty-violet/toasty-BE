@@ -15,6 +15,23 @@ import org.springframework.transaction.event.TransactionalEventListener;
 @RequiredArgsConstructor
 public class ShipmentSmsSender {
 
+    private static final String TEXT_FORMAT =
+            """
+            [ toasty 상품 출고 안내 ]
+            주문하신 상품이 발송되었습니다.
+
+            배송 조회까지 평일 기준 1~2일 정도 소요될 수 있습니다.
+            상품 수령까지 조금만 기다려주세요!
+
+            ■주문 정보
+            주문번호: %s
+            상품명: %s
+
+            ■배송 정보
+            택배사: %s
+            송장번호: %s\
+            """;
+
     private final SolapiSmsClient smsClient;
 
     // 문자는 운송장 등록이 확정된 뒤에만 보내고, 실패해도 등록을 되돌리지 않는다.
@@ -29,7 +46,10 @@ public class ShipmentSmsSender {
     }
 
     static String textOf(OrderShippedEvent event) {
-        return "[toasty] 주문하신 %s 상품이 발송되었어요.\n%s %s"
-                .formatted(event.productName(), event.courierName(), event.trackingNumber());
+        return TEXT_FORMAT.formatted(
+                event.orderNumber(),
+                event.productName(),
+                event.courierName(),
+                event.trackingNumber());
     }
 }

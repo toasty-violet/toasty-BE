@@ -22,6 +22,8 @@ public class RefreshTokenRepository {
     private static final String TOKEN_KEY_PREFIX = "refresh:token:";
     private static final String USER_KEY_PREFIX = "refresh:user:";
     private static final String USED_VALUE_PREFIX = "used:";
+    // 방금 교체된 토큰이 무엇으로 바뀌었는지. 유예 시간만큼만 들고 있는다.
+    private static final String ROTATED_KEY_PREFIX = "refresh:rotated:";
 
     // GET과 SET을 한 번의 원자적 실행으로 묶는다. 나눠 쓰면 동시 재발급 요청이 둘 다 미소비 상태를
     // 읽어 통과하거나(재사용 미탐지), 한쪽이 상대의 표시 직후에 도착해 유출로 오인된다.
@@ -95,6 +97,20 @@ public class RefreshTokenRepository {
             redisTemplate.delete(tokens.stream().map(this::tokenKey).toList());
         }
         redisTemplate.delete(userKey);
+    }
+
+    // 교체 직후에 같은 토큰으로 다시 오는 요청에게 돌려줄 새 토큰을 남긴다
+    public void saveRotation(String oldToken, String newToken, Duration grace) {
+        redisTemplate.opsForValue().set(rotatedKey(oldToken), newToken, grace);
+    }
+
+    // 유예 시간 안에 교체된 토큰이면 그때 발급한 새 토큰을 돌려준다
+    public Optional<String> findRotated(String oldToken) {
+        return Optional.ofNullable(redisTemplate.opsForValue().get(rotatedKey(oldToken)));
+    }
+
+    private String rotatedKey(String refreshToken) {
+        return ROTATED_KEY_PREFIX + refreshToken;
     }
 
     private String tokenKey(String refreshToken) {

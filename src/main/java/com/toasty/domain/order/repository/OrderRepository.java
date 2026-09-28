@@ -1,8 +1,11 @@
 package com.toasty.domain.order.repository;
 
+import com.toasty.domain.order.entity.LiveSalesStat;
 import com.toasty.domain.order.entity.Order;
 import com.toasty.domain.order.entity.OrderStatus;
+import com.toasty.domain.order.entity.SellerSalesStat;
 import jakarta.persistence.LockModeType;
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -26,6 +29,37 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     /** 구매자 주문내역 목록. 최신순이라 id 내림차순이고, 커서보다 작은 id부터 읽는다. */
     List<Order> findByCustomerIdAndStatusInAndIdLessThanOrderByIdDesc(
             Long customerId, Collection<OrderStatus> statuses, Long cursor, Pageable pageable);
+
+    /** 이 구매자가 이 상품에 대해 마지막으로 만든 주문. 결제하다 자리를 비운 사람을 다시 들여보내는 데 쓴다. */
+    Optional<Order> findFirstByCustomerIdAndProductIdAndStatusOrderByIdDesc(
+            Long customerId, Long productId, OrderStatus status);
+
+    /** 결제창만 열어 두고 끝내지 않은 주문. 배치가 선점했던 재고를 되돌린다. */
+    List<Order> findByStatusAndCreatedAtBefore(OrderStatus status, LocalDateTime createdBefore);
+
+    /** 라이브 한 건에서 나온 판매 집계. 판매 금액은 배송비를 뺀 상품 금액이다. */
+    // 셀러 번호를 함께 걸어, 다른 셀러의 상품을 이 라이브 번호로 주문해도 집계에 섞이지 않는다.
+    @Query(
+            "select new com.toasty.domain.order.entity.LiveSalesStat("
+                    + " count(o), coalesce(sum(o.productPrice * o.quantity), 0),"
+                    + " coalesce(sum(o.quantity), 0))"
+                    + " from Order o"
+                    + " where o.liveId = :liveId and o.sellerId = :sellerId"
+                    + " and o.status in :statuses")
+    LiveSalesStat findLiveSalesStat(
+            @Param("liveId") Long liveId,
+            @Param("sellerId") Long sellerId,
+            @Param("statuses") Collection<OrderStatus> statuses);
+
+    /** 스토어탭 판매 내역 요약. 누적 구매자는 같은 사람이 여러 번 사도 한 명으로 센다. */
+    @Query(
+            "select new com.toasty.domain.order.entity.SellerSalesStat("
+                    + " count(o), count(distinct o.customerId),"
+                    + " coalesce(sum(o.productPrice * o.quantity), 0))"
+                    + " from Order o"
+                    + " where o.sellerId = :sellerId and o.status in :statuses")
+    SellerSalesStat findSellerSalesStat(
+            @Param("sellerId") Long sellerId, @Param("statuses") Collection<OrderStatus> statuses);
 
     /** 셀러 주문탭 상태 칩에 붙는 건수. */
     @Query(

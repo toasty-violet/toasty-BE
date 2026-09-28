@@ -1,6 +1,7 @@
 package com.toasty.domain.seller.controller.dto.response;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.toasty.domain.order.entity.SellerSalesStat;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 /** 판매자 본인이 보는 스토어 정보 전체. */
@@ -19,7 +20,11 @@ public record ShopResponse(
         @Schema(description = "판매 내역") ShopSalesSummaryResponse salesSummary,
         @Schema(description = "배송비 정책") ShopShippingFeeResponse shippingFee) {
 
-    public static ShopResponse of(ShopDetailResponse shop, long followerCount, long productCount) {
+    public static ShopResponse of(
+            ShopDetailResponse shop,
+            long followerCount,
+            long productCount,
+            SellerSalesStat salesStat) {
         return new ShopResponse(
                 shop.sellerId(),
                 shop.shopImageUrl(),
@@ -28,7 +33,8 @@ public record ShopResponse(
                 followerCount,
                 productCount,
                 shop.description(),
-                shop.salesSummary(),
+                new ShopSalesSummaryResponse(
+                        salesStat.orderCount(), salesStat.buyerCount(), salesStat.salesAmount()),
                 shop.shippingFee());
     }
 }

@@ -24,7 +24,9 @@ public enum ProductErrorCode implements ErrorCode {
     PRODUCT_LAST_IN_LIVE(
             HttpStatus.CONFLICT, "PRODUCT_LAST_IN_LIVE", "라이브에 남은 마지막 상품이라 삭제할 수 없습니다."),
     PRODUCT_UPLOAD_URL_ISSUE_FAILED(
-            HttpStatus.BAD_GATEWAY, "PRODUCT_UPLOAD_URL_ISSUE_FAILED", "사진 업로드 주소 발급에 실패했습니다.");
+            HttpStatus.BAD_GATEWAY, "PRODUCT_UPLOAD_URL_ISSUE_FAILED", "사진 업로드 주소 발급에 실패했습니다."),
+    PRODUCT_STOCK_NOT_ENOUGH(HttpStatus.CONFLICT, "PRODUCT_STOCK_NOT_ENOUGH", "남은 재고가 부족합니다."),
+    PRODUCT_NOT_PURCHASABLE(HttpStatus.CONFLICT, "PRODUCT_NOT_PURCHASABLE", "지금은 구매할 수 없는 상품입니다.");
 
     private final HttpStatus status;
     private final String code;

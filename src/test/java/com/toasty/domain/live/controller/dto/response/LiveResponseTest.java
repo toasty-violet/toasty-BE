@@ -28,7 +28,8 @@ class LiveResponseTest {
     void 라이브탭_응답은_null_키를_남긴다() throws Exception {
         String json =
                 objectMapperWithGlobalSetting()
-                        .writeValueAsString(SellerLiveTabResponse.of(null, java.util.List.of()));
+                        .writeValueAsString(
+                                SellerLiveTabResponse.of(null, null, 0, java.util.List.of()));
 
         assertThat(json)
                 .contains("\"latestStat\":null")

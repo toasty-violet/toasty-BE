@@ -64,8 +64,9 @@ public class LiveController {
             description =
                     "셀러가 라이브탭에 들어올 때 자기 라이브 상황을 한 번에 가져옵니다. 화면 진입 시 한 번 호출하세요. 지금 방송 중인"
                             + " 라이브(없으면 null), 예정된 라이브 목록(방송 예정 시각 오름차순), 최신 라이브 현황 세 가지를 함께"
-                            + " 내려줍니다. 종료된 라이브는 담기지 않습니다. latestStat은 주문·시청자 집계가 아직 없어 항상"
-                            + " null이니 값이 없는 화면을 그리세요. 방송 중 라이브의 판매율도 같은 이유로 0으로 나갑니다.")
+                            + " 내려줍니다. 종료된 라이브는 담기지 않습니다. latestStat은 가장 최근에 끝난 방송의 집계라,"
+                            + " 끝낸 방송이 없으면 null이니 현황 구역을 감추세요. 시청자 수는 그 방송의 최고 동시 시청자이고,"
+                            + " 판매 금액은 배송비를 뺀 상품 금액입니다. 주문 수와 판매율은 결제까지 끝난 주문만 셉니다.")
     @SellerOnly
     @GetMapping("/me")
     public ApiResponse<SellerLiveTabResponse> getMyLiveTab(@LoginUser AuthUser seller) {
@@ -231,7 +232,8 @@ public class LiveController {
             description =
                     "시청 화면 상단의 시청자 수를 채웁니다. 값이 계속 바뀌므로 시청 중에 주기적으로 호출하세요."
                             + " 인증이 필요 없어 비로그인 유저도 호출할 수 있습니다. 송출 전이면 0이고, 끝난 방송도 0입니다."
-                            + " 서버가 30초마다 갱신해 둔 값을 읽어 주므로 그보다 자주 불러도 같은 값이 나옵니다.")
+                            + " 서버가 30초마다 갱신해 둔 값을 읽어 주므로 그보다 자주 불러도 같은 값이 나옵니다."
+                            + " 셀러 방송 화면 상단에 쓸 판매율도 함께 옵니다. 이쪽은 부를 때마다 다시 세므로 최신 값입니다.")
     @GetMapping("/public/{publicId}/viewer-count")
     public ApiResponse<LiveViewerCountResponse> getViewerCount(@PathVariable String publicId) {
         return ApiResponse.ok(liveService.getViewerCount(publicId));
@@ -256,8 +258,8 @@ public class LiveController {
             summary = "라이브 시청 - 채팅 입장 토큰 발급",
             description =
                     "시청 화면이 채팅에 붙을 때 호출합니다. 받은 token을 IVS Chat SDK에 넘기세요."
-                            + " 인증이 필요 없어 비로그인 유저도 호출할 수 있고, 그때는 writable이 false로 내려가"
-                            + " 읽기만 됩니다. 로그인 뒤 다시 호출하면 메시지를 보낼 수 있는 토큰을 받습니다."
+                            + " 인증이 필요 없어 비로그인 유저도 호출할 수 있고, 메시지도 보낼 수 있습니다."
+                            + " 비로그인은 서버가 지어 준 게스트 이름으로 뜨며, 다시 호출하면 이름이 바뀝니다."
                             + " 끝난 방송도 방이 남아 있는 동안은 읽을 수 있지만 writable은 false입니다."
                             + " expiresAt은 접속한 세션이 유지되는 시각입니다. 그 전에 다시 호출해 새 토큰을 받으세요."
                             + " 메시지에 실려 오는 role이 SELLER면 방송을 진행하는 셀러가 보낸 것이고,"

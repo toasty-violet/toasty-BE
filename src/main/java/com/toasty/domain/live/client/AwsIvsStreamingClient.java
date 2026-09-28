@@ -46,10 +46,15 @@ public class AwsIvsStreamingClient implements LiveStreamingClient {
             // CreateChannel 응답에 스트림 키가 함께 오므로 CreateStreamKey를 따로 부르지 않는다.
             CreateChannelResponse response =
                     ivsClient.createChannel(
-                            request ->
-                                    request.name(channelName)
-                                            .type(ivsProperties.channelType())
-                                            .latencyMode(LATENCY_MODE));
+                            request -> {
+                                request.name(channelName)
+                                        .type(ivsProperties.channelType())
+                                        .latencyMode(LATENCY_MODE);
+                                if (ivsProperties.recordsThumbnails()) {
+                                    request.recordingConfigurationArn(
+                                            ivsProperties.recordingConfigurationArn());
+                                }
+                            });
             return new StreamingChannel(
                     response.channel().arn(),
                     response.channel().playbackUrl(),

@@ -9,6 +9,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.time.LocalDateTime;
 import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -90,6 +91,10 @@ public class Seller extends BaseTimeEntity {
     @Column(name = "total_sales_amount", nullable = false)
     private long totalSalesAmount;
 
+    // 탈퇴한 판매자. 행은 거래 상대방 식별에 필요해 남기고, 목록 화면에서만 걸러낸다.
+    @Column(name = "withdrawn_at")
+    private LocalDateTime withdrawnAt;
+
     private Seller(
             Long userId,
             String shopName,
@@ -153,5 +158,10 @@ public class Seller extends BaseTimeEntity {
         this.shopName =
                 WITHDRAWN_SHOP_NAME_PREFIX
                         + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        this.withdrawnAt = LocalDateTime.now();
+    }
+
+    public boolean isWithdrawn() {
+        return withdrawnAt != null;
     }
 }

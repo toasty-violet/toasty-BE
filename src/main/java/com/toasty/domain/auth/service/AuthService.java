@@ -57,17 +57,19 @@ public class AuthService {
             throw new CustomException(AuthErrorCode.REFRESH_TOKEN_NOT_FOUND);
         }
 
-        // 소비된 토큰의 재사용은 유출로 간주하고 이 사용자의 모든 기기를 로그아웃시킨다
         if (consumed.status() == RefreshTokenConsumeResult.Status.REUSED) {
-            refreshTokenRepository.deleteAllByUserId(consumed.userId());
-            throw new CustomException(AuthErrorCode.REFRESH_TOKEN_REUSE_DETECTED);
+            return reissueWithinGrace(refreshToken, consumed.userId());
         }
 
         Long userId = consumed.userId();
+        String issued = issueRefreshToken(userId);
+        // 화면 여러 곳이 동시에 재발급을 부르면 뒤늦은 요청이 같은 토큰을 들고 온다. 그때 돌려줄 값을 남긴다.
+        refreshTokenRepository.saveRotation(
+                refreshToken, issued, refreshTokenProperties.rotationGrace());
 
         return new ReissueResult(
                 jwtTokenProvider.generateAccessToken(userId),
-                issueRefreshToken(userId),
+                issued,
                 refreshTokenProperties.expiration());
     }
 
@@ -101,6 +103,24 @@ public class AuthService {
             return;
         }
         refreshTokenRepository.findByToken(refreshToken).ifPresent(refreshTokenRepository::delete);
+    }
+
+    /** 방금 교체된 토큰으로 다시 온 요청에게 그때 발급한 토큰을 그대로 돌려준다. */
+    // 유예 시간이 지난 재사용은 유출로 보고 이 사용자의 모든 기기를 로그아웃시킨다.
+    private ReissueResult reissueWithinGrace(String refreshToken, Long userId) {
+        return refreshTokenRepository
+                .findRotated(refreshToken)
+                .map(
+                        rotated ->
+                                new ReissueResult(
+                                        jwtTokenProvider.generateAccessToken(userId),
+                                        rotated,
+                                        refreshTokenProperties.expiration()))
+                .orElseThrow(
+                        () -> {
+                            refreshTokenRepository.deleteAllByUserId(userId);
+                            return new CustomException(AuthErrorCode.REFRESH_TOKEN_REUSE_DETECTED);
+                        });
     }
 
     // 새 리프레시 토큰을 만들어 TTL과 함께 저장하고 그 값을 돌려준다

@@ -2,6 +2,7 @@ package com.toasty.domain.product.controller.dto.response;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.toasty.domain.product.entity.Product;
+import com.toasty.domain.seller.controller.dto.response.StoreShippingFeeResponse;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 
@@ -16,10 +17,14 @@ public record ProductDetailResponse(
         String description,
         @Schema(description = "노출 순서대로. 첫 장이 대표 사진") List<String> imageUrls,
         @Schema(description = "같은 스토어의 다른 상품. 이 상품은 빠져 있다")
-                List<StoreProductResponse> otherProducts) {
+                List<StoreProductResponse> otherProducts,
+        @Schema(description = "결제 화면에 띄울 이 스토어의 배송비") StoreShippingFeeResponse shippingFee) {
 
     public static ProductDetailResponse of(
-            Product product, List<String> imageUrls, List<StoreProductResponse> otherProducts) {
+            Product product,
+            List<String> imageUrls,
+            List<StoreProductResponse> otherProducts,
+            StoreShippingFeeResponse shippingFee) {
         return new ProductDetailResponse(
                 product.getId(),
                 product.getSellerId(),
@@ -27,6 +32,7 @@ public record ProductDetailResponse(
                 product.getPrice(),
                 product.getDescription(),
                 imageUrls,
-                otherProducts);
+                otherProducts,
+                shippingFee);
     }
 }

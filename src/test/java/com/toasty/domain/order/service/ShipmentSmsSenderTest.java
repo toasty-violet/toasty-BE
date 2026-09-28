@@ -18,7 +18,13 @@ import org.springframework.web.client.ResourceAccessException;
 class ShipmentSmsSenderTest {
 
     private static final OrderShippedEvent EVENT =
-            new OrderShippedEvent(31L, "010-2345-6789", "아이보리 골지 가디건", "CJ 대한통운", "394817503811");
+            new OrderShippedEvent(
+                    31L,
+                    "20260916-8F3A21C0",
+                    "010-2345-6789",
+                    "아이보리 골지 가디건",
+                    "CJ 대한통운",
+                    "394817503811");
 
     private SolapiSmsClient smsClient;
     private ShipmentSmsSender sender;
@@ -30,14 +36,28 @@ class ShipmentSmsSenderTest {
     }
 
     @Test
-    @DisplayName("받는사람 번호로 상품명과 운송장을 담아 보낸다")
+    @DisplayName("받는사람 번호로 주문 정보와 배송 정보를 담아 보낸다")
     void 받는사람에게_보낸다() {
         sender.send(EVENT);
 
         verify(smsClient)
                 .send(
                         "010-2345-6789",
-                        "[toasty] 주문하신 아이보리 골지 가디건 상품이 발송되었어요.\nCJ 대한통운 394817503811");
+                        """
+                        [ toasty 상품 출고 안내 ]
+                        주문하신 상품이 발송되었습니다.
+
+                        배송 조회까지 평일 기준 1~2일 정도 소요될 수 있습니다.
+                        상품 수령까지 조금만 기다려주세요!
+
+                        ■주문 정보
+                        주문번호: 20260916-8F3A21C0
+                        상품명: 아이보리 골지 가디건
+
+                        ■배송 정보
+                        택배사: CJ 대한통운
+                        송장번호: 394817503811\
+                        """);
     }
 
     @Test
@@ -51,8 +71,10 @@ class ShipmentSmsSenderTest {
     }
 
     @Test
-    @DisplayName("문구는 두 줄이다")
-    void 두_줄이다() {
-        assertThat(ShipmentSmsSender.textOf(EVENT).lines()).hasSize(2);
+    @DisplayName("주문번호와 송장번호가 문구에 들어간다")
+    void 주문번호와_송장번호를_담는다() {
+        assertThat(ShipmentSmsSender.textOf(EVENT))
+                .contains("주문번호: 20260916-8F3A21C0")
+                .contains("송장번호: 394817503811");
     }
 }

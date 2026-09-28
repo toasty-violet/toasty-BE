@@ -20,6 +20,7 @@ public class ProdPropertiesValidator {
     private final S3Properties s3Properties;
     private final AccessTokenProperties accessTokenProperties;
     private final SolapiProperties solapiProperties;
+    private final Point3Properties point3Properties;
 
     @PostConstruct
     void validate() {
@@ -33,6 +34,7 @@ public class ProdPropertiesValidator {
         requireInjected("SOLAPI_API_KEY", solapiProperties.apiKey());
         requireInjected("SOLAPI_API_SECRET", solapiProperties.apiSecret());
         requireInjected("SOLAPI_SENDER_NUMBER", solapiProperties.senderNumber());
+        requireInjected("POINT3_API_TOKEN", point3Properties.apiToken());
     }
 
     private void requireInjected(String name, List<String> values) {

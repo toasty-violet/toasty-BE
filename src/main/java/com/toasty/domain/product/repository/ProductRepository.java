@@ -2,16 +2,23 @@ package com.toasty.domain.product.repository;
 
 import com.toasty.domain.product.entity.Product;
 import com.toasty.domain.product.entity.SalesType;
+import jakarta.persistence.LockModeType;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface ProductRepository extends JpaRepository<Product, Long> {
+
+    /** 주문이 재고를 선점할 때. 같은 상품을 동시에 사도 하나씩 순서대로 깎도록 행을 잠그고 읽는다. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select p from Product p where p.id = :productId")
+    Optional<Product> findForUpdateById(@Param("productId") Long productId);
 
     /** 셀러 상품탭의 전체 칩. 다 팔린 상품만 빼고 최신순으로 준다. */
     // in으로 두 상태를 묶으면 상태가 앞에 선 인덱스를 골라 정렬이 따로 붙는다. 제외 조건이라야 id 인덱스를 탄다.

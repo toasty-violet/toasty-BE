@@ -4,6 +4,7 @@ import com.toasty.domain.product.entity.LiveProduct;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -20,6 +21,26 @@ public interface LiveProductRepository extends JpaRepository<LiveProduct, Long> 
             "select lp.liveId as liveId, count(lp) as productCount from LiveProduct lp"
                     + " where lp.liveId in :liveIds group by lp.liveId")
     List<LiveProductCount> countByLiveIdIn(@Param("liveIds") Collection<Long> liveIds);
+
+    /** 라이브에 편성된 상품에 지금 남아 있는 재고를 모두 더한다. */
+    @Query(
+            "select coalesce(sum(p.stockQuantity), 0) from LiveProduct lp"
+                    + " join Product p on p.id = lp.productId"
+                    + " where lp.liveId = :liveId")
+    long sumScheduledStock(@Param("liveId") Long liveId);
+
+    /** 이 상품이 어느 라이브에든 고정돼 지금 살 수 있는지. 한 번 고정한 상품은 계속 구매할 수 있다. */
+    @Query(
+            "select count(lp) > 0 from LiveProduct lp"
+                    + " where lp.productId = :productId and lp.pinnedAt is not null")
+    boolean existsPinnedByProductId(@Param("productId") Long productId);
+
+    /** 이 상품을 지금 팔고 있는 라이브. 여러 라이브에 편성됐으면 가장 나중에 고정한 쪽이다. */
+    @Query(
+            "select lp.liveId from LiveProduct lp"
+                    + " where lp.productId = :productId and lp.pinnedAt is not null"
+                    + " order by lp.pinnedAt desc")
+    List<Long> findPinnedLiveIds(@Param("productId") Long productId, Pageable pageable);
 
     /** 이 상품이 편성된 라이브. 상품탭이 방송 중인지, 지우면 빈 방송이 남는지 보는 데 쓴다. */
     @Query("select lp.liveId from LiveProduct lp where lp.productId = :productId")

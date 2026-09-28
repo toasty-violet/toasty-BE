@@ -90,6 +90,16 @@ public class Address extends BaseTimeEntity {
         this.detailAddress = detail.detailAddress();
     }
 
+    /** 유저가 고른 쪽 주소 한 줄. 주문에 배송지를 복사할 때 쓴다. */
+    // 카카오가 한쪽만 주는 주소가 있어, 고른 쪽이 비어 있으면 남은 쪽으로 채운다.
+    public String selectedAddress() {
+        String selected = addressType == AddressType.R ? roadAddress : jibunAddress;
+        if (selected != null && !selected.isBlank()) {
+            return selected;
+        }
+        return addressType == AddressType.R ? jibunAddress : roadAddress;
+    }
+
     /** 저장된 값을 그대로 꺼낸다. 내 정보 조회가 수정 화면의 입력창을 채우는 데 쓴다. */
     public AddressDetail toDetail() {
         return new AddressDetail(

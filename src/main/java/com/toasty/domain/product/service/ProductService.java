@@ -17,6 +17,7 @@ import com.toasty.domain.product.entity.Product;
 import com.toasty.domain.product.entity.ProductCreateCommand;
 import com.toasty.domain.product.entity.ProductImage;
 import com.toasty.domain.product.entity.ProductUpsertCommand;
+import com.toasty.domain.product.entity.ReservedProduct;
 import com.toasty.domain.product.entity.SalesType;
 import com.toasty.domain.product.entity.SellerProductFilter;
 import com.toasty.domain.product.entity.SellerProductPageCommand;
@@ -55,6 +56,7 @@ import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.CopyObjectRequest;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.MetadataDirective;
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 
 /** 셀러가 라이브에서 판매할 상품을 등록하고 그 라이브에 편성한다. */
@@ -77,6 +79,13 @@ public class ProductService {
 
     // 스토어 카드에 미리 걸어 주는 상품 수.
     private static final int STORE_PREVIEW_PRODUCTS_LIMIT = 3;
+
+    // 사진 주소는 사진마다 새로 만들어져 같은 주소의 내용이 바뀌지 않는다. 브라우저가 오래 들고 있어도 안전하다.
+    private static final String IMAGE_CACHE_CONTROL = "public, max-age=31536000, immutable";
+
+    // 캐시 헤더를 새로 쓰면 원본 메타데이터가 함께 지워져, 사진 형식도 다시 지정해야 한다.
+    private static final Map<String, String> CONTENT_TYPES =
+            Map.of("jpg", "image/jpeg", "png", "image/png", "webp", "image/webp");
 
     private final ProductRepository productRepository;
     private final ProductImageRepository productImageRepository;
@@ -299,6 +308,12 @@ public class ProductService {
                                 LiveProductCount::getLiveId, LiveProductCount::getProductCount));
     }
 
+    /** 라이브에 편성된 상품에 지금 남아 있는 재고 합. 판매율의 분모를 구하는 데 쓴다. */
+    @Transactional(readOnly = true)
+    public long sumScheduledStock(Long liveId) {
+        return liveProductRepository.sumScheduledStock(liveId);
+    }
+
     /** 스토어별 상품 수를 한 번에 센다. 상품이 하나도 없는 스토어는 결과에 담기지 않는다. */
     // 스토어 화면 그리드가 판매중만 보여줘서 카드 숫자도 같은 기준으로 센다.
     @Transactional(readOnly = true)
@@ -366,7 +381,82 @@ public class ProductService {
                 productImageRepository.findByProductIdOrderByDisplayOrder(productId).stream()
                         .map(ProductImage::getImageUrl)
                         .toList();
-        return ProductDetailResponse.of(product, imageUrls, otherProductsOf(product));
+        return ProductDetailResponse.of(
+                product,
+                imageUrls,
+                otherProductsOf(product),
+                sellerService.findStoreShippingFee(product.getSellerId()));
+    }
+
+    /**
+     * 주문이 상품을 선점한다. 지금 살 수 있는 상품인지 보고 재고를 깎아, 주문에 복사할 값을 돌려준다.
+     *
+     * <p>같은 상품을 동시에 사면 행을 잠근 순서대로 처리돼 재고가 모자란 요청만 거절된다.
+     */
+    @Transactional
+    public ReservedProduct reserveForOrder(Long productId, int quantity) {
+        Product product =
+                productRepository
+                        .findForUpdateById(productId)
+                        .orElseThrow(() -> new CustomException(ProductErrorCode.PRODUCT_NOT_FOUND));
+        requirePurchasable(product);
+        if (!product.hasEnoughStock(quantity)) {
+            throw new CustomException(ProductErrorCode.PRODUCT_STOCK_NOT_ENOUGH);
+        }
+        product.decreaseStock(quantity);
+        return new ReservedProduct(
+                product.getId(),
+                product.getSellerId(),
+                product.getName(),
+                product.getPrice(),
+                mainImageUrlOf(productId),
+                sellingLiveIdOf(product));
+    }
+
+    /** 결제가 실패하거나 취소돼 선점했던 재고를 되돌린다. */
+    // 지워진 상품은 되돌릴 재고가 없다. 주문을 실패로 넘기는 일을 막지 않도록 로그만 남긴다.
+    @Transactional
+    public void releaseForOrder(Long productId, int quantity) {
+        productRepository
+                .findForUpdateById(productId)
+                .ifPresentOrElse(
+                        product -> product.increaseStock(quantity),
+                        () ->
+                                log.warn(
+                                        "재고를 되돌릴 상품이 없다 - productId={}, quantity={}",
+                                        productId,
+                                        quantity));
+    }
+
+    // 라이브 상품은 방송에서 고정된 뒤부터 살 수 있고, 라이브가 끝나면 일반판매로 넘어가 스토어에서 산다.
+    private void requirePurchasable(Product product) {
+        if (product.isSoldOut()) {
+            throw new CustomException(ProductErrorCode.PRODUCT_STOCK_NOT_ENOUGH);
+        }
+        if (product.getSalesType() == SalesType.GENERAL) {
+            return;
+        }
+        if (product.getSalesType() == SalesType.LIVE
+                && liveProductRepository.existsPinnedByProductId(product.getId())) {
+            return;
+        }
+        throw new CustomException(ProductErrorCode.PRODUCT_NOT_PURCHASABLE);
+    }
+
+    // 방송이 끝나면 상품이 일반판매로 넘어가므로, 아직 라이브에 걸려 있는 상품만 방송에서 팔린 것으로 본다.
+    private Long sellingLiveIdOf(Product product) {
+        if (product.getSalesType() != SalesType.LIVE) {
+            return null;
+        }
+        return liveProductRepository
+                .findPinnedLiveIds(product.getId(), PageRequest.of(0, 1))
+                .stream()
+                .findFirst()
+                .orElse(null);
+    }
+
+    private String mainImageUrlOf(Long productId) {
+        return findMainImageUrls(List.of(productId)).get(productId);
     }
 
     // 자기 자신이 섞여 나오므로 한 칸 더 읽어 빼낸다.
@@ -798,6 +888,9 @@ public class ProductService {
                             .sourceKey(objectKey)
                             .destinationBucket(s3Properties.bucket())
                             .destinationKey(destinationKey)
+                            .metadataDirective(MetadataDirective.REPLACE)
+                            .cacheControl(IMAGE_CACHE_CONTROL)
+                            .contentType(contentTypeOf(destinationKey))
                             .build());
             return destinationKey;
         } catch (NoSuchKeyException e) {
@@ -806,6 +899,12 @@ public class ProductService {
             log.error("상품 사진 복사 실패. objectKey={}", objectKey, e);
             throw new CustomException(ProductErrorCode.PRODUCT_IMAGE_SAVE_FAILED, e);
         }
+    }
+
+    // 업로드 주소를 발급할 때 허용한 형식으로만 확장자가 붙는다. 그 밖의 키는 브라우저가 형식을 알아서 가리게 둔다.
+    private String contentTypeOf(String objectKey) {
+        String extension = objectKey.substring(objectKey.lastIndexOf('.') + 1).toLowerCase();
+        return CONTENT_TYPES.getOrDefault(extension, "application/octet-stream");
     }
 
     // 셀러·날짜·uuid를 그대로 두고 접두어만 바꾼다. 이미 pending 접두어로 시작하는지 검증한 뒤라 안전하다.

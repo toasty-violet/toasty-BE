@@ -16,11 +16,20 @@ spring:
       file: docker/local/docker-compose.yml
       lifecycle-management: start-only
 
+  cache:
+    type: caffeine
+    # 라이브 시청 화면은 모두에게 같은 값을 보여준다. 몇 초 늦어도 화면이 어긋나지 않는다.
+    caffeine:
+      spec: expireAfterWrite=3s,maximumSize=500
+
   datasource:
     url: ${DB_URL:jdbc:mysql://localhost:3306/toasty?serverTimezone=Asia/Seoul&characterEncoding=UTF-8}
     username: ${DB_USERNAME:toasty}
     password: ${DB_PASSWORD:toasty}
     driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      # 라이브 시청 화면이 시청자마다 4초 주기로 세 API를 부른다. 기본값 10으로는 대기가 생긴다.
+      maximum-pool-size: 30
 
   jpa:
     hibernate:
@@ -60,6 +69,8 @@ aws:
   ivs:
     region: ap-northeast-2
     channel-type: BASIC
+    # 방송 화면을 주기적으로 S3에 저장해 홈 카드 썸네일로 쓴다. 비우면 썸네일 없이 방송만 나간다.
+    recording-configuration-arn: ${AWS_IVS_RECORDING_CONFIGURATION_ARN:}
   s3:
     region: ap-northeast-2
     # 개발·운영 버킷이 갈리므로 기본값을 두지 않는다. .env에 반드시 채운다.
@@ -94,6 +105,9 @@ point3:
   base-url: https://api.point3.io
   # 프론트가 쓰는 client_id와 다른 값이다. 대시보드 개발정보 관리에서 발급받아 .env에 채운다.
   api-token: ${POINT3_API_TOKEN}
+  # 주문 요청이 승인 응답을 동기로 기다린다. 읽기 한도를 넘기면 재시도로 결과를 다시 확인한다.
+  connect-timeout: 3s
+  read-timeout: 10s
 
 solapi:
   base-url: https://api.solapi.com
@@ -106,9 +120,11 @@ auth:
   # 만료시간은 30m, 14d 처럼 단위를 붙여 쓴다.
   access-token:
     secret: ${JWT_SECRET}
-    expiration: 30m
+    expiration: 1h
   refresh-token:
     expiration: 14d
+    # 화면 여러 곳이 동시에 재발급을 부르면 같은 토큰이 두 번 온다. 이 시간 안이면 유출로 보지 않는다.
+    rotation-grace: 30s
 
 management:
   endpoints:

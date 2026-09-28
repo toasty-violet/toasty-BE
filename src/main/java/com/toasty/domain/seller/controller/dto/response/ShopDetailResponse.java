@@ -7,5 +7,4 @@ public record ShopDetailResponse(
         String shopImageObjectKey,
         String shopName,
         String description,
-        ShopSalesSummaryResponse salesSummary,
         ShopShippingFeeResponse shippingFee) {}

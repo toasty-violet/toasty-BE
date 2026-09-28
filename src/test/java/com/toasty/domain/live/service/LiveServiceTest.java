@@ -56,6 +56,8 @@ class LiveServiceTest {
     private com.toasty.domain.seller.service.SellerService sellerService;
     private com.toasty.domain.customer.service.CustomerService customerService;
     private com.toasty.domain.follow.service.FollowService followService;
+    private com.toasty.domain.order.service.OrderService orderService;
+    private com.toasty.domain.live.client.LiveThumbnailClient liveThumbnailClient;
     private org.springframework.transaction.support.TransactionTemplate transactionTemplate;
     private LiveService liveService;
 
@@ -68,15 +70,23 @@ class LiveServiceTest {
         sellerService = mock(com.toasty.domain.seller.service.SellerService.class);
         customerService = mock(com.toasty.domain.customer.service.CustomerService.class);
         followService = mock(com.toasty.domain.follow.service.FollowService.class);
+        orderService = mock(com.toasty.domain.order.service.OrderService.class);
+        liveThumbnailClient = mock(com.toasty.domain.live.client.LiveThumbnailClient.class);
+        given(liveThumbnailClient.findLatestThumbnailUrl(any()))
+                .willReturn(java.util.Optional.empty());
+        given(orderService.findLiveSalesStat(any(), any()))
+                .willReturn(com.toasty.domain.order.entity.LiveSalesStat.empty());
         transactionTemplate = passthroughTransaction();
         liveService =
                 new LiveService(
                         liveRepository,
                         streamingClient,
                         chatClient,
+                        liveThumbnailClient,
                         productService,
                         sellerService,
                         customerService,
+                        orderService,
                         followService,
                         transactionTemplate);
     }
@@ -384,9 +394,11 @@ class LiveServiceTest {
                             liveRepository,
                             failing,
                             chatClient,
+                            liveThumbnailClient,
                             productService,
                             sellerService,
                             customerService,
+                            orderService,
                             followService,
                             passthroughTransaction());
 
@@ -1081,19 +1093,19 @@ class LiveServiceTest {
     class IssueChatToken {
 
         @Test
-        @DisplayName("비로그인 시청자는 읽기 전용으로 받는다")
-        void 비로그인은_읽기_전용이다() {
+        @DisplayName("비로그인 시청자도 게스트 이름으로 쓸 수 있다")
+        void 비로그인도_쓸_수_있다() {
             givenLiveByPublicId("abc");
 
             LiveChatTokenResponse response = liveService.issueChatToken("abc", null);
 
-            assertThat(response.writable()).isFalse();
+            assertThat(response.writable()).isTrue();
             com.toasty.domain.live.client.dto.ChatTokenCommand issued =
                     chatClient.issuedTokenCommands().get(0);
-            assertThat(issued.writable()).isFalse();
+            assertThat(issued.writable()).isTrue();
             assertThat(issued.role()).isEqualTo(com.toasty.domain.live.client.dto.ChatRole.GUEST);
             assertThat(issued.chatUserId()).startsWith("guest-");
-            assertThat(issued.displayName()).isNull();
+            assertThat(issued.displayName()).startsWith("게스트");
         }
 
         @Test

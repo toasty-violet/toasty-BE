@@ -5,6 +5,7 @@ import com.toasty.domain.customer.service.CustomerService;
 import com.toasty.domain.follow.service.FollowService;
 import com.toasty.domain.live.client.LiveChatClient;
 import com.toasty.domain.live.client.LiveStreamingClient;
+import com.toasty.domain.live.client.LiveThumbnailClient;
 import com.toasty.domain.live.client.dto.ChatRole;
 import com.toasty.domain.live.client.dto.ChatTokenCommand;
 import com.toasty.domain.live.client.dto.StreamStatus;
@@ -25,6 +26,8 @@ import com.toasty.domain.live.entity.LiveStatus;
 import com.toasty.domain.live.entity.LiveUpdateCommand;
 import com.toasty.domain.live.exception.LiveErrorCode;
 import com.toasty.domain.live.repository.LiveRepository;
+import com.toasty.domain.order.entity.LiveSalesStat;
+import com.toasty.domain.order.service.OrderService;
 import com.toasty.domain.product.controller.dto.response.LiveProductResponse;
 import com.toasty.domain.product.controller.dto.response.LiveProductsResponse;
 import com.toasty.domain.product.entity.LiveProductPinCommand;
@@ -32,6 +35,7 @@ import com.toasty.domain.product.entity.LiveProductUpdateCommand;
 import com.toasty.domain.product.service.ProductService;
 import com.toasty.domain.seller.controller.dto.response.SellerProfileResponse;
 import com.toasty.domain.seller.service.SellerService;
+import com.toasty.global.config.CacheConfig;
 import com.toasty.global.exception.CustomException;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -43,8 +47,10 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadLocalRandom;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -77,12 +83,18 @@ public class LiveService {
     // 송출이 이만큼 연속으로 끊겨 있으면 셀러가 종료를 누르지 않은 것으로 본다. 배치가 30초 주기라 1분 30초다.
     private static final int DROPPED_STREAM_CHECKS = 3;
 
+    // 비로그인 시청자가 채팅에 쓸 이름. 뒤에 붙는 숫자로 같은 방의 다른 게스트와 구분한다.
+    private static final String GUEST_DISPLAY_NAME_PREFIX = "게스트";
+    private static final int GUEST_DISPLAY_NAME_BOUND = 10000;
+
     private final LiveRepository liveRepository;
     private final LiveStreamingClient liveStreamingClient;
     private final LiveChatClient liveChatClient;
+    private final LiveThumbnailClient liveThumbnailClient;
     private final ProductService productService;
     private final SellerService sellerService;
     private final CustomerService customerService;
+    private final OrderService orderService;
     private final FollowService followService;
     private final TransactionTemplate transactionTemplate;
 
@@ -287,13 +299,44 @@ public class LiveService {
                 productService.countScheduledProducts(scheduled.stream().map(Live::getId).toList());
 
         return SellerLiveTabResponse.of(
+                latestStatOf(sellerId),
                 broadcasting,
+                broadcasting == null ? 0 : sellThroughRateOf(broadcasting),
                 scheduled.stream()
                         .map(
                                 live ->
                                         SellerLiveTabResponse.Scheduled.of(
                                                 live, productCounts.getOrDefault(live.getId(), 0)))
                         .toList());
+    }
+
+    // 끝낸 방송이 없으면 화면이 현황 구역을 통째로 감춘다.
+    private SellerLiveTabResponse.LatestStat latestStatOf(Long sellerId) {
+        return liveRepository
+                .findFirstBySellerIdAndStatusOrderByEndedAtDesc(sellerId, LiveStatus.ENDED)
+                .map(
+                        live -> {
+                            LiveSalesStat stat =
+                                    orderService.findLiveSalesStat(live.getId(), sellerId);
+                            return new SellerLiveTabResponse.LatestStat(
+                                    live.getPeakViewerCount(),
+                                    stat.orderCount(),
+                                    stat.salesAmount());
+                        })
+                .orElse(null);
+    }
+
+    // 방송을 켠 뒤 재고를 더 채우면 분모가 함께 늘어 판매율은 내려간다.
+    private int sellThroughRateOf(Live broadcasting) {
+        long soldQuantity =
+                orderService
+                        .findLiveSalesStat(broadcasting.getId(), broadcasting.getSellerId())
+                        .soldQuantity();
+        long total = productService.sumScheduledStock(broadcasting.getId()) + soldQuantity;
+        if (total == 0) {
+            return 0;
+        }
+        return Math.toIntExact(Math.round(soldQuantity * 100.0 / total));
     }
 
     @Transactional(readOnly = true)
@@ -320,11 +363,14 @@ public class LiveService {
         return LiveStreamStatusResponse.of(live, streamStatus.state());
     }
 
-    /** 시청 화면이 시청자 수를 주기적으로 읽는다. */
-    // 배치가 적어둔 값을 읽기만 한다. 시청자가 몇 명이든 IVS 호출은 늘지 않는다.
+    /** 시청 화면과 방송 화면이 시청자 수와 판매율을 주기적으로 읽는다. */
+    // 시청자 수는 배치가 적어둔 값을 읽기만 한다. 시청자가 몇 명이든 IVS 호출은 늘지 않는다.
+    // 판매율은 부를 때마다 집계라, 시청자가 늘면 그만큼 DB를 때린다. 잠깐 캐시해 한 번만 센다.
+    @Cacheable(cacheNames = CacheConfig.PUBLIC_LIVE, key = "'viewerCount:' + #publicId")
     @Transactional(readOnly = true)
     public LiveViewerCountResponse getViewerCount(String publicId) {
-        return new LiveViewerCountResponse(findByPublicId(publicId).getViewerCount());
+        Live live = findByPublicId(publicId);
+        return new LiveViewerCountResponse(live.getViewerCount(), sellThroughRateOf(live));
     }
 
     /** 아직 끝나지 않은 라이브를 IVS에 물어 방송 상태와 시청자 수를 맞춘다. */
@@ -334,6 +380,7 @@ public class LiveService {
         Map<Long, Integer> viewerCounts = new LinkedHashMap<>();
         List<Long> startedLiveIds = new ArrayList<>();
         List<Live> droppedLives = new ArrayList<>();
+        List<Live> thumbnaillessLives = new ArrayList<>();
         List<Live> unfinished = liveRepository.findByStatusIn(UNFINISHED_STATUSES);
         for (Live live : unfinished) {
             StreamStatus streamStatus = readStreamStatus(live);
@@ -342,6 +389,9 @@ public class LiveService {
             }
             if (streamStatus.isBroadcasting()) {
                 droppedStreamChecks.remove(live.getId());
+                if (live.getThumbnailUrl() == null) {
+                    thumbnaillessLives.add(live);
+                }
                 if (!live.isBroadcasting()) {
                     startedLiveIds.add(live.getId());
                     viewerCounts.put(live.getId(), streamStatus.viewerCount());
@@ -362,6 +412,7 @@ public class LiveService {
             }
         }
         forgetFinishedLives(unfinished);
+        thumbnaillessLives.forEach(this::fillThumbnail);
         if (!viewerCounts.isEmpty()) {
             transactionTemplate.executeWithoutResult(
                     status -> applyViewerCounts(viewerCounts, startedLiveIds));
@@ -372,6 +423,16 @@ public class LiveService {
     // 한 번 끊긴 것만으로는 끝내지 않는다. 잠깐 끊겼다 돌아오는 송출이 있다.
     private int countDroppedStream(Long liveId) {
         return droppedStreamChecks.merge(liveId, 1, Integer::sum);
+    }
+
+    // IVS가 첫 썸네일을 찍기 전에는 찾을 것이 없어, 찾을 때까지 주기마다 다시 본다.
+    private void fillThumbnail(Live live) {
+        liveThumbnailClient
+                .findLatestThumbnailUrl(live.getIvsChannelArn())
+                .ifPresent(
+                        url ->
+                                transactionTemplate.executeWithoutResult(
+                                        status -> findById(live.getId()).updateThumbnailUrl(url)));
     }
 
     // 끝난 라이브의 기록까지 들고 있지 않도록, 이번에 살펴본 라이브만 남긴다.
@@ -475,12 +536,15 @@ public class LiveService {
     }
 
     /** 시청자가 라이브 화면에서 상품 바와 전체 상품 시트를 채운다. */
+    // 시청자마다 같은 목록을 읽어 가므로 잠깐 캐시한다. 재고는 몇 초 늦어도 구매는 서버가 다시 막는다.
+    @Cacheable(cacheNames = CacheConfig.PUBLIC_LIVE, key = "'products:' + #publicId")
     @Transactional(readOnly = true)
     public LiveProductsResponse getPublicLiveProducts(String publicId) {
         Long liveId = findByPublicId(publicId).getId();
         return productService.findLiveProducts(liveId);
     }
 
+    @Cacheable(cacheNames = CacheConfig.PUBLIC_LIVE, key = "'playback:' + #publicId")
     @Transactional(readOnly = true)
     public LivePlaybackResponse getPlayback(String publicId) {
         return LivePlaybackResponse.from(findByPublicId(publicId));
@@ -580,9 +644,9 @@ public class LiveService {
             return new ChatTokenCommand(
                     live.getIvsChatRoomArn(),
                     "guest-" + UUID.randomUUID(),
-                    null,
+                    generateGuestDisplayName(),
                     ChatRole.GUEST,
-                    false);
+                    !live.isEnded());
         }
         boolean owner = live.isOwnedBy(viewer.sellerId());
         return new ChatTokenCommand(
@@ -591,6 +655,12 @@ public class LiveService {
                 findChatDisplayName(viewer),
                 owner ? ChatRole.SELLER : ChatRole.CUSTOMER,
                 !live.isEnded());
+    }
+
+    // 비로그인 시청자는 채팅에 쓸 이름이 없어 방마다 새로 지어 준다. 같은 방에서 겹쳐도 참여자 번호가 달라 섞이지 않는다.
+    private String generateGuestDisplayName() {
+        return GUEST_DISPLAY_NAME_PREFIX
+                + ThreadLocalRandom.current().nextInt(GUEST_DISPLAY_NAME_BOUND);
     }
 
     // 채팅에 뜨는 이름은 역할에 따라 다른 곳에 있다. 판매자는 스토어 이름, 구매자는 닉네임을 쓴다.

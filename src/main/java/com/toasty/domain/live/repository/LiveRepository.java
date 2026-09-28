@@ -37,8 +37,15 @@ public interface LiveRepository extends JpaRepository<Live, Long> {
 
     /** 시청자 수만 바꾼다. 배치가 라이브마다 엔티티를 붙였다 떼지 않도록 UPDATE 한 번으로 끝낸다. */
     @Modifying(flushAutomatically = true, clearAutomatically = true)
-    @Query("update Live l set l.viewerCount = :viewerCount where l.id = :liveId")
+    @Query(
+            "update Live l set l.viewerCount = :viewerCount,"
+                    + " l.peakViewerCount = case when l.peakViewerCount < :viewerCount"
+                    + " then :viewerCount else l.peakViewerCount end"
+                    + " where l.id = :liveId")
     void updateViewerCount(@Param("liveId") Long liveId, @Param("viewerCount") int viewerCount);
+
+    /** 셀러가 가장 최근에 끝낸 방송. 라이브탭의 최신 라이브 현황에 쓴다. */
+    Optional<Live> findFirstBySellerIdAndStatusOrderByEndedAtDesc(Long sellerId, LiveStatus status);
 
     /** 종료된 지 오래됐는데 채팅방이 남아 있는 라이브. 배치가 회수한다. */
     List<Live> findByStatusAndEndedAtBeforeAndIvsChatRoomArnIsNotNull(
